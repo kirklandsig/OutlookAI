@@ -2,6 +2,8 @@
 
 An AI-powered email writing assistant for Microsoft Outlook, built as a VSTO add-in.
 
+<img width="283" height="317" alt="image" src="https://github.com/user-attachments/assets/7513e75c-c226-4791-853a-d1aacd897883" />
+
 ## Features
 
 - **Quick Actions** - One-click buttons to improve your email drafts:
