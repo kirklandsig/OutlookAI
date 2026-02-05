@@ -1,0 +1,100 @@
+# Build results
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Ll]og/
+[Ll]ogs/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.rsuser
+*.userprefs
+
+# NuGet
+packages/
+*.nupkg
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# Build output
+*.dll
+*.exe
+*.pdb
+*.cache
+
+# ClickOnce publish folder
+publish/
+*.publish.xml
+
+# Windows stuff
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Office/VSTO
+*.vsto
+Application Files/
+setup.exe
+*.deploy
+
+# Sensitive files - NEVER commit these
+**/config.xml
+*.pfx
+*.snk
+
+# Deploy folder binaries (keep scripts)
+Deploy/*.dll
+Deploy/*.exe
+Deploy/*.vsto
+Deploy/Application Files/
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# Node modules (if any)
+node_modules/
+package-lock.json
+
+# Claude Code settings
+.claude/
+
+# Config files with secrets
+config.json
+
+# Old VSTO folder (keeping VSTO2 as main)
+VSTO/
+
+# Old web add-in attempt (abandoned)
+public/
+server.js
+package.json
+generate-icons.js
+
+# Misc
+nul
+staff-announcement-email.html
+staff-announcement-email.md
+handoff.md
+DEPLOYMENT.md

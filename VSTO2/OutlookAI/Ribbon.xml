@@ -1,0 +1,17 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<customUI xmlns="http://schemas.microsoft.com/office/2009/07/customui" onLoad="Ribbon_Load">
+	<ribbon>
+		<tabs>
+			<tab idMso="TabNewMailMessage">
+				<group id="AIAssistantGroup" label="AI Assistant" insertAfterMso="GroupClipboard">
+					<button id="btnAIAssistant"
+							label="AI Assistant"
+							size="large"
+							onAction="OnAIAssistantClick"
+							supertip="Open the AI Writing Assistant to help proofread, revise, and write emails."
+							imageMso="SmartArtChangeColorsGallery" />
+				</group>
+			</tab>
+		</tabs>
+	</ribbon>
+</customUI>
