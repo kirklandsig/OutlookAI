@@ -4,6 +4,14 @@ An AI-powered email writing assistant for Microsoft Outlook, built as a VSTO add
 
 <img width="283" height="317" alt="image" src="https://github.com/user-attachments/assets/7513e75c-c226-4791-853a-d1aacd897883" />
 
+## What's New (April 2026)
+
+- **Updated AI models** - Now uses Claude Opus 4.6 (writing) and GPT-4o Transcribe (voice)
+- **Global config file** - Admins can set API keys and models via `C:\Program Files\OutlookAI\config.xml` without rebuilding
+- **Server 2025 fix** - Fixed invisible button text on Windows Server 2025
+- **Resiliency protection** - Outlook can no longer auto-disable the add-in
+- **Better error messages** - API errors now show in a full dialog instead of a truncated label
+
 ## Features
 
 - **Quick Actions** - One-click buttons to improve your email drafts:
@@ -35,8 +43,7 @@ This add-in requires:
 
 ### Option 1: Pre-configured Build (Enterprise/RDS)
 
-1. Edit `VSTO2\OutlookAI\Config.cs` and add your API keys
-2. Build the solution in Release mode
+1. Build the solution in Release mode
 3. Publish from Visual Studio (Right-click project > Publish)
 4. Copy the publish folder to your deployment location
 5. Run `Deploy\Install-OutlookAI.ps1` as Administrator:
@@ -47,6 +54,7 @@ Unblock-File -Path "C:\OutlookAI\Install-OutlookAI.ps1"
 cd C:\OutlookAI
 .\Install-OutlookAI.ps1 -SourcePath "C:\OutlookAI"
 ```
+6. Edit `C:\Program Files\OutlookAI\config.xml` to set your API keys and model preferences
 
 ### Option 2: Per-User Install
 
@@ -91,7 +99,12 @@ cd C:\OutlookAI
 
 ## Configuration
 
-Settings are stored in `%APPDATA%\OutlookAI\config.xml`
+Settings are loaded in this order (each overrides the previous):
+1. **Hardcoded defaults** in the compiled DLL
+2. **Global config** - `C:\Program Files\OutlookAI\config.xml` (admin-managed, applies to all users)
+3. **Per-user config** - `%APPDATA%\OutlookAI\config.xml` (created when a user saves settings)
+
+The install script creates a default global config. Edit it to set API keys and models for all users without rebuilding.
 
 Access the Settings panel by clicking the gear icon in the add-in. The default admin password is `admin`.
 
@@ -112,7 +125,8 @@ Located in the `Deploy` folder:
 
 ### Add-in keeps getting disabled
 - Outlook's "Resiliency" feature may disable slow-loading add-ins
-- Run `Enable-OutlookAI-User.ps1` or add it to logon scripts
+- Run `Enable-OutlookAI-User.ps1` - this now sets a Group Policy key to permanently prevent disabling
+- Add to logon scripts for automatic protection
 
 ### "Untrusted" or security errors
 - Ensure all files are unblocked (Right-click > Properties > Unblock)
