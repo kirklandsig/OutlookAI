@@ -209,7 +209,7 @@ namespace OutlookAI.TaskPane
                     byte[] modelField = encoding.GetBytes(
                         $"\r\n--{boundary}\r\n" +
                         $"Content-Disposition: form-data; name=\"model\"\r\n\r\n" +
-                        $"whisper-1");
+                        $"{Config.WhisperModel}");
                     bodyStream.Write(modelField, 0, modelField.Length);
 
                     // Language field
@@ -395,7 +395,8 @@ namespace OutlookAI.TaskPane
                 InvokeOnUI(() =>
                 {
                     string msg = ex.InnerException != null ? ex.InnerException.Message : ex.Message;
-                    ShowStatus(msg, true);
+                    ShowStatus("Error - see details.", true);
+                    MessageBox.Show(msg, "OutlookAI Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     panelResult.Visible = false;
                     SetUIEnabled(true);
                 });

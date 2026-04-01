@@ -64,8 +64,14 @@ Write-Host "Source: $SourcePath" -ForegroundColor Gray
 Write-Host "Target: $InstallPath" -ForegroundColor Gray
 Write-Host ""
 
-# Step 1: Create/clean install directory
-Write-Host "[1/6] Preparing install directory..." -ForegroundColor Yellow
+# Step 1: Create/clean install directory (preserve config.xml)
+Write-Host "[1/7] Preparing install directory..." -ForegroundColor Yellow
+$existingConfig = $null
+$configFile = Join-Path $InstallPath "config.xml"
+if (Test-Path $configFile) {
+    Write-Host "  Preserving existing config.xml..." -ForegroundColor Gray
+    $existingConfig = Get-Content $configFile -Raw
+}
 if (Test-Path $InstallPath) {
     Write-Host "  Removing existing installation..." -ForegroundColor Gray
     Remove-Item -Path $InstallPath -Recurse -Force
@@ -74,7 +80,7 @@ New-Item -Path $InstallPath -ItemType Directory -Force | Out-Null
 Write-Host "  Done." -ForegroundColor Green
 
 # Step 2: Copy files (entire ClickOnce structure)
-Write-Host "[2/6] Copying files..." -ForegroundColor Yellow
+Write-Host "[2/7] Copying files..." -ForegroundColor Yellow
 
 # Copy the .vsto manifest
 Copy-Item -Path $vstoFile -Destination $InstallPath -Force
@@ -107,12 +113,34 @@ $fileCount = (Get-ChildItem -Path $InstallPath -Recurse -File).Count
 Write-Host "  Total files: $fileCount" -ForegroundColor Green
 
 # Step 3: Unblock all files
-Write-Host "[3/6] Unblocking files..." -ForegroundColor Yellow
+Write-Host "[3/7] Unblocking files..." -ForegroundColor Yellow
 Get-ChildItem -Path $InstallPath -Recurse | Unblock-File -ErrorAction SilentlyContinue
 Write-Host "  Done." -ForegroundColor Green
 
-# Step 4: Configure VSTO trust
-Write-Host "[4/6] Configuring VSTO trust settings..." -ForegroundColor Yellow
+# Step 4: Create/restore global config.xml
+Write-Host "[4/7] Setting up global config..." -ForegroundColor Yellow
+if ($existingConfig) {
+    Write-Host "  Restoring preserved config.xml..." -ForegroundColor Gray
+    Set-Content -Path $configFile -Value $existingConfig -Encoding UTF8
+} elseif (!(Test-Path $configFile)) {
+    Write-Host "  Creating default config.xml..." -ForegroundColor Gray
+    $defaultConfig = @"
+<Config>
+  <ApiKey></ApiKey>
+  <OpenAIApiKey></OpenAIApiKey>
+  <AdminPassword>admin</AdminPassword>
+  <Model>claude-opus-4-6</Model>
+  <WhisperModel>gpt-4o-transcribe</WhisperModel>
+  <MaxTokens>2048</MaxTokens>
+</Config>
+"@
+    Set-Content -Path $configFile -Value $defaultConfig -Encoding UTF8
+    Write-Host "  IMPORTANT: Edit $configFile to set your API keys!" -ForegroundColor Yellow
+}
+Write-Host "  Done." -ForegroundColor Green
+
+# Step 5: Configure VSTO trust
+Write-Host "[5/7] Configuring VSTO trust settings..." -ForegroundColor Yellow
 
 # PromptingLevel settings
 $trustPath = "HKLM:\SOFTWARE\Microsoft\.NETFramework\Security\TrustManager\PromptingLevel"
@@ -145,8 +173,8 @@ Set-ItemProperty -Path $addinKey32 -Name "PublicKey" -Value ""
 
 Write-Host "  Done." -ForegroundColor Green
 
-# Step 5: Register add-in for all users
-Write-Host "[5/6] Registering add-in for all users..." -ForegroundColor Yellow
+# Step 6: Register add-in for all users
+Write-Host "[6/7] Registering add-in for all users..." -ForegroundColor Yellow
 
 $manifestPath = "file:///C:/Program Files/OutlookAI/OutlookAI.vsto|vstolocal"
 
@@ -170,8 +198,8 @@ Set-ItemProperty -Path $addinPath32 -Name "Manifest" -Value $manifestPath
 
 Write-Host "  Done." -ForegroundColor Green
 
-# Step 6: Clear Outlook Resiliency for Default User profile (new users)
-Write-Host "[6/6] Configuring for auto-load..." -ForegroundColor Yellow
+# Step 7: Clear Outlook Resiliency for Default User profile (new users)
+Write-Host "[7/7] Configuring for auto-load..." -ForegroundColor Yellow
 
 # Load Default User registry hive
 $defaultUserPath = "C:\Users\Default\NTUSER.DAT"
