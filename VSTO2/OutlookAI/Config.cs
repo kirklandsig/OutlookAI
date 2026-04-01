@@ -7,32 +7,32 @@ namespace OutlookAI
     public static class Config
     {
         // ============================================================
-        // CONFIGURATION
-        // These defaults are empty - configure via Settings panel or
-        // edit before building for pre-configured deployment
+        // CONFIGURATION DEFAULTS
+        // These are overridden by global config (Program Files) and
+        // then by per-user config (AppData). After deploying, edit
+        // C:\Program Files\OutlookAI\config.xml to change for all users.
         // ============================================================
 
-        // Your Anthropic API Key (get one at https://console.anthropic.com)
         public static string ApiKey { get; set; } = "";
-
-        // OpenAI API Key for Whisper speech-to-text (get one at https://platform.openai.com)
-        // Optional - voice input will be disabled if not set
         public static string OpenAIApiKey { get; set; } = "";
-
-        // Admin password for settings panel (set your own password)
         public static string AdminPassword { get; set; } = "admin";
-
-        // Default Claude model
-        public static string Model { get; set; } = "claude-sonnet-4-20250514";
-
-        // Max tokens for responses
+        public static string Model { get; set; } = "claude-opus-4-6";
+        public static string WhisperModel { get; set; } = "gpt-4o-transcribe";
         public static int MaxTokens { get; set; } = 2048;
 
         // ============================================================
         // END CONFIGURATION
         // ============================================================
 
-        private static readonly string ConfigFilePath = Path.Combine(
+        // Global config: admin-controlled, applies to all users
+        private static readonly string GlobalConfigFilePath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            "OutlookAI",
+            "config.xml"
+        );
+
+        // Per-user config: overrides global if user has saved settings
+        private static readonly string UserConfigFilePath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "OutlookAI",
             "config.xml"
@@ -45,11 +45,18 @@ namespace OutlookAI
 
         public static void LoadConfig()
         {
+            // Load order: hardcoded defaults -> global config -> per-user config
+            LoadFromFile(GlobalConfigFilePath);
+            LoadFromFile(UserConfigFilePath);
+        }
+
+        private static void LoadFromFile(string filePath)
+        {
             try
             {
-                if (File.Exists(ConfigFilePath))
+                if (File.Exists(filePath))
                 {
-                    var doc = XDocument.Load(ConfigFilePath);
+                    var doc = XDocument.Load(filePath);
                     var root = doc.Root;
 
                     if (root.Element("ApiKey") != null)
@@ -60,13 +67,15 @@ namespace OutlookAI
                         AdminPassword = root.Element("AdminPassword").Value;
                     if (root.Element("Model") != null)
                         Model = root.Element("Model").Value;
+                    if (root.Element("WhisperModel") != null)
+                        WhisperModel = root.Element("WhisperModel").Value;
                     if (root.Element("MaxTokens") != null)
                         MaxTokens = int.Parse(root.Element("MaxTokens").Value);
                 }
             }
             catch
             {
-                // Use defaults if config file is invalid
+                // Skip if file is missing or invalid
             }
         }
 
@@ -74,7 +83,7 @@ namespace OutlookAI
         {
             try
             {
-                var dir = Path.GetDirectoryName(ConfigFilePath);
+                var dir = Path.GetDirectoryName(UserConfigFilePath);
                 if (!Directory.Exists(dir))
                     Directory.CreateDirectory(dir);
 
@@ -84,11 +93,12 @@ namespace OutlookAI
                         new XElement("OpenAIApiKey", OpenAIApiKey),
                         new XElement("AdminPassword", AdminPassword),
                         new XElement("Model", Model),
+                        new XElement("WhisperModel", WhisperModel),
                         new XElement("MaxTokens", MaxTokens)
                     )
                 );
 
-                doc.Save(ConfigFilePath);
+                doc.Save(UserConfigFilePath);
             }
             catch
             {
@@ -98,9 +108,9 @@ namespace OutlookAI
 
         public static readonly string[] AvailableModels = new[]
         {
-              "claude-sonnet-4-20250514",
-              "claude-opus-4-5-20251101",
-              "claude-haiku-3-5-20241022"
+              "claude-sonnet-4-6",
+              "claude-opus-4-6",
+              "claude-haiku-4-5-20251001"
           };
     }
 }

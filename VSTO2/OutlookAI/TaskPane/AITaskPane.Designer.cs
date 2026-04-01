@@ -57,11 +57,13 @@ namespace OutlookAI.TaskPane
             // btnSettings
             this.btnSettings.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnSettings.Font = new System.Drawing.Font("Segoe UI", 10F);
+            this.btnSettings.ForeColor = System.Drawing.Color.Black;
+            this.btnSettings.BackColor = System.Drawing.Color.FromArgb(250, 249, 248);
             this.btnSettings.Location = new System.Drawing.Point(220, 8);
             this.btnSettings.Name = "btnSettings";
             this.btnSettings.Size = new System.Drawing.Size(30, 26);
             this.btnSettings.Text = "\u2699";
-            this.btnSettings.UseVisualStyleBackColor = true;
+            this.btnSettings.UseVisualStyleBackColor = false;
             this.btnSettings.Click += new System.EventHandler(this.btnSettings_Click);
 
             // grpQuickActions
@@ -81,50 +83,62 @@ namespace OutlookAI.TaskPane
 
             // btnProofread
             this.btnProofread.Font = new System.Drawing.Font("Segoe UI", 8F);
+            this.btnProofread.ForeColor = System.Drawing.Color.Black;
+            this.btnProofread.BackColor = System.Drawing.SystemColors.ButtonFace;
             this.btnProofread.Location = new System.Drawing.Point(10, 22);
             this.btnProofread.Size = new System.Drawing.Size(70, 28);
             this.btnProofread.Text = "Proofread";
-            this.btnProofread.UseVisualStyleBackColor = true;
+            this.btnProofread.UseVisualStyleBackColor = false;
             this.btnProofread.Click += new System.EventHandler(this.btnProofread_Click);
 
             // btnRevise
             this.btnRevise.Font = new System.Drawing.Font("Segoe UI", 8F);
+            this.btnRevise.ForeColor = System.Drawing.Color.Black;
+            this.btnRevise.BackColor = System.Drawing.SystemColors.ButtonFace;
             this.btnRevise.Location = new System.Drawing.Point(85, 22);
             this.btnRevise.Size = new System.Drawing.Size(70, 28);
             this.btnRevise.Text = "Revise";
-            this.btnRevise.UseVisualStyleBackColor = true;
+            this.btnRevise.UseVisualStyleBackColor = false;
             this.btnRevise.Click += new System.EventHandler(this.btnRevise_Click);
 
             // btnShorten
             this.btnShorten.Font = new System.Drawing.Font("Segoe UI", 8F);
+            this.btnShorten.ForeColor = System.Drawing.Color.Black;
+            this.btnShorten.BackColor = System.Drawing.SystemColors.ButtonFace;
             this.btnShorten.Location = new System.Drawing.Point(160, 22);
             this.btnShorten.Size = new System.Drawing.Size(70, 28);
             this.btnShorten.Text = "Shorten";
-            this.btnShorten.UseVisualStyleBackColor = true;
+            this.btnShorten.UseVisualStyleBackColor = false;
             this.btnShorten.Click += new System.EventHandler(this.btnShorten_Click);
 
             // btnLengthen
             this.btnLengthen.Font = new System.Drawing.Font("Segoe UI", 8F);
+            this.btnLengthen.ForeColor = System.Drawing.Color.Black;
+            this.btnLengthen.BackColor = System.Drawing.SystemColors.ButtonFace;
             this.btnLengthen.Location = new System.Drawing.Point(10, 55);
             this.btnLengthen.Size = new System.Drawing.Size(70, 28);
             this.btnLengthen.Text = "Lengthen";
-            this.btnLengthen.UseVisualStyleBackColor = true;
+            this.btnLengthen.UseVisualStyleBackColor = false;
             this.btnLengthen.Click += new System.EventHandler(this.btnLengthen_Click);
 
             // btnFormal
             this.btnFormal.Font = new System.Drawing.Font("Segoe UI", 8F);
+            this.btnFormal.ForeColor = System.Drawing.Color.Black;
+            this.btnFormal.BackColor = System.Drawing.SystemColors.ButtonFace;
             this.btnFormal.Location = new System.Drawing.Point(85, 55);
             this.btnFormal.Size = new System.Drawing.Size(70, 28);
             this.btnFormal.Text = "Formal";
-            this.btnFormal.UseVisualStyleBackColor = true;
+            this.btnFormal.UseVisualStyleBackColor = false;
             this.btnFormal.Click += new System.EventHandler(this.btnFormal_Click);
 
             // btnFriendly
             this.btnFriendly.Font = new System.Drawing.Font("Segoe UI", 8F);
+            this.btnFriendly.ForeColor = System.Drawing.Color.Black;
+            this.btnFriendly.BackColor = System.Drawing.SystemColors.ButtonFace;
             this.btnFriendly.Location = new System.Drawing.Point(160, 55);
             this.btnFriendly.Size = new System.Drawing.Size(70, 28);
             this.btnFriendly.Text = "Friendly";
-            this.btnFriendly.UseVisualStyleBackColor = true;
+            this.btnFriendly.UseVisualStyleBackColor = false;
             this.btnFriendly.Click += new System.EventHandler(this.btnFriendly_Click);
 
             // grpDraft
@@ -149,19 +163,22 @@ namespace OutlookAI.TaskPane
             // btnMicDraft
             this.btnMicDraft.Font = new System.Drawing.Font("Segoe UI", 14F);
             this.btnMicDraft.ForeColor = System.Drawing.Color.Red;
+            this.btnMicDraft.BackColor = System.Drawing.SystemColors.ButtonFace;
             this.btnMicDraft.Location = new System.Drawing.Point(200, 22);
             this.btnMicDraft.Name = "btnMicDraft";
             this.btnMicDraft.Size = new System.Drawing.Size(30, 50);
             this.btnMicDraft.Text = "\u25CF";
-            this.btnMicDraft.UseVisualStyleBackColor = true;
+            this.btnMicDraft.UseVisualStyleBackColor = false;
             this.btnMicDraft.Click += new System.EventHandler(this.btnMicDraft_Click);
 
             // btnDraft
             this.btnDraft.Font = new System.Drawing.Font("Segoe UI", 8F);
+            this.btnDraft.ForeColor = System.Drawing.Color.Black;
+            this.btnDraft.BackColor = System.Drawing.SystemColors.ButtonFace;
             this.btnDraft.Location = new System.Drawing.Point(10, 78);
             this.btnDraft.Size = new System.Drawing.Size(220, 26);
             this.btnDraft.Text = "Draft Email";
-            this.btnDraft.UseVisualStyleBackColor = true;
+            this.btnDraft.UseVisualStyleBackColor = false;
             this.btnDraft.Click += new System.EventHandler(this.btnDraft_Click);
 
             // lblStatus
@@ -198,26 +215,32 @@ namespace OutlookAI.TaskPane
 
             // btnInsert
             this.btnInsert.Font = new System.Drawing.Font("Segoe UI", 8F);
+            this.btnInsert.ForeColor = System.Drawing.Color.Black;
+            this.btnInsert.BackColor = System.Drawing.SystemColors.ButtonFace;
             this.btnInsert.Location = new System.Drawing.Point(0, 150);
             this.btnInsert.Size = new System.Drawing.Size(75, 26);
             this.btnInsert.Text = "Insert";
-            this.btnInsert.UseVisualStyleBackColor = true;
+            this.btnInsert.UseVisualStyleBackColor = false;
             this.btnInsert.Click += new System.EventHandler(this.btnInsert_Click);
 
             // btnReplace
             this.btnReplace.Font = new System.Drawing.Font("Segoe UI", 8F);
+            this.btnReplace.ForeColor = System.Drawing.Color.Black;
+            this.btnReplace.BackColor = System.Drawing.SystemColors.ButtonFace;
             this.btnReplace.Location = new System.Drawing.Point(80, 150);
             this.btnReplace.Size = new System.Drawing.Size(75, 26);
             this.btnReplace.Text = "Replace";
-            this.btnReplace.UseVisualStyleBackColor = true;
+            this.btnReplace.UseVisualStyleBackColor = false;
             this.btnReplace.Click += new System.EventHandler(this.btnReplace_Click);
 
             // btnDiscard
             this.btnDiscard.Font = new System.Drawing.Font("Segoe UI", 8F);
+            this.btnDiscard.ForeColor = System.Drawing.Color.Black;
+            this.btnDiscard.BackColor = System.Drawing.SystemColors.ButtonFace;
             this.btnDiscard.Location = new System.Drawing.Point(160, 150);
             this.btnDiscard.Size = new System.Drawing.Size(75, 26);
             this.btnDiscard.Text = "Discard";
-            this.btnDiscard.UseVisualStyleBackColor = true;
+            this.btnDiscard.UseVisualStyleBackColor = false;
             this.btnDiscard.Click += new System.EventHandler(this.btnDiscard_Click);
 
             // AITaskPane
