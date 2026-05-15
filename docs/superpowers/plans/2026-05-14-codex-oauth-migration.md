@@ -733,3 +733,158 @@ docs/superpowers/plans/2026-05-14-codex-oauth-migration.md
 ```
 
 Mention the worktree path and that commits have not been created.
+
+---
+
+### Task 11: Admin-selectable model + reasoning effort (Phase 1.x)
+
+**Scope:** Restore a single Settings dropdown for `Model` and add a new
+dropdown for `ReasoningEffort`. Both persist to the global config and apply
+to every user on the server. Filters reasoning options per model (e.g.
+`gpt-4.1-nano` only allows `None`).
+
+**Files:**
+- Modify: `VSTO2\OutlookAI\Config.cs` — add `ReasoningEffort` property + `AvailableModels`/`AvailableReasoningEfforts` constants and per-model filter.
+- Modify: `VSTO2\OutlookAI\SettingsForm.cs` — add `ComboBox` for model + `ComboBox` for reasoning effort under the Account group, gated by admin auth.
+- Modify: `VSTO2\OutlookAI\Services\CodexChatService.cs` — emit `"reasoning": { "effort": "<value>" }` in the Responses body when effort is not `None`; omit otherwise.
+- Modify: `Deploy\Install-OutlookAI.ps1` — extend the v2 `config.xml` template to include `<ReasoningEffort>None</ReasoningEffort>` (preserved if already set).
+
+- [ ] **Step 1: Add `ReasoningEffort` enum + Config field**
+
+In `Config.cs`:
+
+```csharp
+public enum ReasoningEffort { None, Minimal, Low, Medium, High }
+
+public const string DefaultReasoningEffort = "None";
+
+public static string ReasoningEffort { get; set; } = DefaultReasoningEffort;
+
+public static readonly string[] AvailableModels =
+{
+    "gpt-5.5",
+    "gpt-5.5-pro",
+    "gpt-5.4",
+    "gpt-5.4-mini",
+    "gpt-4.1-mini",
+    "gpt-4.1-nano",
+    "gpt-5.3-codex"
+};
+
+public static string[] GetReasoningEffortsForModel(string model)
+{
+    // Non-reasoning models accept only "None".
+    if (model == "gpt-4.1-mini" || model == "gpt-4.1-nano")
+    {
+        return new[] { "None" };
+    }
+    return new[] { "None", "Minimal", "Low", "Medium", "High" };
+}
+```
+
+Update `LoadFromFile` to read `<ReasoningEffort>` from the global section
+only (server-authoritative). Update `ResetDefaults` to set
+`ReasoningEffort = DefaultReasoningEffort`.
+
+- [ ] **Step 2: Wire dropdowns into SettingsForm**
+
+In the Account group, under the existing Sign In / Sign Out / Refresh row,
+add:
+
+```csharp
+var lblModel = new Label { Text = "Model:", AutoSize = true };
+var cboModel = new ComboBox {
+    DropDownStyle = ComboBoxStyle.DropDownList,
+    Width = 200
+};
+cboModel.Items.AddRange(Config.AvailableModels);
+cboModel.SelectedItem = Config.Model;
+
+var lblEffort = new Label { Text = "Reasoning effort:", AutoSize = true };
+var cboEffort = new ComboBox {
+    DropDownStyle = ComboBoxStyle.DropDownList,
+    Width = 200
+};
+cboModel.SelectedIndexChanged += (s, e) => {
+    var opts = Config.GetReasoningEffortsForModel((string)cboModel.SelectedItem);
+    cboEffort.Items.Clear();
+    cboEffort.Items.AddRange(opts);
+    cboEffort.SelectedItem = opts.Contains(Config.ReasoningEffort) ? Config.ReasoningEffort : opts[0];
+};
+```
+
+Persist on **Save**:
+
+```csharp
+Config.Model = (string)cboModel.SelectedItem;
+Config.ReasoningEffort = (string)cboEffort.SelectedItem;
+Config.SaveConfig();
+```
+
+Note: Phase 1's `SaveConfig` only writes the per-user file (AdminPassword
+only). Persisting `Model` and `ReasoningEffort` requires writing the global
+config in `C:\Program Files\OutlookAI\config.xml`. This requires elevated
+write access. Two options:
+
+- (a) Have `SaveConfig` attempt to write the global file when the admin
+  has changed `Model`/`ReasoningEffort`; show a clear error if not running
+  elevated (and ask the user to relaunch Outlook elevated for that save).
+- (b) Persist these as per-user overrides in AppData and special-case them
+  in `LoadFromFile` (`allowServerFields: true` for these specific keys).
+
+Pick (b) — it avoids forcing elevated Outlook, matches normal Office UX
+expectations, and the admin password gate already bounds who can change it.
+
+- [ ] **Step 3: Emit `reasoning.effort` in chat requests**
+
+In `CodexChatService.BuildResponsesRequest`:
+
+```csharp
+JToken reasoning = JValue.CreateNull();
+if (!string.Equals(Config.ReasoningEffort, "None", StringComparison.OrdinalIgnoreCase))
+{
+    reasoning = new JObject(
+        new JProperty("effort", Config.ReasoningEffort.ToLowerInvariant()));
+}
+
+return new JObject(
+    new JProperty("model", Config.Model),
+    new JProperty("instructions", instructions ?? ""),
+    new JProperty("input", new JArray(/* ... */)),
+    new JProperty("tools", new JArray()),
+    new JProperty("tool_choice", "auto"),
+    new JProperty("parallel_tool_calls", false),
+    new JProperty("reasoning", reasoning),
+    new JProperty("store", false),
+    new JProperty("stream", true),
+    new JProperty("include", new JArray()));
+```
+
+- [ ] **Step 4: Update install script's v2 config template**
+
+In `Deploy\Install-OutlookAI.ps1`, extend the `$v2Config` here-string:
+
+```xml
+<Config>
+  <AdminPassword>$preservedAdminPassword</AdminPassword>
+  <CodexAuthPath>C:\ProgramData\OutlookAI\auth.json</CodexAuthPath>
+  <Model>gpt-5.5</Model>
+  <VoiceModel>gpt-realtime-1.5</VoiceModel>
+  <ReasoningEffort>None</ReasoningEffort>
+  <MaxTokens>65536</MaxTokens>
+</Config>
+```
+
+Preserve any previously-set `<ReasoningEffort>` from the most recent
+backup file the same way `AdminPassword` is preserved.
+
+- [ ] **Step 5: Build and verify**
+
+```powershell
+& "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe" `
+    "VSTO2\OutlookAI\OutlookAI.csproj" /p:Configuration=Debug /p:Platform="AnyCPU"
+```
+
+Expected: clean build. Manual smoke: open Settings, change the dropdowns,
+save, restart Outlook, confirm the next chat request shows the new model
+and reasoning effort in fiddler / packet capture.

@@ -314,3 +314,36 @@ If `HttpListener` fails, test raw `TcpListener`. If both fail inside Outlook, sw
 - Custom Instructions, Summarize, Translate, Export Images to PDF.
 - Dedicated OutlookAI OAuth client registration.
 - Code signing.
+
+## Deferred Follow-ups (Phase 1.x)
+
+These items extend the Settings UX once Phase 1 is verified in production.
+They are intentionally not in the initial Phase 1 cut because they expand
+the admin surface area, but they will land before (or alongside) Phase 2.
+
+### Admin-selectable model + reasoning effort
+
+The Settings dialog admin panel (already gated by `AdminPassword`) gains two
+dropdowns:
+
+| Control | Source of options | Persisted to |
+| --- | --- | --- |
+| **Model** | Static list of consumer-subscription-accessible models (`gpt-5.5`, `gpt-5.5-pro`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-4.1-mini`, `gpt-4.1-nano`, `gpt-5.3-codex`). Source of truth: `codex-rs/skills/src/assets/samples/openai-docs/references/latest-model.md` and the live OpenAI models docs. | `Config.Model` in the **global** `config.xml` (server-authoritative). |
+| **Reasoning Effort** | `None` / `Minimal` / `Low` / `Medium` / `High`. Options are filtered per selected model — non-reasoning models (e.g. `gpt-4.1-nano`, `gpt-4.1-mini`) only expose `None`. | `Config.ReasoningEffort` in the **global** `config.xml`. |
+
+Behavior:
+
+- The admin saves both fields once; every user on the server uses those
+  values for every chat request. There is no per-user override (consistent
+  with the existing server-authoritative precedence for `Model`).
+- `CodexChatService.BuildResponsesRequest` switches from
+  `"reasoning": null` to `"reasoning": { "effort": "<value>" }` whenever
+  `Config.ReasoningEffort` is anything but `None`. When `None`, the
+  property is omitted entirely so non-reasoning models accept the request.
+- Selecting a model in the dropdown re-filters the reasoning effort
+  dropdown and snaps the current selection to a valid value.
+- The XML schema grows two elements; legacy configs without them keep the
+  current `gpt-5.5` / `None` defaults.
+
+This is the only Phase 1.x follow-up currently planned. Anything beyond it
+belongs in Phase 2 (tool calling) or Phase 3 (Inbox Copilot UI).
