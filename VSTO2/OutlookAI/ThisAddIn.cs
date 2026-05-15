@@ -1,20 +1,43 @@
 ﻿using System;
 using Microsoft.Office.Tools;
 using Outlook = Microsoft.Office.Interop.Outlook;
+using OutlookAI.Services;
 using OutlookAI.TaskPane;
 
 namespace OutlookAI
 {
     public partial class ThisAddIn
     {
+        public CodexAuthService AuthService { get; private set; }
+        public CodexChatService ChatService { get; private set; }
+        public RealtimeVoiceService VoiceService { get; private set; }
+
         private void ThisAddIn_Startup(object sender, System.EventArgs e)
         {
-            // Add-in started
+            try
+            {
+                AuthService = new CodexAuthService(Config.CodexAuthPath);
+                ChatService = new CodexChatService(AuthService);
+                VoiceService = new RealtimeVoiceService(AuthService);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("ThisAddIn_Startup error: " + ex);
+            }
         }
 
         private void ThisAddIn_Shutdown(object sender, System.EventArgs e)
         {
-            // Cleanup
+            try
+            {
+                VoiceService?.Dispose();
+                ChatService?.Dispose();
+                AuthService?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("ThisAddIn_Shutdown error: " + ex);
+            }
         }
 
         public void ShowTaskPane()

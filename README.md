@@ -1,5 +1,22 @@
 # OutlookAI
 
+> ## ⚠️ Active Development Branch — `feature/codex-oauth-migration`
+>
+> **This branch is work-in-progress and may contain bugs. Do not deploy to production.**
+>
+> - Phase 1 (this branch): replaces the Anthropic/OpenAI API-key auth with embedded ChatGPT OAuth.
+>   Text → `chatgpt.com/backend-api/codex/responses`. Voice → `wss://api.openai.com/v1/realtime`.
+>   Both billed against the user's ChatGPT consumer subscription.
+> - Phase 2 (planned): tool calling so the chat service can search/read mailbox via Outlook OOM.
+> - Phase 3 (planned): Inbox-Copilot UI on the Explorer ribbon (chat with your mailbox).
+>
+> Sections below still describe the v1 (Claude + Whisper API-key) shape and have not been
+> rewritten yet. Authoritative spec for this branch lives at
+> [`docs/superpowers/specs/2026-05-14-codex-oauth-migration-design.md`](docs/superpowers/specs/2026-05-14-codex-oauth-migration-design.md).
+> Implementation plan: [`docs/superpowers/plans/2026-05-14-codex-oauth-migration.md`](docs/superpowers/plans/2026-05-14-codex-oauth-migration.md).
+>
+> This branch is intentionally not being merged to `master` until validated.
+
 An AI-powered email writing assistant for Microsoft Outlook, built as a VSTO add-in.
 
 <img width="283" height="317" alt="image" src="https://github.com/user-attachments/assets/7513e75c-c226-4791-853a-d1aacd897883" />
