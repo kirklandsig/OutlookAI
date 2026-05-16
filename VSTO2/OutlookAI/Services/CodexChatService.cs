@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -194,15 +195,125 @@ namespace OutlookAI.Services
                     return result;
                 }
 
-                // Multi-round dispatch arrives in Task 23.
-                result.StopReason = StopReason.MaxRoundsReached;
-                result.AppendedItems = appended;
-                return result;
+                // Parallel tool dispatch. Each task captures its own callId
+                // closure (do NOT reuse a loop variable directly) and
+                // returns the JObject pair we need to append to history.
+                var dispatchTasks = pendingCalls.Select(call =>
+                    DispatchOneAsync(toolHost, sink, call, cancellationToken)).ToArray();
+
+                DispatchedCall[] dispatched;
+                try
+                {
+                    dispatched = await Task.WhenAll(dispatchTasks).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    result.StopReason = StopReason.Cancelled;
+                    result.AppendedItems = appended;
+                    return result;
+                }
+
+                foreach (var d in dispatched)
+                {
+                    context.History.Add(d.FunctionCall);
+                    appended.Add(d.FunctionCall);
+                    context.History.Add(d.FunctionCallOutput);
+                    appended.Add(d.FunctionCallOutput);
+                }
+
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    result.StopReason = StopReason.Cancelled;
+                    result.AppendedItems = appended;
+                    return result;
+                }
+
+                sink.OnRoundBoundary();
+                // Loop: next iteration kicks off round N+1 with the appended
+                // function_call + function_call_output items in history.
             }
 
             result.StopReason = StopReason.MaxRoundsReached;
             result.AppendedItems = appended;
             return result;
+        }
+
+        private static async Task<DispatchedCall> DispatchOneAsync(
+            IToolHost toolHost,
+            ChatEventSink sink,
+            JObject call,
+            CancellationToken ct)
+        {
+            var name = (string)call["name"] ?? "";
+            var args = (string)call["arguments"] ?? "{}";
+            var callId = (string)call["id"] ?? "";
+            string outputJson;
+            bool ok = true;
+            try
+            {
+                outputJson = await toolHost.DispatchAsync(name, args, ct).ConfigureAwait(false);
+                if (string.IsNullOrEmpty(outputJson))
+                {
+                    outputJson = "{}";
+                }
+                else if (LooksLikeErrorEnvelope(outputJson))
+                {
+                    ok = false;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                outputJson = BuildErrorEnvelope(ex);
+                ok = false;
+            }
+            sink.OnToolCallResult(callId, ok, Summarize(outputJson), outputJson);
+            return new DispatchedCall
+            {
+                FunctionCall = new JObject(
+                    new JProperty("type", "function_call"),
+                    new JProperty("id", callId),
+                    new JProperty("name", name),
+                    new JProperty("arguments", args)),
+                FunctionCallOutput = new JObject(
+                    new JProperty("type", "function_call_output"),
+                    new JProperty("call_id", callId),
+                    new JProperty("output", outputJson)),
+            };
+        }
+
+        private struct DispatchedCall
+        {
+            public JObject FunctionCall;
+            public JObject FunctionCallOutput;
+        }
+
+        private static bool LooksLikeErrorEnvelope(string outputJson)
+        {
+            // Tools follow the convention {"error":{"code":...,"message":...}}
+            // on failure. Detect cheaply without re-parsing JSON.
+            return outputJson.IndexOf("\"error\"", StringComparison.Ordinal) >= 0;
+        }
+
+        private static string BuildErrorEnvelope(Exception ex)
+        {
+            // Serialize defensively so message contents can't break JSON.
+            var err = new JObject(
+                new JProperty("error", new JObject(
+                    new JProperty("code", ex.GetType().Name),
+                    new JProperty("message", ex.Message ?? ""))));
+            return err.ToString(Newtonsoft.Json.Formatting.None);
+        }
+
+        private static string Summarize(string outputJson)
+        {
+            if (string.IsNullOrEmpty(outputJson)) return "";
+            const int max = 120;
+            var s = outputJson.Replace('\n', ' ').Replace('\r', ' ');
+            return s.Length <= max ? s : s.Substring(0, max) + "...";
         }
 
         private const int MaxToolRounds = 16;
