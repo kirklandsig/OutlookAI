@@ -91,6 +91,7 @@ namespace OutlookAI
 
                 // Create new task pane
                 var taskPaneControl = new AITaskPane();
+                taskPaneControl.Bind(inspector);
                 var customTaskPane = this.CustomTaskPanes.Add(taskPaneControl, "AI Assistant", inspector);
                 customTaskPane.Width = 340;
                 customTaskPane.Visible = true;
