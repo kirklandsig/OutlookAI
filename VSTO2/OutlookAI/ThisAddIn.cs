@@ -92,7 +92,7 @@ namespace OutlookAI
                 // Create new task pane
                 var taskPaneControl = new AITaskPane();
                 var customTaskPane = this.CustomTaskPanes.Add(taskPaneControl, "AI Assistant", inspector);
-                customTaskPane.Width = 280;
+                customTaskPane.Width = 340;
                 customTaskPane.Visible = true;
             }
             catch (Exception ex)
