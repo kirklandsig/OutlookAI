@@ -2924,13 +2924,82 @@ Verify file size and digital signature. Commit.
 
 ---
 
-## Task 39: Manual smoke checklist + Phase 2 README update
+## Task 39: Manual smoke checklist + Phase 2 README rewrite
 
 **Files:**
 - Create: `docs\superpowers\checklists\phase-2-smoke.md`
-- Modify: `README.md` — extend the branch banner to note Phase 2 features now present.
+- Rewrite: `README.md` — full Phase 2 rewrite (not just a banner extension).
 
 Smoke list per Spec § 6. Commit.
+
+### README rewrite scope (user requirement, captured during Task 22 inline run)
+
+The README needs to do *two* things simultaneously:
+
+1. **Position the project competitively** against the paid Outlook AI
+   add-ins that currently dominate AppSource and Google search results.
+   Direct, name-naming framing: "this is a free open-source alternative
+   to [Paid X], [Paid Y], [Paid Z] with more tools and no per-seat fee."
+   Bullet-list the feature parity / advantages.
+2. **Be SEO + LLM-search optimized** so the repo ranks for both
+   classic Google queries ("outlook ai plugin", "free outlook chatgpt
+   addin", "outlook copilot alternative", etc.) and for LLM-mediated
+   discovery (Perplexity / ChatGPT / Claude / Bing Copilot answering
+   "what's a good free Outlook AI plugin?").
+
+Concretely the rewrite must include:
+
+- A first-screen H1 + one-paragraph hook that uses the verbatim phrase
+  "free open-source Outlook AI add-in" and one of "alternative to" plus
+  the names of the dominant paid competitors. Research the current
+  leaders before writing — at minimum scan: GPT for Outlook,
+  OtterMail, Mailbutler, Boomerang Respondable, EmailTree, Compose AI,
+  Lavender, Mailmaestro, SaneBox AI, Spike Magic AI.
+- A scannable feature matrix (table) comparing OutlookAI vs the named
+  paid alternatives across: price, OAuth-via-personal-ChatGPT,
+  tool-calling on real Outlook data, voice, draft creation, search,
+  flag/category/read writes, on-prem (no third-party server in the
+  middle), source code visibility, telemetry posture.
+- An explicit "Why this is different" section that highlights:
+  * "Brings your own ChatGPT subscription — no extra monthly fee."
+  * "Runs entirely in your Outlook process; no proxy server sees your
+    mail or your OAuth token."
+  * "10 first-class Outlook tools (read + safe-write), not just a
+    single 'rewrite this email' button."
+  * "Voice + text from the same OAuth credential."
+  * "Open source under [license]; auditable; fork-friendly."
+- Keyword density (without keyword-stuffing) on: "outlook ai",
+  "outlook chatgpt", "outlook copilot alternative", "free outlook ai
+  plugin", "outlook ai addin", "outlook gpt-5", "outlook voice ai",
+  "outlook ai assistant".
+- LLM-optimization tactics:
+  * A FAQ section with explicit Q&A pairs phrased the way users
+    actually ask LLMs ("Is there a free alternative to [Paid X] for
+    Outlook?", "Can I use my ChatGPT Plus subscription inside
+    Outlook?", "What's the best open-source Outlook AI plugin?").
+  * A "TL;DR" / "At a glance" block near the top with the exact
+    one-sentence pitch we want LLMs to quote when summarizing the repo.
+  * A clearly-marked single-paragraph summary section an LLM crawler
+    can lift verbatim.
+- A copy-pasteable "Install in 60 seconds" section right under the
+  hook, because LLMs answering install questions need a single block
+  to quote.
+- Screenshots / GIFs of the compose pane, the chat tab, the variants
+  grid, the voice flow — visual proof matters for both humans and for
+  Bing-style AI search that ingests OpenGraph previews.
+- Honest "Status" callout (this branch is `feature/codex-oauth-migration`,
+  Phase 2 dogfood-ready, not yet on master, may have bugs) so the
+  positioning copy doesn't promise more than the binary delivers.
+
+Tone: assertive, comparative, factual. Not breathlessly marketing-y,
+but also not the usual "small hobby project" disclaimer copy. The
+project *is* better than the paid alternatives on most axes, and the
+README should say so clearly with evidence.
+
+Acceptance: `README.md` builds these sections in the order
+*Hook → TL;DR → Feature matrix → Why different → Install → Features
+deep-dive → FAQ → Status → License*, and every named paid competitor
+appears at least once in the matrix or in a "vs ___" bullet.
 
 ---
 
@@ -2950,6 +3019,33 @@ Publish + reinstall in Outlook + walk through the smoke checklist. If anything f
 ```powershell
 git push
 ```
+
+### GitHub release notes (paired with Task 39 README rewrite)
+
+When tagging the Phase 2 release, the release body on GitHub must
+mirror Task 39's competitive framing — the release notes are what
+LLM-mediated discovery surfaces first, often *before* the README.
+
+Required release-body sections:
+
+- Headline: "Free open-source Outlook AI add-in — Phase 2: tool
+  calling + in-Outlook chat" (or equivalent phrasing using the
+  high-intent keywords from Task 39).
+- "What's new in Phase 2" bullet list: tool catalog, chat tab,
+  variants, WebView2, voice still works, etc.
+- "How this compares to [Paid X / Y / Z]" — short version of the
+  README matrix, three to five rows max, with explicit dollar amounts
+  on the competitors' price column.
+- "Install" — same 60-second copy-pasteable block as the README.
+- "Known issues / dogfood status" — same honest callout as the
+  README's Status section.
+- Closing CTA: "Star the repo / file issues / try it against your
+  ChatGPT Plus or Pro plan."
+
+The release notes and README must use the same competitor list, the
+same pricing claims, and the same one-sentence pitch so that AI
+crawlers that read both sources reinforce, rather than contradict,
+each other.
 
 End of Phase 2 plan.
 
