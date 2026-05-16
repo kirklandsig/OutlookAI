@@ -272,6 +272,11 @@
       <DependentUpon>Settings.settings</DependentUpon>
     </Compile>
     <Compile Include="Ribbon.cs" />
+    <Compile Include="Services\Chat\ChatEventSink.cs" />
+    <Compile Include="Services\Chat\ConversationContext.cs" />
+    <Compile Include="Services\Chat\ConversationStore.cs" />
+    <Compile Include="Services\Chat\StopReason.cs" />
+    <Compile Include="Services\Chat\TurnResult.cs" />
     <Compile Include="Services\CodexAuthService.cs" />
     <Compile Include="Services\CodexChatService.cs" />
     <Compile Include="Services\IdResolver.cs" />
