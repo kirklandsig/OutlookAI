@@ -9,6 +9,7 @@ using NAudio.Wave;
 using OutlookAI.Services;
 using OutlookAI.Services.Chat;
 using OutlookAI.Services.Tools;
+using OutlookAI.TaskPane.Chat;
 using Outlook = Microsoft.Office.Interop.Outlook;
 
 namespace OutlookAI.TaskPane
@@ -31,6 +32,10 @@ namespace OutlookAI.TaskPane
         private Button _btnCancel;
         private Label _lblToolStrip;
         private readonly List<string> _toolStripLines = new List<string>();
+
+        // Phase 2 (Task 34) additions
+        private ConversationStore _conversationStore;
+        private ChatController _chatController;
 
         public AITaskPane()
         {
@@ -61,6 +66,25 @@ namespace OutlookAI.TaskPane
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine("AITaskPane.Bind error: " + ex);
+            }
+
+            // Bring up the Chat tab's WebView2 surface. Fire-and-forget; the
+            // controller swaps in a fallback Label if WebView2 fails to init.
+            try
+            {
+                if (ChatService != null && _toolHost != null && _surface != null)
+                {
+                    _conversationStore = new ConversationStore();
+                    // tabChat is referenced from the Designer; safe at this
+                    // point because InitializeComponent has run.
+                    _chatController = new ChatController(
+                        tabChat, ChatService, _toolHost, _surface, _conversationStore);
+                    _ = _chatController.InitializeAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("ChatController init failed: " + ex);
             }
         }
 
@@ -693,6 +717,7 @@ namespace OutlookAI.TaskPane
         partial void DisposeCustomResources()
         {
             CleanupRecording();
+            try { _chatController?.Dispose(); } catch { }
         }
     }
 }

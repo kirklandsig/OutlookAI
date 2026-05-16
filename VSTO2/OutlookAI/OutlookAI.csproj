@@ -318,6 +318,7 @@
     <Compile Include="TaskPane\AITaskPane.Designer.cs">
       <DependentUpon>AITaskPane.cs</DependentUpon>
     </Compile>
+    <Compile Include="TaskPane\Chat\ChatController.cs" />
     <Compile Include="TaskPane\Chat\WebView2Bootstrap.cs" />
     <Compile Include="ThisAddIn.cs">
       <SubType>Code</SubType>
