@@ -38,6 +38,17 @@ namespace OutlookAI.Tests.Helpers
                 Content = new StringContent(text),
             });
 
+        /// <summary>
+        /// Queue a fully-formed <see cref="HttpContent"/> for cases where the
+        /// caller needs precise control over the response body (e.g. a
+        /// streaming <see cref="System.Net.Http.StreamContent"/> backed by a
+        /// custom pausable stream). The content is taken as-is; the caller is
+        /// responsible for setting any required headers (including
+        /// <c>Content-Type</c>).
+        /// </summary>
+        public void QueueRaw(HttpStatusCode status, HttpContent content) =>
+            _responses.Enqueue(_ => new HttpResponseMessage(status) { Content = content });
+
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
