@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -26,6 +28,13 @@ namespace OutlookAI
         private TextBox _txtNewPassword;
         private Button _btnSavePassword;
 
+        // AI Behavior group (Task 28)
+        private ComboBox _cmbModel;
+        private ComboBox _cmbReasoningEffort;
+        private CheckedListBox _clbWriteTools;
+        private Button _btnSaveAiSettings;
+        private Label _lblAiSaved;
+
         private bool _authenticated;
 
         public SettingsForm()
@@ -38,7 +47,7 @@ namespace OutlookAI
             _auth = auth;
 
             Text = "OutlookAI Settings";
-            Size = new Size(440, 360);
+            Size = new Size(460, 620);
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
@@ -95,8 +104,9 @@ namespace OutlookAI
             _panelSettings = new Panel
             {
                 Location = new Point(0, 110),
-                Size = new Size(440, 230),
-                Visible = false
+                Size = new Size(460, 500),
+                Visible = false,
+                AutoScroll = true
             };
 
             var grpAccount = new GroupBox
@@ -171,7 +181,186 @@ namespace OutlookAI
                 grpAccount, lblNewPassword, _txtNewPassword, _btnSavePassword
             });
 
+            BuildAiBehaviorGroup();
+
             Controls.Add(_panelSettings);
+        }
+
+        private void BuildAiBehaviorGroup()
+        {
+            var grpAi = new GroupBox
+            {
+                Text = "AI Behavior",
+                Font = new Font("Segoe UI", 9F, FontStyle.Bold),
+                Location = new Point(20, 200),
+                Size = new Size(400, 280)
+            };
+
+            // Model dropdown
+            var lblModel = new Label
+            {
+                Text = "Model:",
+                Location = new Point(15, 30),
+                AutoSize = true,
+                Font = new Font("Segoe UI", 9F, FontStyle.Regular)
+            };
+            _cmbModel = new ComboBox
+            {
+                Location = new Point(15, 50),
+                Width = 370,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Font = new Font("Segoe UI", 9F, FontStyle.Regular)
+            };
+            _cmbModel.Items.AddRange(Config.AvailableModels);
+            _cmbModel.SelectedIndexChanged += CmbModel_SelectedIndexChanged;
+
+            // Reasoning effort dropdown (re-filters when model changes)
+            var lblReasoning = new Label
+            {
+                Text = "Reasoning effort:",
+                Location = new Point(15, 85),
+                AutoSize = true,
+                Font = new Font("Segoe UI", 9F, FontStyle.Regular)
+            };
+            _cmbReasoningEffort = new ComboBox
+            {
+                Location = new Point(15, 105),
+                Width = 370,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Font = new Font("Segoe UI", 9F, FontStyle.Regular)
+            };
+
+            // Write-tools checklist
+            var lblWriteTools = new Label
+            {
+                Text = "Allowed write tools:",
+                Location = new Point(15, 140),
+                AutoSize = true,
+                Font = new Font("Segoe UI", 9F, FontStyle.Regular)
+            };
+            _clbWriteTools = new CheckedListBox
+            {
+                Location = new Point(15, 160),
+                Size = new Size(370, 80),
+                CheckOnClick = true,
+                Font = new Font("Segoe UI", 9F, FontStyle.Regular),
+                IntegralHeight = false
+            };
+            foreach (var tool in Config.AllWriteTools)
+            {
+                _clbWriteTools.Items.Add(tool);
+            }
+
+            // Save button + saved indicator
+            _btnSaveAiSettings = new Button
+            {
+                Text = "Save AI Settings",
+                Location = new Point(265, 245),
+                Width = 120
+            };
+            _btnSaveAiSettings.Click += BtnSaveAiSettings_Click;
+
+            _lblAiSaved = new Label
+            {
+                Location = new Point(15, 250),
+                AutoSize = true,
+                ForeColor = Color.DarkGreen,
+                Font = new Font("Segoe UI", 8F, FontStyle.Italic),
+                Visible = false,
+                Text = "Saved."
+            };
+
+            grpAi.Controls.AddRange(new Control[]
+            {
+                lblModel, _cmbModel,
+                lblReasoning, _cmbReasoningEffort,
+                lblWriteTools, _clbWriteTools,
+                _btnSaveAiSettings, _lblAiSaved
+            });
+
+            _panelSettings.Controls.Add(grpAi);
+
+            // Seed initial values from current Config.
+            LoadAiSettingsIntoControls();
+        }
+
+        private void LoadAiSettingsIntoControls()
+        {
+            // Model
+            var modelIdx = Array.IndexOf(Config.AvailableModels, Config.Model);
+            _cmbModel.SelectedIndex = modelIdx >= 0 ? modelIdx : 0;
+
+            // Reasoning effort - filtered by current model
+            RefreshReasoningEffortChoices(Config.Model, preferEffort: Config.ReasoningEffort);
+
+            // Write tools
+            var enabled = Config.EnabledWriteTools ?? new HashSet<string>();
+            for (int i = 0; i < _clbWriteTools.Items.Count; i++)
+            {
+                var name = _clbWriteTools.Items[i].ToString();
+                _clbWriteTools.SetItemChecked(i, enabled.Contains(name));
+            }
+        }
+
+        private void CmbModel_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            var model = _cmbModel.SelectedItem as string;
+            if (string.IsNullOrEmpty(model)) return;
+            // Preserve the user's current pick if it's still valid for this
+            // model; otherwise snap to the first available option.
+            var currentEffort = _cmbReasoningEffort.SelectedItem as string ?? Config.ReasoningEffort;
+            RefreshReasoningEffortChoices(model, currentEffort);
+        }
+
+        private void RefreshReasoningEffortChoices(string model, string preferEffort)
+        {
+            var efforts = Config.ReasoningEffortsForModel(model);
+            _cmbReasoningEffort.BeginUpdate();
+            _cmbReasoningEffort.Items.Clear();
+            _cmbReasoningEffort.Items.AddRange(efforts);
+            // Snap to preferred if valid, else first entry.
+            var idx = Array.IndexOf(efforts, preferEffort);
+            _cmbReasoningEffort.SelectedIndex = idx >= 0 ? idx : 0;
+            _cmbReasoningEffort.EndUpdate();
+        }
+
+        private void BtnSaveAiSettings_Click(object sender, EventArgs e)
+        {
+            if (!_authenticated) return;
+
+            var pickedModel = _cmbModel.SelectedItem as string;
+            if (!string.IsNullOrEmpty(pickedModel))
+            {
+                Config.Model = pickedModel;
+            }
+
+            var pickedEffort = _cmbReasoningEffort.SelectedItem as string;
+            if (!string.IsNullOrEmpty(pickedEffort))
+            {
+                Config.ReasoningEffort = pickedEffort;
+            }
+
+            // EnabledWriteTools - collect every checked entry.
+            var newSet = new HashSet<string>(StringComparer.Ordinal);
+            for (int i = 0; i < _clbWriteTools.Items.Count; i++)
+            {
+                if (_clbWriteTools.GetItemChecked(i))
+                {
+                    newSet.Add(_clbWriteTools.Items[i].ToString());
+                }
+            }
+            Config.EnabledWriteTools = newSet;
+            // Master switch is derived: any write tool checked = true.
+            Config.WriteToolsEnabled = newSet.Count > 0;
+
+            Config.SaveConfig();
+
+            _lblAiSaved.Visible = true;
+            // Auto-hide the saved indicator after a short delay so repeated
+            // saves still give clear visual feedback.
+            var t = new System.Windows.Forms.Timer { Interval = 2500 };
+            t.Tick += (s2, e2) => { _lblAiSaved.Visible = false; t.Stop(); t.Dispose(); };
+            t.Start();
         }
 
         private void BtnLogin_Click(object sender, EventArgs e)

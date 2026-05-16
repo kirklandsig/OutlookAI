@@ -135,6 +135,69 @@ namespace OutlookAI.Tests
 
             Assert.Equal("None", Config.ReasoningEffort);
             Assert.True(Config.WriteToolsEnabled);
+            // Default: all four write tools enabled.
+            Assert.Equal(4, Config.EnabledWriteTools.Count);
+            Assert.Contains("outlook_create_draft", Config.EnabledWriteTools);
+            Assert.Contains("outlook_mark_as_read", Config.EnabledWriteTools);
+            Assert.Contains("outlook_flag_message", Config.EnabledWriteTools);
+            Assert.Contains("outlook_set_category", Config.EnabledWriteTools);
+        }
+
+        [Fact]
+        public void LoadConfigFromPaths_AppliesEnabledWriteToolsFromCSV()
+        {
+            var (g, u) = MakeTempPaths();
+            File.WriteAllText(g, "<Config>"
+                + "<EnabledWriteTools>outlook_create_draft, outlook_set_category</EnabledWriteTools>"
+                + "</Config>");
+
+            Config.LoadConfigFromPaths(g, u);
+
+            Assert.Equal(2, Config.EnabledWriteTools.Count);
+            Assert.Contains("outlook_create_draft", Config.EnabledWriteTools);
+            Assert.Contains("outlook_set_category", Config.EnabledWriteTools);
+            Assert.DoesNotContain("outlook_mark_as_read", Config.EnabledWriteTools);
+        }
+
+        [Fact]
+        public void LoadConfigFromPaths_FiltersUnknownWriteToolNames()
+        {
+            var (g, u) = MakeTempPaths();
+            File.WriteAllText(g, "<Config>"
+                + "<EnabledWriteTools>outlook_create_draft,outlook_send_now,bogus_tool</EnabledWriteTools>"
+                + "</Config>");
+
+            Config.LoadConfigFromPaths(g, u);
+
+            // Unknown names are silently dropped (forward-compat with admin
+            // configs that reference future or removed tools).
+            Assert.Single(Config.EnabledWriteTools);
+            Assert.Contains("outlook_create_draft", Config.EnabledWriteTools);
+        }
+
+        [Fact]
+        public void LoadConfigFromPaths_AppliesModelFromUserOverride_WhenInCatalog()
+        {
+            var (g, u) = MakeTempPaths();
+            File.WriteAllText(g, "<Config><Model>gpt-5.5</Model></Config>");
+            File.WriteAllText(u, "<Config><Model>gpt-5.5-pro</Model></Config>");
+
+            Config.LoadConfigFromPaths(g, u);
+
+            Assert.Equal("gpt-5.5-pro", Config.Model);
+        }
+
+        [Fact]
+        public void LoadConfigFromPaths_IgnoresModelNotInCatalog()
+        {
+            var (g, u) = MakeTempPaths();
+            File.WriteAllText(g, "<Config><Model>nonexistent-gpt-9</Model></Config>");
+
+            Config.LoadConfigFromPaths(g, u);
+
+            // Should fall back to the v2 default since the requested model
+            // isn't in AvailableModels.
+            Assert.Equal("gpt-5.5", Config.Model);
         }
     }
 }

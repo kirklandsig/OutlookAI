@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Xml.Linq;
 
 namespace OutlookAI
@@ -39,9 +41,33 @@ namespace OutlookAI
         /// <summary>
         /// Master switch for the four safe-write Outlook tools (create_draft,
         /// mark_as_read, flag_message, set_category). When false, the tool
-        /// catalog sent to the model only includes the read tools.
+        /// catalog sent to the model only includes the read tools. When true,
+        /// the per-tool set <see cref="EnabledWriteTools"/> determines which
+        /// individual writes are surfaced.
         /// </summary>
         public static bool WriteToolsEnabled { get; set; } = DefaultWriteToolsEnabled;
+
+        /// <summary>
+        /// Full set of write-tool names supported by Phase 2. Used both as
+        /// the SettingsForm option list and as the default for
+        /// <see cref="EnabledWriteTools"/>.
+        /// </summary>
+        public static readonly string[] AllWriteTools =
+        {
+            "outlook_create_draft",
+            "outlook_mark_as_read",
+            "outlook_flag_message",
+            "outlook_set_category"
+        };
+
+        /// <summary>
+        /// Currently-enabled subset of <see cref="AllWriteTools"/>. Both
+        /// <see cref="OutlookToolHost"/> (tool registration) and
+        /// <see cref="Services.Tools.ToolCatalogSchema"/> (request-time
+        /// catalog) consult this set when WriteToolsEnabled=true.
+        /// </summary>
+        public static HashSet<string> EnabledWriteTools { get; set; } =
+            new HashSet<string>(AllWriteTools, StringComparer.Ordinal);
 
         public static readonly string[] AvailableModels =
         {
@@ -123,6 +149,7 @@ namespace OutlookAI
             MaxTokens = DefaultMaxTokens;
             ReasoningEffort = DefaultReasoningEffort;
             WriteToolsEnabled = DefaultWriteToolsEnabled;
+            EnabledWriteTools = new HashSet<string>(AllWriteTools, StringComparer.Ordinal);
         }
 
         private static void LoadFromFile(string filePath, bool allowServerFields)
@@ -170,6 +197,32 @@ namespace OutlookAI
                     WriteToolsEnabled = wte;
                 }
 
+                var enabledWriteTools = root.Element("EnabledWriteTools");
+                if (enabledWriteTools != null && !string.IsNullOrWhiteSpace(enabledWriteTools.Value))
+                {
+                    // Comma-separated list; intersect with the canonical set
+                    // so unknown tool names (typo / future tool removed) are
+                    // silently dropped instead of breaking the dispatcher.
+                    var requested = enabledWriteTools.Value
+                        .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                        .Select(x => x.Trim());
+                    var canonical = new HashSet<string>(AllWriteTools, StringComparer.Ordinal);
+                    EnabledWriteTools = new HashSet<string>(
+                        requested.Where(canonical.Contains),
+                        StringComparer.Ordinal);
+                }
+
+                // Model is user-tunable in Phase 2 (Settings UI lets the admin
+                // pick from AvailableModels). Server provides the default, but
+                // per-user override beats it on load. Unknown model names fall
+                // back to whatever was already set.
+                var model = root.Element("Model");
+                if (model != null && !string.IsNullOrWhiteSpace(model.Value)
+                    && AvailableModels.Contains(model.Value))
+                {
+                    Model = model.Value;
+                }
+
                 if (!allowServerFields)
                 {
                     return;
@@ -179,12 +232,6 @@ namespace OutlookAI
                 if (codexAuthPath != null && !string.IsNullOrWhiteSpace(codexAuthPath.Value))
                 {
                     CodexAuthPath = codexAuthPath.Value;
-                }
-
-                var model = root.Element("Model");
-                if (model != null && !string.IsNullOrWhiteSpace(model.Value))
-                {
-                    Model = model.Value;
                 }
 
                 var voiceModel = root.Element("VoiceModel");
@@ -215,15 +262,19 @@ namespace OutlookAI
                     Directory.CreateDirectory(dir);
                 }
 
-                // Per-user config persists AdminPassword + the two user-tunable
-                // fields (ReasoningEffort, WriteToolsEnabled). All other fields
-                // are server-authoritative and owned by the global config in
+                // Per-user config persists AdminPassword + the user-tunable
+                // AI behavior fields (ReasoningEffort, WriteToolsEnabled,
+                // EnabledWriteTools, Model). All other fields are
+                // server-authoritative and owned by the global config in
                 // Program Files.
                 var doc = new XDocument(
                     new XElement("Config",
                         new XElement("AdminPassword", AdminPassword),
+                        new XElement("Model", Model),
                         new XElement("ReasoningEffort", ReasoningEffort),
-                        new XElement("WriteToolsEnabled", WriteToolsEnabled)
+                        new XElement("WriteToolsEnabled", WriteToolsEnabled),
+                        new XElement("EnabledWriteTools",
+                            string.Join(",", EnabledWriteTools ?? new HashSet<string>()))
                     )
                 );
 

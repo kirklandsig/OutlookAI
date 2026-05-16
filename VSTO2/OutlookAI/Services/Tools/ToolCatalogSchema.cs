@@ -86,51 +86,68 @@ namespace OutlookAI.Services.Tools
 
             if (includeWriteTools)
             {
-                arr.Add(BuildToolEntry("outlook_create_draft",
-                    "Create a draft in the Drafts folder. Never sends. If in_reply_to_message_id is given, seeds the draft via MailItem.Reply().",
-                    new JObject(
-                        new JProperty("type", "object"),
-                        new JProperty("required", new JArray("subject","body_plaintext")),
-                        new JProperty("properties", new JObject(
-                            new JProperty("subject", new JObject(new JProperty("type","string"))),
-                            new JProperty("body_plaintext", new JObject(new JProperty("type","string"))),
-                            new JProperty("to", new JObject(new JProperty("type","array"),
-                                                            new JProperty("items", new JObject(new JProperty("type","string"))))),
-                            new JProperty("cc", new JObject(new JProperty("type","array"),
-                                                            new JProperty("items", new JObject(new JProperty("type","string"))))),
-                            new JProperty("in_reply_to_message_id", new JObject(new JProperty("type","string"))))),
-                        new JProperty("additionalProperties", false))));
+                // Per-tool gate against Config.EnabledWriteTools so an admin
+                // can disable just one or two of the safe-writes without
+                // losing the others. Default = all four enabled.
+                var enabled = Config.EnabledWriteTools ?? new System.Collections.Generic.HashSet<string>(Config.AllWriteTools);
 
-                arr.Add(BuildToolEntry("outlook_mark_as_read",
-                    "Set or clear the UnRead flag on a message.",
-                    new JObject(
-                        new JProperty("type", "object"),
-                        new JProperty("required", new JArray("message_id","read")),
-                        new JProperty("properties", new JObject(
-                            new JProperty("message_id", new JObject(new JProperty("type","string"))),
-                            new JProperty("read", new JObject(new JProperty("type","boolean"))))),
-                        new JProperty("additionalProperties", false))));
+                if (enabled.Contains("outlook_create_draft"))
+                {
+                    arr.Add(BuildToolEntry("outlook_create_draft",
+                        "Create a draft in the Drafts folder. Never sends. If in_reply_to_message_id is given, seeds the draft via MailItem.Reply().",
+                        new JObject(
+                            new JProperty("type", "object"),
+                            new JProperty("required", new JArray("subject","body_plaintext")),
+                            new JProperty("properties", new JObject(
+                                new JProperty("subject", new JObject(new JProperty("type","string"))),
+                                new JProperty("body_plaintext", new JObject(new JProperty("type","string"))),
+                                new JProperty("to", new JObject(new JProperty("type","array"),
+                                                                new JProperty("items", new JObject(new JProperty("type","string"))))),
+                                new JProperty("cc", new JObject(new JProperty("type","array"),
+                                                                new JProperty("items", new JObject(new JProperty("type","string"))))),
+                                new JProperty("in_reply_to_message_id", new JObject(new JProperty("type","string"))))),
+                            new JProperty("additionalProperties", false))));
+                }
 
-                arr.Add(BuildToolEntry("outlook_flag_message",
-                    "Set follow-up flag status: none | todo | complete.",
-                    new JObject(
-                        new JProperty("type", "object"),
-                        new JProperty("required", new JArray("message_id","flag")),
-                        new JProperty("properties", new JObject(
-                            new JProperty("message_id", new JObject(new JProperty("type","string"))),
-                            new JProperty("flag", new JObject(new JProperty("type","string"),
-                                                              new JProperty("enum", new JArray("none","todo","complete")))))),
-                        new JProperty("additionalProperties", false))));
+                if (enabled.Contains("outlook_mark_as_read"))
+                {
+                    arr.Add(BuildToolEntry("outlook_mark_as_read",
+                        "Set or clear the UnRead flag on a message.",
+                        new JObject(
+                            new JProperty("type", "object"),
+                            new JProperty("required", new JArray("message_id","read")),
+                            new JProperty("properties", new JObject(
+                                new JProperty("message_id", new JObject(new JProperty("type","string"))),
+                                new JProperty("read", new JObject(new JProperty("type","boolean"))))),
+                            new JProperty("additionalProperties", false))));
+                }
 
-                arr.Add(BuildToolEntry("outlook_set_category",
-                    "Replace a message's Categories with the single given value.",
-                    new JObject(
-                        new JProperty("type", "object"),
-                        new JProperty("required", new JArray("message_id","category")),
-                        new JProperty("properties", new JObject(
-                            new JProperty("message_id", new JObject(new JProperty("type","string"))),
-                            new JProperty("category", new JObject(new JProperty("type","string"))))),
-                        new JProperty("additionalProperties", false))));
+                if (enabled.Contains("outlook_flag_message"))
+                {
+                    arr.Add(BuildToolEntry("outlook_flag_message",
+                        "Set follow-up flag status: none | todo | complete.",
+                        new JObject(
+                            new JProperty("type", "object"),
+                            new JProperty("required", new JArray("message_id","flag")),
+                            new JProperty("properties", new JObject(
+                                new JProperty("message_id", new JObject(new JProperty("type","string"))),
+                                new JProperty("flag", new JObject(new JProperty("type","string"),
+                                                                  new JProperty("enum", new JArray("none","todo","complete")))))),
+                            new JProperty("additionalProperties", false))));
+                }
+
+                if (enabled.Contains("outlook_set_category"))
+                {
+                    arr.Add(BuildToolEntry("outlook_set_category",
+                        "Replace a message's Categories with the single given value.",
+                        new JObject(
+                            new JProperty("type", "object"),
+                            new JProperty("required", new JArray("message_id","category")),
+                            new JProperty("properties", new JObject(
+                                new JProperty("message_id", new JObject(new JProperty("type","string"))),
+                                new JProperty("category", new JObject(new JProperty("type","string"))))),
+                            new JProperty("additionalProperties", false))));
+                }
             }
 
             return arr;
