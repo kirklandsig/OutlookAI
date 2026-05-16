@@ -299,6 +299,9 @@
     <Compile Include="Services\Tools\OutlookSearchMessagesTool.cs" />
     <Compile Include="Services\Tools\OutlookSetCategoryTool.cs" />
     <Compile Include="Services\Tools\ToolCatalogSchema.cs" />
+    <Compile Include="Services\Variants\Tone.cs" />
+    <Compile Include="Services\Variants\Variant.cs" />
+    <Compile Include="Services\Variants\VariantParser.cs" />
     <Compile Include="SettingsForm.cs">
       <SubType>Form</SubType>
     </Compile>
