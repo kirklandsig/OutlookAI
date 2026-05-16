@@ -302,6 +302,7 @@
     <Compile Include="Services\Variants\Tone.cs" />
     <Compile Include="Services\Variants\Variant.cs" />
     <Compile Include="Services\Variants\VariantParser.cs" />
+    <Compile Include="Services\Variants\VariantStore.cs" />
     <Compile Include="SettingsForm.cs">
       <SubType>Form</SubType>
     </Compile>
