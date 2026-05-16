@@ -44,8 +44,8 @@ $Timestamp          = Get-Date -Format "yyyyMMdd-HHmmss"
 # AddInAlreadyInstalledException at Outlook startup if any of the following
 # point at an older or differently-located manifest than HKLM does:
 #   - HKCU\Software\Microsoft\VSTA\Solutions\<guid>          (ClickOnce subscription)
-#   - HKCU\Software\Microsoft\VSTO\SolutionMetadata\<guid>   (SolutionId → addin metadata)
-#   - HKCU\Software\Microsoft\VSTO\SolutionMetadata          (URL → SolutionId map values)
+#   - HKCU\Software\Microsoft\VSTO\SolutionMetadata\<guid>   (SolutionId â†’ addin metadata)
+#   - HKCU\Software\Microsoft\VSTO\SolutionMetadata          (URL â†’ SolutionId map values)
 #   - HKCU\Software\Microsoft\VSTO\Security\Inclusion\<guid> (trust list)
 #   - HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\<guid> (Add/Remove Programs)
 #   - HKCU\Software\Microsoft\Office\Outlook\Addins\OutlookAI
@@ -101,8 +101,8 @@ function Clean-StaleOutlookAIRegistrations {
         }
     }
 
-    # 3) VSTO SolutionMetadata: subkeys (SolutionId → addin name) and
-    #    values directly on the parent (URL → SolutionId map).
+    # 3) VSTO SolutionMetadata: subkeys (SolutionId â†’ addin name) and
+    #    values directly on the parent (URL â†’ SolutionId map).
     $metaRoot = "$UserRegistryRoot\Software\Microsoft\VSTO\SolutionMetadata"
     if (Test-Path $metaRoot) {
         Get-ChildItem -Path $metaRoot -ErrorAction SilentlyContinue | ForEach-Object {
@@ -224,7 +224,7 @@ Write-Host ""
 # This block cleans up every Windows user profile we can see on this
 # machine, not just the admin running the installer. ClickOnce state is
 # per-user, so cleaning only the admin profile leaves other users broken.
-Write-Host "[0/9] Removing stale OutlookAI registrations for all users..." -ForegroundColor Yellow
+Write-Host "[0/10] Removing stale OutlookAI registrations for all users..." -ForegroundColor Yellow
 
 # Stop Outlook so the cache files aren't locked.
 Get-Process OUTLOOK -ErrorAction SilentlyContinue | ForEach-Object {
@@ -280,7 +280,7 @@ Get-ChildItem "Registry::HKEY_USERS" -ErrorAction SilentlyContinue | Where-Objec
 Write-Host "  Done." -ForegroundColor Green
 
 # --- 1. External config backup BEFORE we touch the install dir -----------
-Write-Host "[1/9] Backing up any existing v1 config..." -ForegroundColor Yellow
+Write-Host "[1/10] Backing up any existing v1 config..." -ForegroundColor Yellow
 if (!(Test-Path $BackupRoot)) {
     New-Item -ItemType Directory -Path $BackupRoot -Force | Out-Null
 }
@@ -294,7 +294,7 @@ if (Test-Path $ConfigFilePath) {
 Write-Host "  Done." -ForegroundColor Green
 
 # --- 2. Replace install directory ----------------------------------------
-Write-Host "[2/9] Preparing install directory..." -ForegroundColor Yellow
+Write-Host "[2/10] Preparing install directory..." -ForegroundColor Yellow
 if (Test-Path $InstallPath) {
     Remove-Item -Path $InstallPath -Recurse -Force
 }
@@ -302,7 +302,7 @@ New-Item -Path $InstallPath -ItemType Directory -Force | Out-Null
 Write-Host "  Done." -ForegroundColor Green
 
 # --- 3. Copy publish payload ---------------------------------------------
-Write-Host "[3/9] Copying files..." -ForegroundColor Yellow
+Write-Host "[3/10] Copying files..." -ForegroundColor Yellow
 Copy-Item -Path $vstoFile -Destination $InstallPath -Force
 Copy-Item -Path $appFilesDir -Destination $InstallPath -Recurse -Force
 
@@ -322,12 +322,12 @@ if ($latestVersionDir) {
 Write-Host "  Done." -ForegroundColor Green
 
 # --- 4. Unblock files ----------------------------------------------------
-Write-Host "[4/9] Unblocking files..." -ForegroundColor Yellow
+Write-Host "[4/10] Unblocking files..." -ForegroundColor Yellow
 Get-ChildItem -Path $InstallPath -Recurse | Unblock-File -ErrorAction SilentlyContinue
 Write-Host "  Done." -ForegroundColor Green
 
 # --- 5. Write v2 config --------------------------------------------------
-Write-Host "[5/9] Writing v2 config.xml..." -ForegroundColor Yellow
+Write-Host "[5/10] Writing v2 config.xml..." -ForegroundColor Yellow
 
 # Carry over only the AdminPassword from any v1 file (everything else is
 # server-authoritative under v2).
@@ -364,7 +364,7 @@ Write-Host "  Wrote $ConfigFilePath" -ForegroundColor Gray
 Write-Host "  Done." -ForegroundColor Green
 
 # --- 6. Provision shared OAuth auth folder + ACL -------------------------
-Write-Host "[6/9] Provisioning shared OAuth auth folder..." -ForegroundColor Yellow
+Write-Host "[6/10] Provisioning shared OAuth auth folder..." -ForegroundColor Yellow
 if (!(Test-Path $ProgramDataPath)) {
     New-Item -ItemType Directory -Path $ProgramDataPath -Force | Out-Null
 }
@@ -377,7 +377,7 @@ Write-Host "  Granted Authenticated Users: Modify on $ProgramDataPath" -Foregrou
 Write-Host "  Done." -ForegroundColor Green
 
 # --- 7. Per-user v1 AppData cleanup --------------------------------------
-Write-Host "[7/9] Renaming per-user v1 AppData configs..." -ForegroundColor Yellow
+Write-Host "[7/10] Renaming per-user v1 AppData configs..." -ForegroundColor Yellow
 $userProfiles = Get-ChildItem -Path "C:\Users" -Directory -ErrorAction SilentlyContinue |
     Where-Object { $_.Name -notin @("Public", "Default", "Default User", "All Users") }
 $renamed = 0
@@ -399,8 +399,50 @@ foreach ($profile in $userProfiles) {
 }
 Write-Host ("  Done ({0} per-user v1 configs renamed)." -f $renamed) -ForegroundColor Green
 
-# --- 8. VSTO trust + Inclusion List + add-in registration ----------------
-Write-Host "[8/9] Configuring VSTO trust & registering add-in..." -ForegroundColor Yellow
+# --- 8. Microsoft Edge WebView2 Runtime --------------------------------------
+# Phase 2 chat surface uses WebView2 (Evergreen). On most modern Windows the
+# runtime ships with the OS / is auto-installed by Edge, but on stripped-down
+# server images it can be missing. Detect first; only run the bootstrapper
+# (vendored alongside the installer as MicrosoftEdgeWebView2Setup.exe) if
+# we don't see a version registered. If the bootstrapper isn't shipped with
+# this install, the add-in's Chat tab falls back to a friendly "install
+# WebView2 runtime" panel - the rest of the add-in (Actions tab, voice,
+# Variants tab) keeps working.
+Write-Host "[8/10] Ensuring Microsoft Edge WebView2 Runtime present..." -ForegroundColor Yellow
+$wv2KeyA = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+$wv2KeyB = "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+$wv2Installed = $false
+foreach ($k in @($wv2KeyA, $wv2KeyB)) {
+    if (Test-Path $k) {
+        $pv = (Get-ItemProperty $k -ErrorAction SilentlyContinue).pv
+        if (-not [string]::IsNullOrWhiteSpace($pv)) {
+            $wv2Installed = $true
+            Write-Host "  WebView2 Runtime detected (version $pv)." -ForegroundColor Gray
+            break
+        }
+    }
+}
+if (-not $wv2Installed) {
+    $bootstrap = Join-Path $SourcePath "MicrosoftEdgeWebView2Setup.exe"
+    if (Test-Path $bootstrap) {
+        Write-Host "  Installing WebView2 Runtime (silent)..." -ForegroundColor Gray
+        try {
+            Start-Process -FilePath $bootstrap -ArgumentList "/silent","/install" -Wait
+            Write-Host "  WebView2 Runtime installed." -ForegroundColor Gray
+        } catch {
+            Write-Host "  WARN: WebView2 bootstrapper failed: $_" -ForegroundColor Yellow
+            Write-Host "  Chat tab will show the runtime-missing fallback panel." -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "  WARN: MicrosoftEdgeWebView2Setup.exe missing in $SourcePath." -ForegroundColor Yellow
+        Write-Host "  Chat tab will show the runtime-missing fallback panel until WebView2 is installed manually." -ForegroundColor Yellow
+        Write-Host "  Download: https://go.microsoft.com/fwlink/p/?LinkId=2124703" -ForegroundColor Yellow
+    }
+}
+Write-Host "  Done." -ForegroundColor Green
+
+# --- 9. VSTO trust + Inclusion List + add-in registration ----------------
+Write-Host "[9/10] Configuring VSTO trust & registering add-in..." -ForegroundColor Yellow
 
 $trustPath   = "HKLM:\SOFTWARE\Microsoft\.NETFramework\Security\TrustManager\PromptingLevel"
 $trustPath32 = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\.NETFramework\Security\TrustManager\PromptingLevel"
@@ -434,8 +476,8 @@ foreach ($path in @($addinPath, $addinPath32)) {
 }
 Write-Host "  Done." -ForegroundColor Green
 
-# --- 9. Default user profile auto-load -----------------------------------
-Write-Host "[9/9] Configuring auto-load for new user profiles..." -ForegroundColor Yellow
+# --- 10. Default user profile auto-load ----------------------------------
+Write-Host "[10/10] Configuring auto-load for new user profiles..." -ForegroundColor Yellow
 $defaultUserPath = "C:\Users\Default\NTUSER.DAT"
 $tempKey         = "HKU\DefaultUser"
 try {
