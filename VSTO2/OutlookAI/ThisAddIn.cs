@@ -11,6 +11,8 @@ namespace OutlookAI
         public CodexAuthService AuthService { get; private set; }
         public CodexChatService ChatService { get; private set; }
         public RealtimeVoiceService VoiceService { get; private set; }
+        public OutlookThreadMarshaller OutlookMarshaller { get; private set; }
+        public IdResolver IdResolver { get; private set; }
 
         private void ThisAddIn_Startup(object sender, System.EventArgs e)
         {
@@ -19,6 +21,22 @@ namespace OutlookAI
                 AuthService = new CodexAuthService(Config.CodexAuthPath);
                 ChatService = new CodexChatService(AuthService);
                 VoiceService = new RealtimeVoiceService(AuthService);
+
+                // SynchronizationContext captured on the Outlook UI thread.
+                // Forms apps install a WindowsFormsSynchronizationContext per
+                // UI thread; for a VSTO add-in, that's done by the runtime
+                // before ThisAddIn_Startup. If we somehow don't have one
+                // (e.g. running under a non-Forms host in tests), we install
+                // one explicitly so OutlookThreadMarshaller has somewhere to
+                // post.
+                var syncCtx = System.Threading.SynchronizationContext.Current;
+                if (syncCtx == null)
+                {
+                    syncCtx = new System.Windows.Forms.WindowsFormsSynchronizationContext();
+                    System.Threading.SynchronizationContext.SetSynchronizationContext(syncCtx);
+                }
+                OutlookMarshaller = new OutlookThreadMarshaller(syncCtx);
+                IdResolver = new IdResolver();
             }
             catch (Exception ex)
             {
