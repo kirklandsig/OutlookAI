@@ -281,6 +281,7 @@
     <Compile Include="Services\ToolDispatcher.cs" />
     <Compile Include="Services\Tools\IOutlookSurface.cs" />
     <Compile Include="Services\Tools\IOutlookTool.cs" />
+    <Compile Include="Services\Tools\OutlookGetCurrentComposeStateTool.cs" />
     <Compile Include="Services\Tools\ToolCatalogSchema.cs" />
     <Compile Include="SettingsForm.cs">
       <SubType>Form</SubType>
