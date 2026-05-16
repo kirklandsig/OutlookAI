@@ -7,7 +7,7 @@ namespace OutlookAI.Tests.Helpers
     /// Records every event a chat turn emits, for assertions in chat-service
     /// tests. Replaces the production WebView2-backed sink.
     /// </summary>
-    public sealed class CapturingChatEventSink : OutlookAI.Services.Chat.ChatEventSink
+    public class CapturingChatEventSink : OutlookAI.Services.Chat.ChatEventSink
     {
         public StringBuilder StreamedText { get; } = new StringBuilder();
         public List<(string CallId, string Name, string ArgsJson)> ToolStarts { get; }

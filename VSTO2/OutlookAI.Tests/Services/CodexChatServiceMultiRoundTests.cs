@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using OutlookAI.Services;
@@ -177,6 +179,188 @@ namespace OutlookAI.Tests.Services
             {
                 try { Directory.Delete(fixt.TmpDir, recursive: true); } catch { }
             }
+        }
+
+        [Fact]
+        public async Task RunTurnAsync_MaxRoundsReached_WhenModelLoopsForever()
+        {
+            const int maxRounds = 16; // mirror CodexChatService.MaxToolRounds
+            var fixt = MakeAuth();
+            var fake = new FakeHttpMessageHandler();
+            // Queue maxRounds+1 SSE responses, each emitting one function_call.
+            // The +1 is insurance; it should never be consumed.
+            for (int i = 0; i < maxRounds + 1; i++)
+            {
+                fake.QueueSse(HttpStatusCode.OK,
+                    "data: {\"type\":\"response.output_item.added\",\"item\":{\"type\":\"function_call\",\"id\":\"call_"
+                    + i + "\",\"name\":\"outlook_list_folders\",\"arguments\":\"{}\"}}\n\n"
+                    + "data: {\"type\":\"response.completed\"}\n\n");
+            }
+            try
+            {
+                using (fixt.AuthHttp)
+                using (fixt.Auth)
+                using (var chatHttp = new HttpClient(fake))
+                using (var chat = new CodexChatService(fixt.Auth, chatHttp))
+                {
+                    var ctx = new ConversationContext();
+                    var sink = new CapturingChatEventSink();
+                    var tools = new FakeToolHost();
+                    for (int i = 0; i < maxRounds; i++)
+                    {
+                        tools.Queue("outlook_list_folders", "{\"folders\":[]}");
+                    }
+
+                    var result = await chat.RunTurnAsync(ctx, "loop forever", tools, sink, CancellationToken.None);
+
+                    Assert.Equal(StopReason.MaxRoundsReached, result.StopReason);
+                    Assert.Equal(maxRounds, result.RoundsUsed);
+                    Assert.Equal(maxRounds, tools.Calls.Count);
+                    // The +1 SSE remains queued (only maxRounds requests should have been issued).
+                    Assert.Equal(maxRounds, fake.Requests.Count);
+                }
+            }
+            finally
+            {
+                try { Directory.Delete(fixt.TmpDir, recursive: true); } catch { }
+            }
+        }
+
+        [Fact]
+        public async Task RunTurnAsync_Cancellation_AfterFirstDelta_PreservesPartialText()
+        {
+            var fixt = MakeAuth();
+            var fake = new FakeHttpMessageHandler();
+            var gate = new SemaphoreSlim(0, 1);
+            // First SSE chunk contains one delta event. After that the stream
+            // blocks on `gate` so we can cancel deterministically.
+            const string chunk1 =
+                "data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial \"}\n\n";
+            const string chunk2 =
+                "data: {\"type\":\"response.output_text.delta\",\"delta\":\"never seen\"}\n\n"
+                + "data: {\"type\":\"response.completed\"}\n\n";
+            fake.QueueRaw(HttpStatusCode.OK, new StreamContent(new PausableStream(chunk1, chunk2, gate))
+            {
+                Headers = { ContentType = new MediaTypeHeaderValue("text/event-stream") }
+            });
+
+            var cts = new CancellationTokenSource();
+            var firstDeltaSeen = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var sink = new FirstDeltaSignallingSink(firstDeltaSeen);
+
+            try
+            {
+                using (fixt.AuthHttp)
+                using (fixt.Auth)
+                using (var chatHttp = new HttpClient(fake))
+                using (var chat = new CodexChatService(fixt.Auth, chatHttp))
+                {
+                    var ctx = new ConversationContext();
+                    var tools = new FakeToolHost();
+
+                    var runTask = chat.RunTurnAsync(ctx, "long answer please", tools, sink, cts.Token);
+
+                    // Wait until the read loop has processed the first delta.
+                    await firstDeltaSeen.Task;
+
+                    // Cancel, then release the gate so the stream can finish
+                    // draining (allows ReadLineAsync to return so the loop
+                    // can observe the cancellation on its next iteration).
+                    cts.Cancel();
+                    gate.Release();
+
+                    var result = await runTask;
+
+                    Assert.Equal(StopReason.Cancelled, result.StopReason);
+                    Assert.Equal("partial ", result.FinalAssistantText);
+                    // Partial assistant message was added to history.
+                    Assert.Equal(2, ctx.History.Count); // [user, assistant("partial ")]
+                    Assert.Equal("assistant", (string)ctx.History[1]["role"]);
+                    Assert.Equal("partial ", (string)ctx.History[1]["content"]);
+                    Assert.Single(sink.AssistantMessageFinalTexts);
+                    Assert.Equal("partial ", sink.AssistantMessageFinalTexts[0]);
+                }
+            }
+            finally
+            {
+                gate.Dispose();
+                try { Directory.Delete(fixt.TmpDir, recursive: true); } catch { }
+            }
+        }
+
+        // Test helper: signals a TCS as soon as the read loop processes a token delta.
+        private sealed class FirstDeltaSignallingSink : CapturingChatEventSink
+        {
+            private readonly TaskCompletionSource<bool> _firstDelta;
+            private int _seen;
+            public FirstDeltaSignallingSink(TaskCompletionSource<bool> firstDelta) { _firstDelta = firstDelta; }
+            public override void OnTokenDelta(string delta)
+            {
+                base.OnTokenDelta(delta);
+                if (Interlocked.Exchange(ref _seen, 1) == 0)
+                {
+                    _firstDelta.TrySetResult(true);
+                }
+            }
+        }
+
+        // Test helper: a Stream that yields one chunk, waits on a semaphore,
+        // then yields a second chunk. The wait honours cancellation.
+        private sealed class PausableStream : Stream
+        {
+            private readonly byte[] _chunk1;
+            private readonly byte[] _chunk2;
+            private readonly SemaphoreSlim _gate;
+            private int _pos1;
+            private int _pos2;
+            private bool _passedGate;
+
+            public PausableStream(string chunk1, string chunk2, SemaphoreSlim gate)
+            {
+                _chunk1 = Encoding.UTF8.GetBytes(chunk1);
+                _chunk2 = Encoding.UTF8.GetBytes(chunk2);
+                _gate = gate;
+            }
+
+            public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken ct)
+            {
+                if (_pos1 < _chunk1.Length)
+                {
+                    int n = Math.Min(count, _chunk1.Length - _pos1);
+                    Buffer.BlockCopy(_chunk1, _pos1, buffer, offset, n);
+                    _pos1 += n;
+                    return n;
+                }
+                if (!_passedGate)
+                {
+                    await _gate.WaitAsync(ct).ConfigureAwait(false);
+                    _passedGate = true;
+                }
+                if (_pos2 < _chunk2.Length)
+                {
+                    int n = Math.Min(count, _chunk2.Length - _pos2);
+                    Buffer.BlockCopy(_chunk2, _pos2, buffer, offset, n);
+                    _pos2 += n;
+                    return n;
+                }
+                return 0;
+            }
+
+            public override int Read(byte[] buffer, int offset, int count) =>
+                ReadAsync(buffer, offset, count, CancellationToken.None).GetAwaiter().GetResult();
+            public override bool CanRead => true;
+            public override bool CanSeek => false;
+            public override bool CanWrite => false;
+            public override long Length => throw new NotSupportedException();
+            public override long Position
+            {
+                get => throw new NotSupportedException();
+                set => throw new NotSupportedException();
+            }
+            public override void Flush() { }
+            public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+            public override void SetLength(long value) => throw new NotSupportedException();
+            public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
         }
 
         [Fact]

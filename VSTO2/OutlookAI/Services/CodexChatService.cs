@@ -103,76 +103,86 @@ namespace OutlookAI.Services
                 var status = _auth.GetStatus();
                 var assistantText = new StringBuilder();
                 var pendingCalls = new List<JObject>();
+                bool roundCancelled = false;
 
-                using (var request = new HttpRequestMessage(HttpMethod.Post, ResponsesEndpoint))
+                try
                 {
-                    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
-                    request.Headers.Accept.ParseAdd("text/event-stream");
-                    if (status.State == AuthState.Authenticated && !string.IsNullOrEmpty(status.AccountId))
+                    using (var request = new HttpRequestMessage(HttpMethod.Post, ResponsesEndpoint))
                     {
-                        request.Headers.TryAddWithoutValidation("ChatGPT-Account-ID", status.AccountId);
-                    }
-                    request.Content = new StringContent(
-                        body.ToString(Newtonsoft.Json.Formatting.None),
-                        Encoding.UTF8, "application/json");
-
-                    using (var response = await _http.SendAsync(
-                        request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false))
-                    {
-                        if (!response.IsSuccessStatusCode)
+                        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+                        request.Headers.Accept.ParseAdd("text/event-stream");
+                        if (status.State == AuthState.Authenticated && !string.IsNullOrEmpty(status.AccountId))
                         {
-                            var errorBody = await SafeReadAsStringAsync(response).ConfigureAwait(false);
-                            sink.OnError(errorBody);
-                            result.StopReason = StopReason.Error;
-                            result.ErrorMessage = errorBody;
-                            result.AppendedItems = appended;
-                            return result;
+                            request.Headers.TryAddWithoutValidation("ChatGPT-Account-ID", status.AccountId);
                         }
+                        request.Content = new StringContent(
+                            body.ToString(Newtonsoft.Json.Formatting.None),
+                            Encoding.UTF8, "application/json");
 
-                        using (var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
-                        using (var reader = new StreamReader(stream, Encoding.UTF8))
+                        using (var response = await _http.SendAsync(
+                            request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false))
                         {
-                            string line;
-                            while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) != null)
+                            if (!response.IsSuccessStatusCode)
                             {
-                                cancellationToken.ThrowIfCancellationRequested();
-                                if (!line.StartsWith("data:", StringComparison.Ordinal)) continue;
-                                var payload = line.Substring(5).TrimStart();
-                                if (payload == "[DONE]") break;
-                                JObject evt;
-                                try { evt = JObject.Parse(payload); } catch { continue; }
-                                var type = (string)evt["type"];
-                                if (type == "response.output_text.delta")
+                                var errorBody = await SafeReadAsStringAsync(response).ConfigureAwait(false);
+                                sink.OnError(errorBody);
+                                result.StopReason = StopReason.Error;
+                                result.ErrorMessage = errorBody;
+                                result.AppendedItems = appended;
+                                return result;
+                            }
+
+                            using (var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
+                            using (var reader = new StreamReader(stream, Encoding.UTF8))
+                            {
+                                string line;
+                                while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) != null)
                                 {
-                                    var d = (string)evt["delta"];
-                                    if (!string.IsNullOrEmpty(d)) { assistantText.Append(d); sink.OnTokenDelta(d); }
-                                }
-                                else if (type == "response.output_item.added"
-                                         && (string)evt["item"]?["type"] == "function_call")
-                                {
-                                    var item = (JObject)evt["item"];
-                                    pendingCalls.Add(item);
-                                    sink.OnToolCallStart(
-                                        (string)item["id"] ?? "",
-                                        (string)item["name"] ?? "",
-                                        (string)item["arguments"] ?? "");
-                                }
-                                else if (type == "response.completed")
-                                {
-                                    break;
-                                }
-                                else if (type == "error")
-                                {
-                                    var msg = (string)evt["error"]?["message"] ?? payload;
-                                    sink.OnError(msg);
-                                    result.StopReason = StopReason.Error;
-                                    result.ErrorMessage = msg;
-                                    result.AppendedItems = appended;
-                                    return result;
+                                    cancellationToken.ThrowIfCancellationRequested();
+                                    if (!line.StartsWith("data:", StringComparison.Ordinal)) continue;
+                                    var payload = line.Substring(5).TrimStart();
+                                    if (payload == "[DONE]") break;
+                                    JObject evt;
+                                    try { evt = JObject.Parse(payload); } catch { continue; }
+                                    var type = (string)evt["type"];
+                                    if (type == "response.output_text.delta")
+                                    {
+                                        var d = (string)evt["delta"];
+                                        if (!string.IsNullOrEmpty(d)) { assistantText.Append(d); sink.OnTokenDelta(d); }
+                                    }
+                                    else if (type == "response.output_item.added"
+                                             && (string)evt["item"]?["type"] == "function_call")
+                                    {
+                                        var item = (JObject)evt["item"];
+                                        pendingCalls.Add(item);
+                                        sink.OnToolCallStart(
+                                            (string)item["id"] ?? "",
+                                            (string)item["name"] ?? "",
+                                            (string)item["arguments"] ?? "");
+                                    }
+                                    else if (type == "response.completed")
+                                    {
+                                        break;
+                                    }
+                                    else if (type == "error")
+                                    {
+                                        var msg = (string)evt["error"]?["message"] ?? payload;
+                                        sink.OnError(msg);
+                                        result.StopReason = StopReason.Error;
+                                        result.ErrorMessage = msg;
+                                        result.AppendedItems = appended;
+                                        return result;
+                                    }
                                 }
                             }
                         }
                     }
+                }
+                catch (OperationCanceledException)
+                {
+                    // Preserve any partial assistant text accumulated before
+                    // the cancel, then exit with StopReason.Cancelled below.
+                    roundCancelled = true;
                 }
 
                 if (assistantText.Length > 0)
@@ -185,6 +195,13 @@ namespace OutlookAI.Services
                     appended.Add(assistantItem);
                     sink.OnAssistantMessageComplete(assistantText.ToString());
                     result.FinalAssistantText = assistantText.ToString();
+                }
+
+                if (roundCancelled)
+                {
+                    result.StopReason = StopReason.Cancelled;
+                    result.AppendedItems = appended;
+                    return result;
                 }
 
                 if (pendingCalls.Count == 0)
