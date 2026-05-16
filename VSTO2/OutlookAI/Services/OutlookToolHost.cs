@@ -29,10 +29,20 @@ namespace OutlookAI.Services
             };
             if (includeWriteTools)
             {
-                tools.Add(new OutlookCreateDraftTool());
-                tools.Add(new OutlookMarkAsReadTool());
-                tools.Add(new OutlookFlagMessageTool());
-                tools.Add(new OutlookSetCategoryTool());
+                // Per-tool gate against Config.EnabledWriteTools. Mirrors the
+                // gating in ToolCatalogSchema so the dispatcher never has a
+                // tool registered that the catalog didn't advertise.
+                var enabled = Config.EnabledWriteTools
+                    ?? new HashSet<string>(Config.AllWriteTools);
+
+                if (enabled.Contains("outlook_create_draft"))
+                    tools.Add(new OutlookCreateDraftTool());
+                if (enabled.Contains("outlook_mark_as_read"))
+                    tools.Add(new OutlookMarkAsReadTool());
+                if (enabled.Contains("outlook_flag_message"))
+                    tools.Add(new OutlookFlagMessageTool());
+                if (enabled.Contains("outlook_set_category"))
+                    tools.Add(new OutlookSetCategoryTool());
             }
             _dispatcher = new ToolDispatcher(tools, surface);
         }
