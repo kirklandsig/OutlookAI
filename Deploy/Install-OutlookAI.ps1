@@ -251,30 +251,47 @@ foreach ($profile in $userProfiles) {
     try {
         # Try to load the offline hive. Fails if the user is logged in (their
         # hive is already mounted under HKEY_USERS\<sid>); in that case we
-        # walk HKEY_USERS directly below.
+        # walk HKEY_USERS directly below. Also fails for locked hives.
+        $prevEAP = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
         & reg.exe load "HKU\$hiveName" "$ntuser" 2>$null | Out-Null
+        $ErrorActionPreference = $prevEAP
         if ($LASTEXITCODE -eq 0) { $loaded = $true }
-    } catch { }
+    } catch {
+        # Swallow: locked hives, access denied, etc. are expected for
+        # currently-logged-in users and service accounts.
+    }
 
     if ($loaded) {
         $userRoot = "Registry::HKEY_USERS\$hiveName"
         try {
             Clean-StaleOutlookAIRegistrations -UserRegistryRoot $userRoot -ProfilePath $profile.FullName -VstoInstaller $vstoInstaller
+        } catch {
+            Write-Host ("  Skipped offline-hive cleanup for {0}: {1}" -f $profile.Name, $_.Exception.Message) -ForegroundColor DarkGray
         } finally {
+            $prevEAP = $ErrorActionPreference
+            $ErrorActionPreference = 'Continue'
             & reg.exe unload "HKU\$hiveName" 2>$null | Out-Null
+            $ErrorActionPreference = $prevEAP
         }
     }
 }
 
 # Also clean every currently-loaded HKEY_USERS hive (the admin running this
-# script and any other logged-on session).
+# script and any other logged-on session). Each iteration is wrapped so a
+# single access-denied SID (service accounts we can't read) doesn't kill
+# the whole cleanup pass.
 Get-ChildItem "Registry::HKEY_USERS" -ErrorAction SilentlyContinue | Where-Object {
     $_.PSChildName -match '^S-1-5-21-' -and $_.PSChildName -notmatch '_Classes$'
 } | ForEach-Object {
     $sid = $_.PSChildName
     $userRoot = "Registry::HKEY_USERS\$sid"
-    $profilePath = (Get-ItemProperty -Path "HKLM:\Software\Microsoft\Windows NT\CurrentVersion\ProfileList\$sid" -ErrorAction SilentlyContinue).ProfileImagePath
-    Clean-StaleOutlookAIRegistrations -UserRegistryRoot $userRoot -ProfilePath $profilePath -VstoInstaller $vstoInstaller
+    try {
+        $profilePath = (Get-ItemProperty -Path "HKLM:\Software\Microsoft\Windows NT\CurrentVersion\ProfileList\$sid" -ErrorAction SilentlyContinue).ProfileImagePath
+        Clean-StaleOutlookAIRegistrations -UserRegistryRoot $userRoot -ProfilePath $profilePath -VstoInstaller $vstoInstaller
+    } catch {
+        Write-Host ("  Skipped live-hive cleanup for {0}: {1}" -f $sid, $_.Exception.Message) -ForegroundColor DarkGray
+    }
 }
 
 Write-Host "  Done." -ForegroundColor Green
