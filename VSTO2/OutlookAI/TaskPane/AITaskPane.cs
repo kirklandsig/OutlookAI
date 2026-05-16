@@ -10,6 +10,7 @@ using OutlookAI.Services;
 using OutlookAI.Services.Chat;
 using OutlookAI.Services.Tools;
 using OutlookAI.TaskPane.Chat;
+using OutlookAI.TaskPane.Variants;
 using Outlook = Microsoft.Office.Interop.Outlook;
 
 namespace OutlookAI.TaskPane
@@ -36,6 +37,9 @@ namespace OutlookAI.TaskPane
         // Phase 2 (Task 34) additions
         private ConversationStore _conversationStore;
         private ChatController _chatController;
+
+        // Phase 2 (Tasks 35-36) additions
+        private VariantsController _variantsController;
 
         public AITaskPane()
         {
@@ -85,6 +89,27 @@ namespace OutlookAI.TaskPane
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine("ChatController init failed: " + ex);
+            }
+
+            // Build the Variants tab UI. Cheap (no async init), so do it
+            // inline here.
+            try
+            {
+                if (ChatService != null && _toolHost != null && _surface != null)
+                {
+                    // Remove the placeholder label so the controller has the
+                    // tab to itself.
+                    tabVariants.Controls.Clear();
+                    _variantsController = new VariantsController(
+                        tabVariants, ChatService, _toolHost, _surface,
+                        insertCallback: body => InsertEmailBody(body),
+                        replaceCallback: body => SetEmailBody(body));
+                    _variantsController.BuildUi();
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("VariantsController init failed: " + ex);
             }
         }
 
@@ -718,6 +743,7 @@ namespace OutlookAI.TaskPane
         {
             CleanupRecording();
             try { _chatController?.Dispose(); } catch { }
+            try { _variantsController?.Dispose(); } catch { }
         }
     }
 }

@@ -320,6 +320,7 @@
     </Compile>
     <Compile Include="TaskPane\Chat\ChatController.cs" />
     <Compile Include="TaskPane\Chat\WebView2Bootstrap.cs" />
+    <Compile Include="TaskPane\Variants\VariantsController.cs" />
     <Compile Include="ThisAddIn.cs">
       <SubType>Code</SubType>
     </Compile>
