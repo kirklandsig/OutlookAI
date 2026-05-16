@@ -79,12 +79,14 @@ namespace OutlookAI.TaskPane
             this.tabVariants.BackColor = System.Drawing.Color.FromArgb(250, 249, 248);
             this.tabVariants.UseVisualStyleBackColor = true;
 
-            // lblChatPlaceholder (filled by ChatController in Task 34)
-            this.lblChatPlaceholder.Text = "Chat surface loading...\r\n\r\nIf this message persists, the WebView2\r\nruntime is missing or failed to initialize.";
+            // lblChatPlaceholder - briefly visible while WebView2 initializes;
+            // ChatController.InitializeAsync replaces this with the WebView2
+            // control (or with a friendly fallback if the runtime is missing).
+            this.lblChatPlaceholder.Text = "Loading chat...";
             this.lblChatPlaceholder.Font = new System.Drawing.Font("Segoe UI", 9F);
             this.lblChatPlaceholder.ForeColor = System.Drawing.Color.DarkSlateGray;
-            this.lblChatPlaceholder.Location = new System.Drawing.Point(12, 12);
-            this.lblChatPlaceholder.AutoSize = true;
+            this.lblChatPlaceholder.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.lblChatPlaceholder.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
             this.tabChat.Controls.Add(this.lblChatPlaceholder);
 
             // lblVariantsPlaceholder (filled by VariantsController in Tasks 35-36)
