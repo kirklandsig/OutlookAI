@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -7,6 +8,8 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
+using OutlookAI.Services.Chat;
+using OutlookAI.Services.Tools;
 
 namespace OutlookAI.Services
 {
@@ -62,6 +65,172 @@ namespace OutlookAI.Services
                 // model finishes generating.
                 Timeout = TimeSpan.FromMinutes(2)
             };
+        }
+
+        /// <summary>
+        /// Multi-round tool-using chat turn. See spec § 3. This task
+        /// (22) implements the single-round happy path; Task 23 adds the
+        /// function_call dispatch loop; Task 24 adds cancellation/max-rounds.
+        /// </summary>
+        public async Task<TurnResult> RunTurnAsync(
+            ConversationContext context,
+            string userMessage,
+            IToolHost toolHost,
+            ChatEventSink sink,
+            CancellationToken cancellationToken)
+        {
+            if (context == null) throw new ArgumentNullException(nameof(context));
+            if (toolHost == null) throw new ArgumentNullException(nameof(toolHost));
+            if (sink == null) sink = new ChatEventSink();
+
+            context.History.Add(new JObject(
+                new JProperty("type", "message"),
+                new JProperty("role", "user"),
+                new JProperty("content", userMessage ?? "")));
+
+            var appended = new List<JObject>();
+            var result = new TurnResult();
+            int rounds = 0;
+
+            while (rounds < MaxToolRounds)
+            {
+                rounds++;
+                result.RoundsUsed = rounds;
+
+                var body = BuildRunTurnRequest(context);
+                var bearer = await _auth.GetAccessTokenAsync(cancellationToken).ConfigureAwait(false);
+                var status = _auth.GetStatus();
+                var assistantText = new StringBuilder();
+                var pendingCalls = new List<JObject>();
+
+                using (var request = new HttpRequestMessage(HttpMethod.Post, ResponsesEndpoint))
+                {
+                    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+                    request.Headers.Accept.ParseAdd("text/event-stream");
+                    if (status.State == AuthState.Authenticated && !string.IsNullOrEmpty(status.AccountId))
+                    {
+                        request.Headers.TryAddWithoutValidation("ChatGPT-Account-ID", status.AccountId);
+                    }
+                    request.Content = new StringContent(
+                        body.ToString(Newtonsoft.Json.Formatting.None),
+                        Encoding.UTF8, "application/json");
+
+                    using (var response = await _http.SendAsync(
+                        request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false))
+                    {
+                        if (!response.IsSuccessStatusCode)
+                        {
+                            var errorBody = await SafeReadAsStringAsync(response).ConfigureAwait(false);
+                            sink.OnError(errorBody);
+                            result.StopReason = StopReason.Error;
+                            result.ErrorMessage = errorBody;
+                            result.AppendedItems = appended;
+                            return result;
+                        }
+
+                        using (var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
+                        using (var reader = new StreamReader(stream, Encoding.UTF8))
+                        {
+                            string line;
+                            while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) != null)
+                            {
+                                cancellationToken.ThrowIfCancellationRequested();
+                                if (!line.StartsWith("data:", StringComparison.Ordinal)) continue;
+                                var payload = line.Substring(5).TrimStart();
+                                if (payload == "[DONE]") break;
+                                JObject evt;
+                                try { evt = JObject.Parse(payload); } catch { continue; }
+                                var type = (string)evt["type"];
+                                if (type == "response.output_text.delta")
+                                {
+                                    var d = (string)evt["delta"];
+                                    if (!string.IsNullOrEmpty(d)) { assistantText.Append(d); sink.OnTokenDelta(d); }
+                                }
+                                else if (type == "response.output_item.added"
+                                         && (string)evt["item"]?["type"] == "function_call")
+                                {
+                                    var item = (JObject)evt["item"];
+                                    pendingCalls.Add(item);
+                                    sink.OnToolCallStart(
+                                        (string)item["id"] ?? "",
+                                        (string)item["name"] ?? "",
+                                        (string)item["arguments"] ?? "");
+                                }
+                                else if (type == "response.completed")
+                                {
+                                    break;
+                                }
+                                else if (type == "error")
+                                {
+                                    var msg = (string)evt["error"]?["message"] ?? payload;
+                                    sink.OnError(msg);
+                                    result.StopReason = StopReason.Error;
+                                    result.ErrorMessage = msg;
+                                    result.AppendedItems = appended;
+                                    return result;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (assistantText.Length > 0)
+                {
+                    var assistantItem = new JObject(
+                        new JProperty("type", "message"),
+                        new JProperty("role", "assistant"),
+                        new JProperty("content", assistantText.ToString()));
+                    context.History.Add(assistantItem);
+                    appended.Add(assistantItem);
+                    sink.OnAssistantMessageComplete(assistantText.ToString());
+                    result.FinalAssistantText = assistantText.ToString();
+                }
+
+                if (pendingCalls.Count == 0)
+                {
+                    sink.OnRoundBoundary();
+                    result.StopReason = StopReason.Completed;
+                    result.AppendedItems = appended;
+                    return result;
+                }
+
+                // Multi-round dispatch arrives in Task 23.
+                result.StopReason = StopReason.MaxRoundsReached;
+                result.AppendedItems = appended;
+                return result;
+            }
+
+            result.StopReason = StopReason.MaxRoundsReached;
+            result.AppendedItems = appended;
+            return result;
+        }
+
+        private const int MaxToolRounds = 16;
+
+        private JObject BuildRunTurnRequest(ConversationContext context)
+        {
+            JToken reasoning = JValue.CreateNull();
+            // Task 25 will introduce Config.ReasoningEffort. Until then the
+            // server-default fallback is "None" (i.e. omit the reasoning field).
+            var effort = !string.IsNullOrEmpty(context.ReasoningEffortOverride)
+                ? context.ReasoningEffortOverride
+                : "None";
+            if (!string.Equals(effort, "None", StringComparison.OrdinalIgnoreCase))
+            {
+                reasoning = new JObject(new JProperty("effort", effort.ToLowerInvariant()));
+            }
+
+            return new JObject(
+                new JProperty("model", Config.Model),
+                new JProperty("instructions", context.SystemInstructions ?? ""),
+                new JProperty("input", new JArray(context.History)),
+                new JProperty("tools", ToolCatalogSchema.BuildResponsesToolsArray(context.IncludeWriteTools)),
+                new JProperty("tool_choice", "auto"),
+                new JProperty("parallel_tool_calls", true),
+                new JProperty("reasoning", reasoning),
+                new JProperty("store", false),
+                new JProperty("stream", true),
+                new JProperty("include", new JArray()));
         }
 
         public async Task<string> ProcessEmailAsync(
