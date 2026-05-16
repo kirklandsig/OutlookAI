@@ -66,5 +66,75 @@ namespace OutlookAI.Tests
             Assert.Equal("gpt-5.5", Config.Model);
             Assert.Equal("gpt-realtime-1.5", Config.VoiceModel);
         }
+
+        [Fact]
+        public void LoadConfigFromPaths_AppliesReasoningEffortFromGlobal()
+        {
+            var (g, u) = MakeTempPaths();
+            File.WriteAllText(g, "<Config><ReasoningEffort>High</ReasoningEffort></Config>");
+
+            Config.LoadConfigFromPaths(g, u);
+
+            Assert.Equal("High", Config.ReasoningEffort);
+        }
+
+        [Fact]
+        public void LoadConfigFromPaths_UserOverridesReasoningEffortAndWriteTools()
+        {
+            var (g, u) = MakeTempPaths();
+            File.WriteAllText(g, "<Config>"
+                + "<ReasoningEffort>Medium</ReasoningEffort>"
+                + "<WriteToolsEnabled>true</WriteToolsEnabled>"
+                + "</Config>");
+            File.WriteAllText(u, "<Config>"
+                + "<ReasoningEffort>Low</ReasoningEffort>"
+                + "<WriteToolsEnabled>false</WriteToolsEnabled>"
+                + "</Config>");
+
+            Config.LoadConfigFromPaths(g, u);
+
+            Assert.Equal("Low", Config.ReasoningEffort);
+            Assert.False(Config.WriteToolsEnabled);
+        }
+
+        [Fact]
+        public void LoadConfigFromPaths_IgnoresUnknownReasoningEffort()
+        {
+            var (g, u) = MakeTempPaths();
+            File.WriteAllText(g, "<Config><ReasoningEffort>Extreme</ReasoningEffort></Config>");
+
+            Config.LoadConfigFromPaths(g, u);
+
+            // Unknown value -> fall back to default "None".
+            Assert.Equal("None", Config.ReasoningEffort);
+        }
+
+        [Fact]
+        public void ReasoningEffortsForModel_RestrictsForNonReasoningModels()
+        {
+            Assert.Equal(new[] { "None" }, Config.ReasoningEffortsForModel("gpt-4.1-nano"));
+            Assert.Equal(new[] { "None" }, Config.ReasoningEffortsForModel("gpt-4.1-mini"));
+            Assert.Contains("High", Config.ReasoningEffortsForModel("gpt-5.5"));
+            Assert.Contains("Medium", Config.ReasoningEffortsForModel("gpt-5.5-pro"));
+        }
+
+        [Fact]
+        public void AvailableModels_ContainsExpectedCatalog()
+        {
+            Assert.Contains("gpt-5.5", Config.AvailableModels);
+            Assert.Contains("gpt-5.5-pro", Config.AvailableModels);
+            Assert.Contains("gpt-4.1-mini", Config.AvailableModels);
+            Assert.Contains("gpt-5.3-codex", Config.AvailableModels);
+        }
+
+        [Fact]
+        public void Defaults_AreV2()
+        {
+            var (g, u) = MakeTempPaths();
+            Config.LoadConfigFromPaths(g, u);
+
+            Assert.Equal("None", Config.ReasoningEffort);
+            Assert.True(Config.WriteToolsEnabled);
+        }
     }
 }

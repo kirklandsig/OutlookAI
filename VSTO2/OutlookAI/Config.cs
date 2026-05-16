@@ -19,12 +19,63 @@ namespace OutlookAI
         public const string DefaultVoiceModel = "gpt-realtime-1.5";
         public const string DefaultCodexAuthPath = @"C:\ProgramData\OutlookAI\auth.json";
         public const int DefaultMaxTokens = 65536;
+        public const string DefaultReasoningEffort = "None";
+        public const bool DefaultWriteToolsEnabled = true;
 
         public static string AdminPassword { get; set; } = "admin";
         public static string CodexAuthPath { get; set; } = DefaultCodexAuthPath;
         public static string Model { get; set; } = DefaultModel;
         public static string VoiceModel { get; set; } = DefaultVoiceModel;
         public static int MaxTokens { get; set; } = DefaultMaxTokens;
+
+        /// <summary>
+        /// Default reasoning effort sent to the Codex backend on each turn.
+        /// One of <see cref="AvailableReasoningEfforts"/>. "None" means omit the
+        /// reasoning block entirely. Per-turn overrides via
+        /// <c>ConversationContext.ReasoningEffortOverride</c>.
+        /// </summary>
+        public static string ReasoningEffort { get; set; } = DefaultReasoningEffort;
+
+        /// <summary>
+        /// Master switch for the four safe-write Outlook tools (create_draft,
+        /// mark_as_read, flag_message, set_category). When false, the tool
+        /// catalog sent to the model only includes the read tools.
+        /// </summary>
+        public static bool WriteToolsEnabled { get; set; } = DefaultWriteToolsEnabled;
+
+        public static readonly string[] AvailableModels =
+        {
+            "gpt-5.5",
+            "gpt-5.5-pro",
+            "gpt-5.4",
+            "gpt-5.4-mini",
+            "gpt-4.1-mini",
+            "gpt-4.1-nano",
+            "gpt-5.3-codex"
+        };
+
+        public static readonly string[] AvailableReasoningEfforts =
+        {
+            "None",
+            "Minimal",
+            "Low",
+            "Medium",
+            "High"
+        };
+
+        /// <summary>
+        /// Returns the reasoning-effort options that are valid for a given
+        /// model. Non-reasoning models collapse to a single "None" entry so
+        /// the Settings dropdown can grey out unsupported choices.
+        /// </summary>
+        public static string[] ReasoningEffortsForModel(string model)
+        {
+            if (model == "gpt-4.1-mini" || model == "gpt-4.1-nano")
+            {
+                return new[] { "None" };
+            }
+            return AvailableReasoningEfforts;
+        }
 
         // ============================================================
         // END CONFIGURATION
@@ -70,6 +121,8 @@ namespace OutlookAI
             Model = DefaultModel;
             VoiceModel = DefaultVoiceModel;
             MaxTokens = DefaultMaxTokens;
+            ReasoningEffort = DefaultReasoningEffort;
+            WriteToolsEnabled = DefaultWriteToolsEnabled;
         }
 
         private static void LoadFromFile(string filePath, bool allowServerFields)
@@ -88,11 +141,33 @@ namespace OutlookAI
                     return;
                 }
 
-                // AdminPassword is the only field per-user config can change.
+                // User-tunable fields (AdminPassword, ReasoningEffort,
+                // WriteToolsEnabled) are read from both global and per-user
+                // config. Per-user takes precedence because it's loaded
+                // second. Settings UI persists them via SaveConfig.
                 var adminPassword = root.Element("AdminPassword");
                 if (adminPassword != null && !string.IsNullOrEmpty(adminPassword.Value))
                 {
                     AdminPassword = adminPassword.Value;
+                }
+
+                var reasoningEffort = root.Element("ReasoningEffort");
+                if (reasoningEffort != null && !string.IsNullOrWhiteSpace(reasoningEffort.Value))
+                {
+                    foreach (var allowed in AvailableReasoningEfforts)
+                    {
+                        if (string.Equals(allowed, reasoningEffort.Value, StringComparison.OrdinalIgnoreCase))
+                        {
+                            ReasoningEffort = allowed;
+                            break;
+                        }
+                    }
+                }
+
+                var writeToolsEnabled = root.Element("WriteToolsEnabled");
+                if (writeToolsEnabled != null && bool.TryParse(writeToolsEnabled.Value, out var wte))
+                {
+                    WriteToolsEnabled = wte;
                 }
 
                 if (!allowServerFields)
@@ -140,11 +215,15 @@ namespace OutlookAI
                     Directory.CreateDirectory(dir);
                 }
 
-                // Per-user config persists only AdminPassword. Server-authoritative
-                // fields are owned by the global config in Program Files.
+                // Per-user config persists AdminPassword + the two user-tunable
+                // fields (ReasoningEffort, WriteToolsEnabled). All other fields
+                // are server-authoritative and owned by the global config in
+                // Program Files.
                 var doc = new XDocument(
                     new XElement("Config",
-                        new XElement("AdminPassword", AdminPassword)
+                        new XElement("AdminPassword", AdminPassword),
+                        new XElement("ReasoningEffort", ReasoningEffort),
+                        new XElement("WriteToolsEnabled", WriteToolsEnabled)
                     )
                 );
 
