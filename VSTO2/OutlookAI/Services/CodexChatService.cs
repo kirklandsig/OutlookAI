@@ -338,12 +338,12 @@ namespace OutlookAI.Services
         private JObject BuildRunTurnRequest(ConversationContext context)
         {
             JToken reasoning = JValue.CreateNull();
-            // Task 25 will introduce Config.ReasoningEffort. Until then the
-            // server-default fallback is "None" (i.e. omit the reasoning field).
+            // Per-turn override beats global default. "None" => omit reasoning.
             var effort = !string.IsNullOrEmpty(context.ReasoningEffortOverride)
                 ? context.ReasoningEffortOverride
-                : "None";
-            if (!string.Equals(effort, "None", StringComparison.OrdinalIgnoreCase))
+                : Config.ReasoningEffort;
+            if (!string.IsNullOrEmpty(effort)
+                && !string.Equals(effort, "None", StringComparison.OrdinalIgnoreCase))
             {
                 reasoning = new JObject(new JProperty("effort", effort.ToLowerInvariant()));
             }
