@@ -274,6 +274,7 @@
     <Compile Include="Ribbon.cs" />
     <Compile Include="Services\CodexAuthService.cs" />
     <Compile Include="Services\CodexChatService.cs" />
+    <Compile Include="Services\IdResolver.cs" />
     <Compile Include="Services\IToolHost.cs" />
     <Compile Include="Services\RealtimeVoiceService.cs" />
     <Compile Include="Services\Tools\IOutlookSurface.cs" />
