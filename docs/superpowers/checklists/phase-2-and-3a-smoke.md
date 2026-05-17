@@ -125,3 +125,78 @@ a clean Outlook session (close Outlook → run the installer → reopen Outlook)
 
 If anything fails: file a follow-up bug task on the same branch and re-run
 the smoke pass before tagging the Phase 2 release.
+
+---
+
+# Phase 3a Manual Smoke (Inbox Copilot)
+
+Run on a fresh Outlook session **after** the Phase 2 smoke section above
+passes.
+
+## Pre-flight
+
+- [ ] Re-publish + reinstall via the elevated installer one-liner.
+- [ ] Verify the AI Assistant button is on both ribbons:
+  - Open a compose window → the AI Assistant group on the compose
+    ribbon is unchanged.
+  - Close it. Look at the main Outlook Home tab (TabMail) → an
+    AI Assistant group now appears far right, after Move.
+
+## Pane lifecycle
+
+1. [ ] Click AI Assistant from the Inbox view → a 340-px pane opens on
+   the right. Single chat surface, no tabs.
+2. [ ] Context strip line 1 shows `In: Inbox (<n> unread)`.
+3. [ ] Selection line is hidden when no message is selected.
+4. [ ] Click a message in the reading pane → context strip refreshes,
+   shows `Selected: <subject> — <from>`. Chip row refreshes to add
+   `Summarize this thread` and `Draft a reply`.
+5. [ ] Ctrl-click a second message → chip row updates to multi-select
+   variants `Summarize all selected` / `Triage selected`.
+6. [ ] Switch folders in the navigation pane → context strip's folder
+   line updates.
+7. [ ] Open a second Explorer (File → Open & Export → New Window) →
+   click AI Assistant → a second, independent pane opens. Conversations
+   are NOT shared between the two.
+8. [ ] Close the first Explorer → its pane disappears. The second
+   pane + conversation are untouched.
+
+## Functional checks
+
+9. [ ] Click the `What needs my attention?` chip → prompt fills the
+   textarea AND auto-sends. Streaming response appears. Tool cards
+   reflect the actual search/list calls the model made.
+10. [ ] Type "Find unread emails from <a known sender> with attachments
+    from the last 7 days." → the model issues exactly ONE
+    `outlook_search_messages` call with all four structured fields
+    populated. Verify via `%LOCALAPPDATA%\OutlookAI\trace.log` looking
+    for the `BuildRunTurnRequest` line and the function_call argument
+    payload.
+11. [ ] Select one message in the reading pane, click `Summarize this
+    thread` → response mentions the actual subject line and at least
+    one detail from the body. The model likely calls
+    `outlook_get_current_selection` first (visible in tool cards), then
+    `outlook_read_message` for other thread items.
+12. [ ] Stop mid-stream → partial assistant message keeps the
+    "stopped" badge. Composer re-enables.
+13. [ ] Clear button empties the chat.
+14. [ ] Copy button puts the conversation on the clipboard
+    (paste into Notepad to verify).
+
+## Settings / model awareness
+
+15. [ ] Open Settings → change Model to `gpt-5.4` → save. Close the
+    pane (X). Reopen via the ribbon button. The reasoning dropdown now
+    includes `Minimal` (gpt-5.4 supports it; gpt-5.5 does not).
+16. [ ] Change Model back to `gpt-5.5` and confirm the dropdown drops
+    `Minimal` on the next pane open.
+
+## Lifecycle / cleanup
+
+17. [ ] Close all Explorers → the per-Explorer panes + conversations
+    are gone.
+18. [ ] Restart Outlook → no leftover state visible. (Phase 3a is
+    deliberately non-persistent.)
+
+If any step fails, capture the trace log + screenshot and file as a
+follow-up. Do NOT merge to master until every step passes.
