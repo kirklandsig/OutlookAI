@@ -65,6 +65,65 @@ namespace OutlookAI.Tests.Services
         }
 
         /// <summary>
+        /// Regression test for the Phase 2 UI freeze: when the caller is
+        /// already on the target SynchronizationContext (e.g.
+        /// <c>ChatController.PushContextStripFromSurface</c> firing from
+        /// <c>WebMessageReceived</c> on the UI thread), the marshaller must
+        /// invoke the action synchronously on the current thread instead of
+        /// posting + blocking. The old behaviour deadlocked because
+        /// <c>.GetAwaiter().GetResult()</c> blocked the only thread that
+        /// could run the posted continuation.
+        /// </summary>
+        [Fact]
+        public void RunAsync_SameContextCaller_InvokesSynchronously_NoDeadlock()
+        {
+            using (var ctx = new SingleThreadSyncContext())
+            {
+                var marshaller = new OutlookThreadMarshaller(ctx);
+                int? observedThreadId = null;
+
+                // Hop onto the context's worker thread, then call RunAsync.
+                // Inside the action we capture the thread id and verify that
+                // we never had to post-and-wait. We use ctx.Send to get onto
+                // the worker thread without async machinery.
+                ctx.Send(_ =>
+                {
+                    var workerId = Thread.CurrentThread.ManagedThreadId;
+                    // This call would hang the worker thread forever before
+                    // the fix.
+                    marshaller.RunAsync(
+                        () => { observedThreadId = Thread.CurrentThread.ManagedThreadId; },
+                        CancellationToken.None).GetAwaiter().GetResult();
+                    Assert.Equal(workerId, observedThreadId);
+                }, null);
+
+                Assert.True(observedThreadId.HasValue);
+                Assert.Equal(ctx.WorkerThreadId, observedThreadId.Value);
+            }
+        }
+
+        [Fact]
+        public void RunAsyncGeneric_SameContextCaller_InvokesSynchronously_NoDeadlock()
+        {
+            using (var ctx = new SingleThreadSyncContext())
+            {
+                var marshaller = new OutlookThreadMarshaller(ctx);
+                int observed = -1;
+
+                ctx.Send(_ =>
+                {
+                    // Pre-fix: hang. Post-fix: returns synchronously.
+                    var v = marshaller.RunAsync(
+                        () => Thread.CurrentThread.ManagedThreadId,
+                        CancellationToken.None).GetAwaiter().GetResult();
+                    observed = v;
+                }, null);
+
+                Assert.Equal(ctx.WorkerThreadId, observed);
+            }
+        }
+
+        /// <summary>
         /// Minimal single-thread SynchronizationContext. The worker thread
         /// drains posted callbacks until the context is disposed. Exposes
         /// its worker's managed-thread-id for assertions.
@@ -90,6 +149,10 @@ namespace OutlookAI.Tests.Services
 
             private void Pump()
             {
+                // Install ourselves as the current thread's SynchronizationContext
+                // so reentrancy checks (e.g. SynchronizationContext.Current == _context)
+                // work the same way production WinForms code sees them.
+                SynchronizationContext.SetSynchronizationContext(this);
                 _workerThreadId = Thread.CurrentThread.ManagedThreadId;
                 _ready.Set();
                 foreach (var (cb, st) in _q.GetConsumingEnumerable())
@@ -99,7 +162,29 @@ namespace OutlookAI.Tests.Services
             }
 
             public override void Post(SendOrPostCallback d, object state) => _q.Add((d, state));
-            public override void Send(SendOrPostCallback d, object state) => _q.Add((d, state));
+
+            public override void Send(SendOrPostCallback d, object state)
+            {
+                // If we're already on the worker, call directly.
+                if (Thread.CurrentThread.ManagedThreadId == _workerThreadId)
+                {
+                    d(state);
+                    return;
+                }
+                // Otherwise enqueue + block until the worker has finished.
+                using (var done = new ManualResetEventSlim())
+                {
+                    Exception captured = null;
+                    _q.Add((s =>
+                    {
+                        try { d(s); }
+                        catch (Exception ex) { captured = ex; }
+                        finally { done.Set(); }
+                    }, state));
+                    done.Wait();
+                    if (captured != null) throw captured;
+                }
+            }
 
             public void Dispose()
             {
