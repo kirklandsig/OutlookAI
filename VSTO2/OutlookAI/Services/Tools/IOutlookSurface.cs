@@ -67,6 +67,14 @@ namespace OutlookAI.Services.Tools
     public sealed class SearchMessagesArgs
     {
         public string Query { get; set; }
+        public string From { get; set; }
+        public string SubjectContains { get; set; }
+        public string BodyContains { get; set; }
+        public bool? HasAttachment { get; set; }
+        public bool? IsUnread { get; set; }
+        public bool? IsFlagged { get; set; }
+        /// <summary>One of "low" | "normal" | "high"; null = unset.</summary>
+        public string Importance { get; set; }
         public string FolderId { get; set; }
         public DateTimeOffset? DateFrom { get; set; }
         public DateTimeOffset? DateTo { get; set; }
