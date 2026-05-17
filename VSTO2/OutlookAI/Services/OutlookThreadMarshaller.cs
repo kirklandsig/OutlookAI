@@ -93,10 +93,11 @@ namespace OutlookAI.Services
             }
             SynchronizationContext ctx;
             lock (_lock) ctx = _context;
-            TraceLog.Write("RunAsync posting (off-thread caller) to " + ctx?.GetType().Name, "Marshaller");
+            TraceLog.Write("RunAsync posting (off-thread caller) to " + ctx?.GetType().Name + " hash=" + ctx?.GetHashCode(), "Marshaller");
             var tcs = new TaskCompletionSource<bool>();
             ctx.Post(_ =>
             {
+                TraceLog.Write("RunAsync posted action running on T" + Thread.CurrentThread.ManagedThreadId, "Marshaller");
                 if (cancellationToken.IsCancellationRequested)
                 {
                     tcs.TrySetCanceled(cancellationToken);
@@ -123,10 +124,11 @@ namespace OutlookAI.Services
             }
             SynchronizationContext ctx;
             lock (_lock) ctx = _context;
-            TraceLog.Write("RunAsync<T> posting (off-thread caller) to " + ctx?.GetType().Name, "Marshaller");
+            TraceLog.Write("RunAsync<T> posting (off-thread caller) to " + ctx?.GetType().Name + " hash=" + ctx?.GetHashCode(), "Marshaller");
             var tcs = new TaskCompletionSource<T>();
             ctx.Post(_ =>
             {
+                TraceLog.Write("RunAsync<T> posted action running on T" + Thread.CurrentThread.ManagedThreadId, "Marshaller");
                 if (cancellationToken.IsCancellationRequested)
                 {
                     tcs.TrySetCanceled(cancellationToken);

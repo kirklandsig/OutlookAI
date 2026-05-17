@@ -194,7 +194,12 @@ namespace OutlookAI.TaskPane.Chat
 
         private async Task StartTurnAsync(string userText, string reasoningOverride)
         {
-            if (_turnInFlight || string.IsNullOrWhiteSpace(userText) || !_isReady) return;
+            TraceLog.Write(">> StartTurnAsync inFlight=" + _turnInFlight + " ready=" + _isReady, "ChatController");
+            if (_turnInFlight || string.IsNullOrWhiteSpace(userText) || !_isReady)
+            {
+                TraceLog.Write("StartTurnAsync aborted (gate)", "ChatController");
+                return;
+            }
             _turnInFlight = true;
             _activeCts = new CancellationTokenSource();
 
@@ -250,6 +255,7 @@ namespace OutlookAI.TaskPane.Chat
                 _activeCts?.Dispose();
                 _activeCts = null;
                 await RunScript("outlookai.setComposerEnabled(true, false);");
+                TraceLog.Write("<< StartTurnAsync", "ChatController");
             }
         }
 
@@ -303,10 +309,29 @@ namespace OutlookAI.TaskPane.Chat
             if (_webView?.CoreWebView2 == null || _isDisposed) return;
             try
             {
+                // CoreWebView2.ExecuteScriptAsync MUST be called on the UI
+                // thread. Sink callbacks fire from RunTurnAsync continuations
+                // on the threadpool, so we marshal here. The marshaller
+                // short-circuits when we're already on UI, and posts to the
+                // live WinForms SyncContext otherwise.
+                var marshaller = Globals.ThisAddIn?.OutlookMarshaller;
+                if (marshaller != null
+                    && Thread.CurrentThread.ManagedThreadId != marshaller.UiThreadId)
+                {
+                    TraceLog.Write("RunScript marshaling to UI (current T" + Thread.CurrentThread.ManagedThreadId + ")", "ChatController");
+                    await marshaller.RunAsync(() =>
+                    {
+                        // Fire-and-forget on the UI thread; the script result
+                        // is not needed by the caller in any sink callback.
+                        _ = _webView.CoreWebView2.ExecuteScriptAsync(script);
+                    }, CancellationToken.None).ConfigureAwait(false);
+                    return;
+                }
                 await _webView.CoreWebView2.ExecuteScriptAsync(script);
             }
             catch (Exception ex)
             {
+                TraceLog.Write("RunScript EXCEPTION: " + ex.Message, "ChatController");
                 System.Diagnostics.Debug.WriteLine("ExecuteScriptAsync failed: " + ex);
             }
         }
@@ -342,24 +367,25 @@ namespace OutlookAI.TaskPane.Chat
             }
             public override void OnTokenDelta(string delta)
             {
+                TraceLog.Write("Sink.OnTokenDelta len=" + (delta?.Length ?? 0), "WebViewSink");
                 _ = _owner.RunScript(
                     "outlookai.appendTextDelta(" +
                     JsString(_assistantId) + ", " + JsString(delta) + ");");
             }
             public override void OnToolCallStart(string callId, string name, string argsJson)
             {
+                TraceLog.Write("Sink.OnToolCallStart " + name + " id=" + callId, "WebViewSink");
                 _ = _owner.RunScript(
                     "outlookai.appendToolCallCard(" +
                     JsString(callId) + ", " + JsString(name) + ", " + JsString(argsJson) + ");");
             }
             public override void OnToolCallResult(string callId, bool ok, string summary, string resultJson)
             {
+                TraceLog.Write("Sink.OnToolCallResult ok=" + ok + " id=" + callId, "WebViewSink");
                 _ = _owner.RunScript(
                     "outlookai.updateToolCallCard(" +
                     JsString(callId) + ", " + (ok ? "true" : "false") + ", " +
                     JsString(summary) + ", " + JsString(resultJson) + ");");
-                // For write tools, drop an audit row so the user has a
-                // permanent record of side effects.
                 if (IsWriteTool(callId) && ok)
                 {
                     _ = _owner.RunScript(
@@ -368,7 +394,16 @@ namespace OutlookAI.TaskPane.Chat
             }
             public override void OnError(string message)
             {
+                TraceLog.Write("Sink.OnError: " + message, "WebViewSink");
                 _ = _owner.RunScript("outlookai.showError(" + JsString(message ?? "") + ");");
+            }
+            public override void OnAssistantMessageComplete(string text)
+            {
+                TraceLog.Write("Sink.OnAssistantMessageComplete len=" + (text?.Length ?? 0), "WebViewSink");
+            }
+            public override void OnRoundBoundary()
+            {
+                TraceLog.Write("Sink.OnRoundBoundary", "WebViewSink");
             }
 
             // The C# side doesn't currently track which callIds correspond

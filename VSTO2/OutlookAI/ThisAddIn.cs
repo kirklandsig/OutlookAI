@@ -47,16 +47,28 @@ namespace OutlookAI
                 // one explicitly so OutlookThreadMarshaller has somewhere to
                 // post.
                 var syncCtx = System.Threading.SynchronizationContext.Current;
-                TraceLog.Write("SynchronizationContext.Current is " + (syncCtx == null ? "NULL" : syncCtx.GetType().FullName), "ThisAddIn");
+                TraceLog.Write("SynchronizationContext.Current is "
+                    + (syncCtx == null ? "NULL" : syncCtx.GetType().FullName + " hash=" + syncCtx.GetHashCode()),
+                    "ThisAddIn");
                 if (syncCtx == null)
                 {
                     syncCtx = new System.Windows.Forms.WindowsFormsSynchronizationContext();
                     System.Threading.SynchronizationContext.SetSynchronizationContext(syncCtx);
-                    TraceLog.Write("Installed new WindowsFormsSynchronizationContext", "ThisAddIn");
+                    TraceLog.Write("Installed new WindowsFormsSynchronizationContext hash=" + syncCtx.GetHashCode(), "ThisAddIn");
+                    // CRITICAL: force the marshaling control's HWND to be
+                    // created on THIS (UI) thread. WindowsFormsSynchronizationContext
+                    // lazily creates its marshaling control on the thread that
+                    // first calls Post against it. If we let a threadpool
+                    // thread Post first, the HWND ends up on the threadpool
+                    // thread, which has no message pump - every subsequent
+                    // post is silently lost. This warm-up Post from the UI
+                    // thread guarantees the HWND lives on the UI thread.
+                    syncCtx.Post(_ => TraceLog.Write("Warm-up Post fired", "ThisAddIn"), null);
+                    TraceLog.Write("Posted warm-up to force marshaling-control HWND on UI thread", "ThisAddIn");
                 }
                 OutlookMarshaller = new OutlookThreadMarshaller(syncCtx);
                 IdResolver = new IdResolver();
-                TraceLog.Write("Services initialized OK", "ThisAddIn");
+                TraceLog.Write("Services initialized OK; marshaller _uiThreadId=" + OutlookMarshaller.UiThreadId, "ThisAddIn");
             }
             catch (Exception ex)
             {

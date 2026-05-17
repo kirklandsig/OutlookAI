@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using OutlookAI.Diagnostics;
 using OutlookAI.Services;
 using OutlookAI.Services.Chat;
 using OutlookAI.Services.Tools;
@@ -191,10 +192,12 @@ namespace OutlookAI.TaskPane.Variants
 
         public async Task GenerateAsync(bool replace, Tone? singleVariantTone = null)
         {
-            if (_generating) return;
+            TraceLog.Write(">> GenerateAsync replace=" + replace + " singleTone=" + singleVariantTone, "Variants");
+            if (_generating) { TraceLog.Write("GenerateAsync aborted: already generating", "Variants"); return; }
             var intent = (_txtIntent.Text ?? "").Trim();
             if (string.IsNullOrEmpty(intent))
             {
+                TraceLog.Write("GenerateAsync aborted: empty intent", "Variants");
                 SetStatus("Type a drafting intent first.", isError: true);
                 return;
             }
@@ -217,7 +220,9 @@ namespace OutlookAI.TaskPane.Variants
                 };
                 var userMessage = BuildVariantsUserMessage(intent, count, singleVariantTone);
                 var sink = new ChatEventSink();
+                TraceLog.Write("Variants calling RunTurnAsync (count=" + count + ")", "Variants");
                 var result = await _chat.RunTurnAsync(ctx, userMessage, _toolHost, sink, _activeCts.Token);
+                TraceLog.Write("Variants RunTurnAsync returned: reason=" + result.StopReason + " textLen=" + (result.FinalAssistantText?.Length ?? 0), "Variants");
 
                 if (result.StopReason == StopReason.Cancelled)
                 {
@@ -226,13 +231,16 @@ namespace OutlookAI.TaskPane.Variants
                 }
                 if (result.StopReason == StopReason.Error)
                 {
+                    TraceLog.Write("Variants error from chat: " + (result.ErrorMessage ?? "<none>"), "Variants");
                     SetStatus("Error: " + (result.ErrorMessage ?? "unknown"), true);
                     return;
                 }
 
                 var variants = _parser.Parse(result.FinalAssistantText);
+                TraceLog.Write("Variants parsed: " + variants.Count + " variants", "Variants");
                 if (variants.Count == 0)
                 {
+                    TraceLog.Write("Variants raw text: " + (result.FinalAssistantText?.Substring(0, Math.Min(500, result.FinalAssistantText?.Length ?? 0)) ?? "<null>"), "Variants");
                     SetStatus("Model didn't return parseable variants. Try again or refine the intent.", true);
                     return;
                 }
@@ -270,10 +278,12 @@ namespace OutlookAI.TaskPane.Variants
             }
             catch (OperationCanceledException)
             {
+                TraceLog.Write("Variants OperationCanceled", "Variants");
                 SetStatus("Cancelled.", false);
             }
             catch (Exception ex)
             {
+                TraceLog.Write("Variants EXCEPTION: " + ex, "Variants");
                 SetStatus("Error: " + ex.Message, true);
             }
             finally
@@ -283,6 +293,7 @@ namespace OutlookAI.TaskPane.Variants
                 _btnCancel.Visible = false;
                 _activeCts?.Dispose();
                 _activeCts = null;
+                TraceLog.Write("<< GenerateAsync", "Variants");
             }
         }
 
