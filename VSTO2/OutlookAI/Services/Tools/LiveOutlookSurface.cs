@@ -504,13 +504,58 @@ namespace OutlookAI.Services.Tools
             catch (COMException) { }
         }
 
-        private static string BuildRestrictFilter(SearchMessagesArgs args)
+        internal static string BuildRestrictFilter(SearchMessagesArgs args)
         {
-            if (string.IsNullOrEmpty(args.Query)) return null;
+            if (args == null) return null;
             var clauses = new List<string>();
-            var q = Escape(args.Query);
-            clauses.Add("(urn:schemas:httpmail:subject LIKE '%" + q + "%' " +
-                        "OR urn:schemas:httpmail:textdescription LIKE '%" + q + "%')");
+
+            if (!string.IsNullOrEmpty(args.Query))
+            {
+                var q = Escape(args.Query);
+                clauses.Add("(urn:schemas:httpmail:subject LIKE '%" + q + "%' OR " +
+                            "urn:schemas:httpmail:textdescription LIKE '%" + q + "%')");
+            }
+            if (!string.IsNullOrEmpty(args.From))
+            {
+                var v = Escape(args.From);
+                clauses.Add("(urn:schemas:httpmail:fromname LIKE '%" + v + "%' OR " +
+                            "urn:schemas:httpmail:fromemail LIKE '%" + v + "%')");
+            }
+            if (!string.IsNullOrEmpty(args.SubjectContains))
+            {
+                clauses.Add("urn:schemas:httpmail:subject LIKE '%" + Escape(args.SubjectContains) + "%'");
+            }
+            if (!string.IsNullOrEmpty(args.BodyContains))
+            {
+                clauses.Add("urn:schemas:httpmail:textdescription LIKE '%" + Escape(args.BodyContains) + "%'");
+            }
+            if (args.HasAttachment.HasValue)
+            {
+                clauses.Add("urn:schemas:httpmail:hasattachment = " + (args.HasAttachment.Value ? "1" : "0"));
+            }
+            if (args.IsUnread.HasValue)
+            {
+                // urn:schemas:httpmail:read is 0 for unread, 1 for read.
+                clauses.Add("urn:schemas:httpmail:read = " + (args.IsUnread.Value ? "0" : "1"));
+            }
+            if (args.IsFlagged.HasValue)
+            {
+                // PR_FLAG_STATUS (0x1090) PT_LONG (0x0003) => 0x10900003.
+                // Value 2 = followup flagged.
+                clauses.Add("\"http://schemas.microsoft.com/mapi/proptag/0x10900003\" " +
+                            (args.IsFlagged.Value ? "= 2" : "<> 2"));
+            }
+            if (!string.IsNullOrEmpty(args.Importance))
+            {
+                // PR_IMPORTANCE (0x0017) PT_LONG => 0x00170003. 0=low, 1=normal, 2=high.
+                var imp = args.Importance.Trim().ToLowerInvariant();
+                if (imp == "low" || imp == "normal" || imp == "high")
+                {
+                    var val = imp == "low" ? "0" : imp == "normal" ? "1" : "2";
+                    clauses.Add("\"http://schemas.microsoft.com/mapi/proptag/0x00170003\" = " + val);
+                }
+                // Unknown importance values are silently ignored.
+            }
             if (args.DateFrom.HasValue)
             {
                 clauses.Add("urn:schemas:httpmail:datereceived >= '" +
@@ -521,6 +566,8 @@ namespace OutlookAI.Services.Tools
                 clauses.Add("urn:schemas:httpmail:datereceived <= '" +
                     args.DateTo.Value.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + "'");
             }
+
+            if (clauses.Count == 0) return null;
             return "@SQL=" + string.Join(" AND ", clauses);
         }
 
