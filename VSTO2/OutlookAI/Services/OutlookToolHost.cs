@@ -21,6 +21,7 @@ namespace OutlookAI.Services
             var tools = new List<IOutlookTool>
             {
                 new OutlookGetCurrentComposeStateTool(),
+                new OutlookGetCurrentSelectionTool(),    // Phase 3a
                 new OutlookListFoldersTool(),
                 new OutlookSearchMessagesTool(),
                 new OutlookReadMessageTool(),
