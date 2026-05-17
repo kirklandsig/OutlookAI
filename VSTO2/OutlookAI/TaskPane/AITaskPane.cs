@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using NAudio.Wave;
+using OutlookAI.Diagnostics;
 using OutlookAI.Services;
 using OutlookAI.Services.Chat;
 using OutlookAI.Services.Tools;
@@ -43,8 +44,19 @@ namespace OutlookAI.TaskPane
 
         public AITaskPane()
         {
-            InitializeComponent();
-            BuildPhase2Controls();
+            using (TraceLog.Scope("ctor", "AITaskPane"))
+            {
+                InitializeComponent();
+                TraceLog.Write("InitializeComponent done", "AITaskPane");
+                BuildPhase2Controls();
+                TraceLog.Write("BuildPhase2Controls done", "AITaskPane");
+                tabControl.Selected += (s, e) =>
+                    TraceLog.Write("TabControl Selected: " + (e.TabPage?.Text ?? "<null>"), "AITaskPane");
+                tabControl.Deselected += (s, e) =>
+                    TraceLog.Write("TabControl Deselected: " + (e.TabPage?.Text ?? "<null>"), "AITaskPane");
+                this.HandleCreated += (s, e) => TraceLog.Write("HandleCreated", "AITaskPane");
+                this.VisibleChanged += (s, e) => TraceLog.Write("VisibleChanged Visible=" + this.Visible, "AITaskPane");
+            }
         }
 
         /// <summary>
@@ -55,61 +67,79 @@ namespace OutlookAI.TaskPane
         /// </summary>
         public void Bind(Outlook.Inspector inspector)
         {
-            _inspector = inspector;
-            try
+            using (TraceLog.Scope("Bind", "AITaskPane"))
             {
-                var marshaller = Globals.ThisAddIn?.OutlookMarshaller;
-                var ids = Globals.ThisAddIn?.IdResolver;
-                var app = Globals.ThisAddIn?.Application;
-                if (marshaller != null && ids != null && app != null)
+                _inspector = inspector;
+                try
                 {
-                    _surface = new LiveOutlookSurface(app, marshaller, ids, inspector);
-                    _toolHost = new OutlookToolHost(_surface, Config.WriteToolsEnabled);
+                    var marshaller = Globals.ThisAddIn?.OutlookMarshaller;
+                    var ids = Globals.ThisAddIn?.IdResolver;
+                    var app = Globals.ThisAddIn?.Application;
+                    TraceLog.Write("Services: marshaller=" + (marshaller != null) + " ids=" + (ids != null) + " app=" + (app != null), "AITaskPane");
+                    if (marshaller != null && ids != null && app != null)
+                    {
+                        _surface = new LiveOutlookSurface(app, marshaller, ids, inspector);
+                        _toolHost = new OutlookToolHost(_surface, Config.WriteToolsEnabled);
+                        TraceLog.Write("surface + toolHost constructed", "AITaskPane");
+                    }
                 }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine("AITaskPane.Bind error: " + ex);
-            }
+                catch (Exception ex)
+                {
+                    TraceLog.Write("surface/toolHost error: " + ex, "AITaskPane");
+                }
 
-            // Bring up the Chat tab's WebView2 surface. Fire-and-forget; the
-            // controller swaps in a fallback Label if WebView2 fails to init.
-            try
-            {
-                if (ChatService != null && _toolHost != null && _surface != null)
+                // Bring up the Chat tab's WebView2 surface. Fire-and-forget; the
+                // controller swaps in a fallback Label if WebView2 fails to init.
+                try
                 {
-                    _conversationStore = new ConversationStore();
-                    // tabChat is referenced from the Designer; safe at this
-                    // point because InitializeComponent has run.
-                    _chatController = new ChatController(
-                        tabChat, ChatService, _toolHost, _surface, _conversationStore);
-                    _ = _chatController.InitializeAsync();
+                    if (ChatService != null && _toolHost != null && _surface != null)
+                    {
+                        _conversationStore = new ConversationStore();
+                        _chatController = new ChatController(
+                            tabChat, ChatService, _toolHost, _surface, _conversationStore);
+                        TraceLog.Write("ChatController constructed; firing InitializeAsync (fire-and-forget)", "AITaskPane");
+                        var initTask = _chatController.InitializeAsync();
+                        // Observe the fire-and-forget so exceptions don't get
+                        // silently swallowed during this investigation.
+                        initTask.ContinueWith(t =>
+                        {
+                            if (t.IsFaulted)
+                                TraceLog.Write("ChatController.InitializeAsync FAULTED: " + t.Exception, "AITaskPane");
+                            else if (t.IsCanceled)
+                                TraceLog.Write("ChatController.InitializeAsync CANCELLED", "AITaskPane");
+                            else
+                                TraceLog.Write("ChatController.InitializeAsync completed", "AITaskPane");
+                        }, TaskScheduler.Default);
+                        TraceLog.Write("InitializeAsync returned (async still in flight)", "AITaskPane");
+                    }
+                    else
+                    {
+                        TraceLog.Write("ChatController NOT created (ChatService/toolHost/surface null)", "AITaskPane");
+                    }
                 }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine("ChatController init failed: " + ex);
-            }
+                catch (Exception ex)
+                {
+                    TraceLog.Write("ChatController construction error: " + ex, "AITaskPane");
+                }
 
-            // Build the Variants tab UI. Cheap (no async init), so do it
-            // inline here.
-            try
-            {
-                if (ChatService != null && _toolHost != null && _surface != null)
+                try
                 {
-                    // Remove the placeholder label so the controller has the
-                    // tab to itself.
-                    tabVariants.Controls.Clear();
-                    _variantsController = new VariantsController(
-                        tabVariants, ChatService, _toolHost, _surface,
-                        insertCallback: body => InsertEmailBody(body),
-                        replaceCallback: body => SetEmailBody(body));
-                    _variantsController.BuildUi();
+                    if (ChatService != null && _toolHost != null && _surface != null)
+                    {
+                        tabVariants.Controls.Clear();
+                        _variantsController = new VariantsController(
+                            tabVariants, ChatService, _toolHost, _surface,
+                            insertCallback: body => InsertEmailBody(body),
+                            replaceCallback: body => SetEmailBody(body));
+                        TraceLog.Write("VariantsController constructed; calling BuildUi", "AITaskPane");
+                        _variantsController.BuildUi();
+                        TraceLog.Write("VariantsController.BuildUi returned", "AITaskPane");
+                    }
                 }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine("VariantsController init failed: " + ex);
+                catch (Exception ex)
+                {
+                    TraceLog.Write("VariantsController error: " + ex, "AITaskPane");
+                }
             }
         }
 
@@ -391,6 +421,7 @@ namespace OutlookAI.TaskPane
 
         private async Task ProcessAction(CodexChatService.ActionType action, string prompt = "")
         {
+            TraceLog.Write(">> ProcessAction " + action, "AITaskPane");
             if (_isRecording)
             {
                 CleanupRecording();
@@ -508,6 +539,7 @@ namespace OutlookAI.TaskPane
             {
                 _activeCts?.Dispose();
                 _activeCts = null;
+                TraceLog.Write("<< ProcessAction " + action, "AITaskPane");
             }
         }
 
