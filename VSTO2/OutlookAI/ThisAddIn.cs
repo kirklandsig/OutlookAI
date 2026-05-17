@@ -4,6 +4,7 @@ using Outlook = Microsoft.Office.Interop.Outlook;
 using OutlookAI.Diagnostics;
 using OutlookAI.Services;
 using OutlookAI.TaskPane;
+using OutlookAI.TaskPane.InboxCopilot;
 
 namespace OutlookAI
 {
@@ -91,50 +92,40 @@ namespace OutlookAI
             }
         }
 
+        /// <summary>
+        /// Entry point from the ribbon button (registered on both
+        /// TabNewMailMessage and TabMail in Ribbon.xml). Phase 3a routes
+        /// based on the currently-active Outlook window: Inspector (compose)
+        /// -> existing per-Inspector AITaskPane; Explorer (mailbox view)
+        /// -> new per-Explorer InboxCopilotPane.
+        /// </summary>
         public void ShowTaskPane()
         {
             using (TraceLog.Scope("ShowTaskPane", "ThisAddIn"))
             try
             {
-                var inspector = this.Application.ActiveInspector();
-                if (inspector == null)
+                object activeWindow = null;
+                try { activeWindow = this.Application.ActiveWindow(); } catch { }
+                TraceLog.Write("ActiveWindow=" + (activeWindow?.GetType().FullName ?? "<null>"), "ThisAddIn");
+
+                if (activeWindow is Outlook.Inspector insp)
                 {
-                    TraceLog.Write("No active inspector", "ThisAddIn");
-                    System.Windows.Forms.MessageBox.Show(
-                        "Please open an email first.",
-                        "AI Assistant",
-                        System.Windows.Forms.MessageBoxButtons.OK,
-                        System.Windows.Forms.MessageBoxIcon.Information);
+                    ShowInspectorTaskPane(insp);
+                    return;
+                }
+                if (activeWindow is Outlook.Explorer expl)
+                {
+                    ShowExplorerTaskPane(expl);
                     return;
                 }
 
-                // Check if task pane already exists for this inspector
-                foreach (CustomTaskPane pane in this.CustomTaskPanes)
-                {
-                    if (pane.Window == inspector)
-                    {
-                        TraceLog.Write("Reusing existing CustomTaskPane (toggling visibility)", "ThisAddIn");
-                        // Toggle visibility, reset if showing
-                        if (!pane.Visible)
-                        {
-                            var existingControl = pane.Control as AITaskPane;
-                            existingControl?.ResetForNewEmail();
-                        }
-                        pane.Visible = !pane.Visible;
-                        return;
-                    }
-                }
-
-                TraceLog.Write("Creating new AITaskPane", "ThisAddIn");
-                var taskPaneControl = new AITaskPane();
-                TraceLog.Write("AITaskPane constructed; calling Bind", "ThisAddIn");
-                taskPaneControl.Bind(inspector);
-                TraceLog.Write("Bind returned; calling CustomTaskPanes.Add", "ThisAddIn");
-                var customTaskPane = this.CustomTaskPanes.Add(taskPaneControl, "AI Assistant", inspector);
-                TraceLog.Write("CustomTaskPane.Add returned", "ThisAddIn");
-                customTaskPane.Width = 340;
-                customTaskPane.Visible = true;
-                TraceLog.Write("CustomTaskPane.Visible = true", "ThisAddIn");
+                // Fallback: no compose window or inbox view in focus.
+                TraceLog.Write("No Inspector or Explorer active; showing info dialog", "ThisAddIn");
+                System.Windows.Forms.MessageBox.Show(
+                    "Open Outlook to your Inbox or compose an email, then click AI Assistant.",
+                    "AI Assistant",
+                    System.Windows.Forms.MessageBoxButtons.OK,
+                    System.Windows.Forms.MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
@@ -145,6 +136,51 @@ namespace OutlookAI
                     System.Windows.Forms.MessageBoxButtons.OK,
                     System.Windows.Forms.MessageBoxIcon.Error);
             }
+        }
+
+        private void ShowInspectorTaskPane(Outlook.Inspector inspector)
+        {
+            foreach (CustomTaskPane pane in this.CustomTaskPanes)
+            {
+                if (pane.Window == inspector)
+                {
+                    TraceLog.Write("Reusing existing Inspector CustomTaskPane", "ThisAddIn");
+                    if (!pane.Visible)
+                    {
+                        var existingControl = pane.Control as AITaskPane;
+                        existingControl?.ResetForNewEmail();
+                    }
+                    pane.Visible = !pane.Visible;
+                    return;
+                }
+            }
+            TraceLog.Write("Creating new AITaskPane for Inspector", "ThisAddIn");
+            var taskPaneControl = new AITaskPane();
+            taskPaneControl.Bind(inspector);
+            var customTaskPane = this.CustomTaskPanes.Add(taskPaneControl, "AI Assistant", inspector);
+            customTaskPane.Width = 340;
+            customTaskPane.Visible = true;
+            TraceLog.Write("Inspector CustomTaskPane.Visible = true", "ThisAddIn");
+        }
+
+        private void ShowExplorerTaskPane(Outlook.Explorer explorer)
+        {
+            foreach (CustomTaskPane pane in this.CustomTaskPanes)
+            {
+                if (pane.Window == explorer)
+                {
+                    TraceLog.Write("Reusing existing Explorer CustomTaskPane (toggle visibility)", "ThisAddIn");
+                    pane.Visible = !pane.Visible;
+                    return;
+                }
+            }
+            TraceLog.Write("Creating new InboxCopilotPane for Explorer", "ThisAddIn");
+            var paneControl = new InboxCopilotPane();
+            paneControl.Bind(explorer);
+            var ctp = this.CustomTaskPanes.Add(paneControl, "AI Assistant", explorer);
+            ctp.Width = 340;
+            ctp.Visible = true;
+            TraceLog.Write("Explorer CustomTaskPane.Visible = true", "ThisAddIn");
         }
 
         protected override Microsoft.Office.Core.IRibbonExtensibility CreateRibbonExtensibilityObject()
