@@ -150,16 +150,27 @@ namespace OutlookAI.Services
                                         var d = (string)evt["delta"];
                                         if (!string.IsNullOrEmpty(d)) { assistantText.Append(d); sink.OnTokenDelta(d); }
                                     }
-                                    else if (type == "response.output_item.added"
-                                             && (string)evt["item"]?["type"] == "function_call")
-                                    {
-                                        var item = (JObject)evt["item"];
-                                        pendingCalls.Add(item);
-                                        sink.OnToolCallStart(
-                                            (string)item["id"] ?? "",
-                                            (string)item["name"] ?? "",
-                                            (string)item["arguments"] ?? "");
-                                    }
+                                else if (type == "response.output_item.added"
+                                         && (string)evt["item"]?["type"] == "function_call")
+                                {
+                                    var item = (JObject)evt["item"];
+                                    pendingCalls.Add(item);
+                                    // The Codex Responses API uses 'call_id' as
+                                    // the cross-reference between a function_call
+                                    // item and its function_call_output. The
+                                    // separate 'id' field is the item's internal
+                                    // SSE id; the server rejects round-2 requests
+                                    // with 'Missing required parameter: call_id'
+                                    // if we send 'id' back.
+                                    var resolvedCallId =
+                                        (string)item["call_id"]
+                                        ?? (string)item["id"]
+                                        ?? "";
+                                    sink.OnToolCallStart(
+                                        resolvedCallId,
+                                        (string)item["name"] ?? "",
+                                        (string)item["arguments"] ?? "");
+                                }
                                     else if (type == "response.completed")
                                     {
                                         break;
@@ -263,7 +274,9 @@ namespace OutlookAI.Services
         {
             var name = (string)call["name"] ?? "";
             var args = (string)call["arguments"] ?? "{}";
-            var callId = (string)call["id"] ?? "";
+            // Prefer 'call_id'; fall back to 'id' for older SSE shapes (and
+            // for existing test fixtures that still use 'id').
+            var callId = (string)call["call_id"] ?? (string)call["id"] ?? "";
             string outputJson;
             bool ok = true;
             try
@@ -290,9 +303,13 @@ namespace OutlookAI.Services
             sink.OnToolCallResult(callId, ok, Summarize(outputJson), outputJson);
             return new DispatchedCall
             {
+                // Both function_call and function_call_output input items use
+                // 'call_id' as the cross-reference per the Codex Responses
+                // API. Including only 'id' triggers 'Missing required
+                // parameter: input[N].call_id' on the next request.
                 FunctionCall = new JObject(
                     new JProperty("type", "function_call"),
-                    new JProperty("id", callId),
+                    new JProperty("call_id", callId),
                     new JProperty("name", name),
                     new JProperty("arguments", args)),
                 FunctionCallOutput = new JObject(

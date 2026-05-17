@@ -306,28 +306,29 @@ namespace OutlookAI.TaskPane.Chat
 
         private async Task RunScript(string script)
         {
-            if (_webView?.CoreWebView2 == null || _isDisposed) return;
+            if (_isDisposed) return;
             try
             {
-                // CoreWebView2.ExecuteScriptAsync MUST be called on the UI
-                // thread. Sink callbacks fire from RunTurnAsync continuations
-                // on the threadpool, so we marshal here. The marshaller
-                // short-circuits when we're already on UI, and posts to the
-                // live WinForms SyncContext otherwise.
+                // EVERY WebView2 property/method access (including just
+                // reading _webView.CoreWebView2) MUST happen on the UI thread.
+                // Marshal first, THEN touch the control.
                 var marshaller = Globals.ThisAddIn?.OutlookMarshaller;
                 if (marshaller != null
                     && Thread.CurrentThread.ManagedThreadId != marshaller.UiThreadId)
                 {
-                    TraceLog.Write("RunScript marshaling to UI (current T" + Thread.CurrentThread.ManagedThreadId + ")", "ChatController");
                     await marshaller.RunAsync(() =>
                     {
-                        // Fire-and-forget on the UI thread; the script result
-                        // is not needed by the caller in any sink callback.
-                        _ = _webView.CoreWebView2.ExecuteScriptAsync(script);
+                        if (_isDisposed) return;
+                        var core = _webView?.CoreWebView2;
+                        if (core == null) return;
+                        _ = core.ExecuteScriptAsync(script);
                     }, CancellationToken.None).ConfigureAwait(false);
                     return;
                 }
-                await _webView.CoreWebView2.ExecuteScriptAsync(script);
+                // On UI thread: safe to touch the control directly.
+                var coreOnUi = _webView?.CoreWebView2;
+                if (coreOnUi == null) return;
+                await coreOnUi.ExecuteScriptAsync(script);
             }
             catch (Exception ex)
             {

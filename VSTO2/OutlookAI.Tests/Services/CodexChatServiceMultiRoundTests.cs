@@ -77,6 +77,68 @@ namespace OutlookAI.Tests.Services
             }
         }
 
+        /// <summary>
+        /// Regression for the production Variants failure 'Missing required
+        /// parameter: input[1].call_id'. The real Codex SSE event puts the
+        /// cross-reference identifier in 'call_id', not 'id'. The marshaller
+        /// must (a) read 'call_id' from the SSE, and (b) emit 'call_id' in
+        /// the function_call history item it sends back in round 2.
+        /// </summary>
+        [Fact]
+        public async Task RunTurnAsync_RealCodexShape_UsesCallIdField_RoundTrips()
+        {
+            var fixt = MakeAuth();
+            var fake = new FakeHttpMessageHandler();
+            // Real Codex shape: 'call_id' is the cross-reference; 'id' is
+            // an internal item id we don't need (left out here entirely).
+            fake.QueueSse(HttpStatusCode.OK,
+                "data: {\"type\":\"response.output_item.added\",\"item\":{\"type\":\"function_call\",\"call_id\":\"fc_abc123\",\"name\":\"outlook_count_messages\",\"arguments\":\"{\\\"query\\\":\\\"x\\\"}\"}}\n\n"
+                + "data: {\"type\":\"response.completed\"}\n\n");
+            fake.QueueSse(HttpStatusCode.OK,
+                "data: {\"type\":\"response.output_text.delta\",\"delta\":\"42\"}\n\n"
+                + "data: {\"type\":\"response.completed\"}\n\n");
+            try
+            {
+                using (fixt.AuthHttp)
+                using (fixt.Auth)
+                using (var chatHttp = new HttpClient(fake))
+                using (var chat = new CodexChatService(fixt.Auth, chatHttp))
+                {
+                    var ctx = new ConversationContext();
+                    var sink = new CapturingChatEventSink();
+                    var tools = new FakeToolHost();
+                    tools.Queue("outlook_count_messages", "{\"count\":42}");
+
+                    var result = await chat.RunTurnAsync(ctx, "count them", tools, sink, CancellationToken.None);
+
+                    Assert.Equal(StopReason.Completed, result.StopReason);
+                    // The CallId surfaced to the sink came from 'call_id'.
+                    Assert.Equal("fc_abc123", sink.ToolStarts[0].CallId);
+                    // Both history items use 'call_id' (not 'id').
+                    var fc = ctx.History[1];
+                    var fco = ctx.History[2];
+                    Assert.Equal("function_call", (string)fc["type"]);
+                    Assert.Equal("fc_abc123", (string)fc["call_id"]);
+                    Assert.Null((string)fc["id"]);
+                    Assert.Equal("function_call_output", (string)fco["type"]);
+                    Assert.Equal("fc_abc123", (string)fco["call_id"]);
+
+                    // Verify the round-2 wire body would have passed Codex's
+                    // server-side validator (the bit that emitted the
+                    // 'Missing required parameter: input[1].call_id' error
+                    // pre-fix).
+                    var round2 = fake.RequestBodies[1];
+                    Assert.Contains("\"call_id\":\"fc_abc123\"", round2);
+                    Assert.Contains("\"type\":\"function_call\"", round2);
+                    Assert.Contains("\"type\":\"function_call_output\"", round2);
+                }
+            }
+            finally
+            {
+                try { Directory.Delete(fixt.TmpDir, recursive: true); } catch { }
+            }
+        }
+
         [Fact]
         public async Task RunTurnAsync_ToolCall_DispatchesAndAppendsFunctionOutput_ThenCompletes()
         {
@@ -124,6 +186,12 @@ namespace OutlookAI.Tests.Services
                     Assert.Equal("function_call", (string)ctx.History[1]["type"]);
                     Assert.Equal("function_call_output", (string)ctx.History[2]["type"]);
                     Assert.Equal("call_1", (string)ctx.History[2]["call_id"]);
+                    // Regression: the function_call item we send back in
+                    // round 2 must use 'call_id' (not 'id') or the Codex
+                    // server returns 'Missing required parameter:
+                    // input[N].call_id'.
+                    Assert.Equal("call_1", (string)ctx.History[1]["call_id"]);
+                    Assert.Null((string)ctx.History[1]["id"]);
                     Assert.Equal("{\"subject\":\"X\"}", (string)ctx.History[2]["output"]);
                     Assert.Equal(2, fake.Requests.Count);
                 }
