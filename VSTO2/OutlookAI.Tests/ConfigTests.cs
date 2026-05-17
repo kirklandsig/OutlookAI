@@ -119,6 +119,37 @@ namespace OutlookAI.Tests
         }
 
         [Fact]
+        public void ReasoningEffortsForModel_Gpt55_ExcludesMinimal_IncludesXHigh()
+        {
+            // Backend ground truth (captured from a real Codex error):
+            // 'minimal' is not supported with gpt-5.5; the supported set
+            // is none/low/medium/high/xhigh.
+            var efforts = Config.ReasoningEffortsForModel("gpt-5.5");
+            Assert.DoesNotContain("Minimal", efforts);
+            Assert.Contains("XHigh", efforts);
+            Assert.Equal(new[] { "None", "Low", "Medium", "High", "XHigh" }, efforts);
+        }
+
+        [Fact]
+        public void ReasoningEffortsForModel_Gpt54_IncludesMinimalAndXHigh()
+        {
+            // Per OpenAI docs: gpt-5.4 family supports the full enum.
+            var efforts = Config.ReasoningEffortsForModel("gpt-5.4");
+            Assert.Contains("Minimal", efforts);
+            Assert.Contains("XHigh", efforts);
+        }
+
+        [Fact]
+        public void AvailableReasoningEfforts_MatchesOpenAiPublicEnum()
+        {
+            // Per OpenAI 'Reasoning models' guide:
+            // "Supported values are model-dependent and can include
+            //  'none', 'minimal', 'low', 'medium', 'high', and 'xhigh'."
+            var expected = new[] { "None", "Minimal", "Low", "Medium", "High", "XHigh" };
+            Assert.Equal(expected, Config.AvailableReasoningEfforts);
+        }
+
+        [Fact]
         public void AvailableModels_ContainsExpectedCatalog()
         {
             Assert.Contains("gpt-5.5", Config.AvailableModels);
