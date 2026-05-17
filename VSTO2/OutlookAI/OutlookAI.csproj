@@ -325,6 +325,13 @@
     <Compile Include="TaskPane\Variants\VariantsController.cs" />
     <Compile Include="TaskPane\InboxCopilot\QuickActionChip.cs" />
     <Compile Include="TaskPane\InboxCopilot\InboxCopilotPromptBuilder.cs" />
+    <Compile Include="TaskPane\InboxCopilot\InboxCopilotController.cs" />
+    <Compile Include="TaskPane\InboxCopilot\InboxCopilotPane.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="TaskPane\InboxCopilot\InboxCopilotPane.Designer.cs">
+      <DependentUpon>InboxCopilotPane.cs</DependentUpon>
+    </Compile>
     <Compile Include="ThisAddIn.cs">
       <SubType>Code</SubType>
     </Compile>
