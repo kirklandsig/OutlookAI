@@ -323,6 +323,8 @@
     <Compile Include="TaskPane\Chat\ChatController.cs" />
     <Compile Include="TaskPane\Chat\WebView2Bootstrap.cs" />
     <Compile Include="TaskPane\Variants\VariantsController.cs" />
+    <Compile Include="TaskPane\InboxCopilot\QuickActionChip.cs" />
+    <Compile Include="TaskPane\InboxCopilot\InboxCopilotPromptBuilder.cs" />
     <Compile Include="ThisAddIn.cs">
       <SubType>Code</SubType>
     </Compile>
