@@ -80,19 +80,29 @@ namespace OutlookAI
             "gpt-5.3-codex"
         };
 
+        // Authoritative source: OpenAI docs (Reasoning models guide) +
+        // confirmed by Codex backend error messages on production traffic:
+        //   "Supported values are model-dependent and can include
+        //    'none', 'minimal', 'low', 'medium', 'high', and 'xhigh'."
         public static readonly string[] AvailableReasoningEfforts =
         {
             "None",
             "Minimal",
             "Low",
             "Medium",
-            "High"
+            "High",
+            "XHigh"
         };
 
         /// <summary>
         /// Returns the reasoning-effort options that are valid for a given
-        /// model. Non-reasoning models collapse to a single "None" entry so
-        /// the Settings dropdown can grey out unsupported choices.
+        /// model. Per-model overrides because not every model supports every
+        /// value:
+        ///   - gpt-5.5 family rejects 'minimal' (confirmed via backend error).
+        ///   - gpt-4.1-mini / nano are non-reasoning - only 'none' is valid.
+        ///   - gpt-5.4 family supports the full set including 'minimal'.
+        /// Wire format is the lowercased value; see
+        /// <c>CodexChatService.BuildRunTurnRequest</c>.
         /// </summary>
         public static string[] ReasoningEffortsForModel(string model)
         {
@@ -100,6 +110,16 @@ namespace OutlookAI
             {
                 return new[] { "None" };
             }
+            if (model == "gpt-5.5" || model == "gpt-5.5-pro" || model == "gpt-5.3-codex")
+            {
+                // 'Minimal' is unsupported on gpt-5.5 per the backend error
+                // message: "'minimal' is not supported with the 'gpt-5.5' model.
+                // Supported values are: 'none', 'low', 'medium', 'high', and
+                // 'xhigh'."
+                return new[] { "None", "Low", "Medium", "High", "XHigh" };
+            }
+            // gpt-5.4, gpt-5.4-mini, and any future model default to the
+            // full enum.
             return AvailableReasoningEfforts;
         }
 

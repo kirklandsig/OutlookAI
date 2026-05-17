@@ -208,6 +208,8 @@ namespace OutlookAI.TaskPane.Variants
             _btnCancel.Visible = true;
             SetStatus("Generating...", isError: false);
 
+            TurnResult result = null;
+            Exception caught = null;
             try
             {
                 int count = singleVariantTone.HasValue ? 1 : (int)_numCount.Value;
@@ -221,9 +223,71 @@ namespace OutlookAI.TaskPane.Variants
                 var userMessage = BuildVariantsUserMessage(intent, count, singleVariantTone);
                 var sink = new ChatEventSink();
                 TraceLog.Write("Variants calling RunTurnAsync (count=" + count + ")", "Variants");
-                var result = await _chat.RunTurnAsync(ctx, userMessage, _toolHost, sink, _activeCts.Token);
+                // ConfigureAwait(false): we cannot rely on the WinForms
+                // SyncContext to dispatch the continuation back to T1 in
+                // all VSTO/Outlook hosting scenarios. Instead we always
+                // marshal back via OutlookThreadMarshaller below.
+                result = await _chat.RunTurnAsync(ctx, userMessage, _toolHost, sink, _activeCts.Token).ConfigureAwait(false);
                 TraceLog.Write("Variants RunTurnAsync returned: reason=" + result.StopReason + " textLen=" + (result.FinalAssistantText?.Length ?? 0), "Variants");
+            }
+            catch (OperationCanceledException oce)
+            {
+                TraceLog.Write("Variants OperationCanceled", "Variants");
+                caught = oce;
+            }
+            catch (Exception ex)
+            {
+                TraceLog.Write("Variants EXCEPTION: " + ex, "Variants");
+                caught = ex;
+            }
 
+            // Always finalize on the UI thread - RenderCards creates new
+            // WinForms Panel controls and parents them to _cardsPanel, which
+            // lives on T1. Doing this from a threadpool continuation throws
+            // 'Controls created on one thread cannot be parented...'.
+            var marshaller = Globals.ThisAddIn?.OutlookMarshaller;
+            var finalizeResult = result;
+            var finalizeError = caught;
+            var finalizeReplace = replace;
+            var finalizeTone = singleVariantTone;
+            if (marshaller != null)
+            {
+                await marshaller.RunAsync(
+                    () => FinalizeGeneration(finalizeResult, finalizeError, finalizeReplace, finalizeTone),
+                    CancellationToken.None).ConfigureAwait(false);
+            }
+            else
+            {
+                FinalizeGeneration(finalizeResult, finalizeError, finalizeReplace, finalizeTone);
+            }
+
+            TraceLog.Write("<< GenerateAsync", "Variants");
+        }
+
+        /// <summary>
+        /// Runs strictly on the UI thread (callers marshal). Consumes the
+        /// turn result, parses variants, updates the store, renders cards,
+        /// and resets the in-flight state.
+        /// </summary>
+        private void FinalizeGeneration(TurnResult result, Exception caught, bool replace, Tone? singleVariantTone)
+        {
+            try
+            {
+                if (caught is OperationCanceledException)
+                {
+                    SetStatus("Cancelled.", false);
+                    return;
+                }
+                if (caught != null)
+                {
+                    SetStatus("Error: " + caught.Message, true);
+                    return;
+                }
+                if (result == null)
+                {
+                    SetStatus("Error: no result.", true);
+                    return;
+                }
                 if (result.StopReason == StopReason.Cancelled)
                 {
                     SetStatus("Cancelled.", false);
@@ -249,41 +313,26 @@ namespace OutlookAI.TaskPane.Variants
                 {
                     _store.Replace(variants);
                 }
-                else
+                else if (singleVariantTone.HasValue)
                 {
-                    // Single-variant regenerate path: caller passes singleVariantTone
-                    // and we look for an existing entry with that tone to replace.
-                    if (singleVariantTone.HasValue)
+                    // Single-variant regenerate: replace the matching tone.
+                    var snap = _store.Snapshot();
+                    int idx = -1;
+                    for (int i = 0; i < snap.Count; i++)
                     {
-                        var snap = _store.Snapshot();
-                        int idx = -1;
-                        for (int i = 0; i < snap.Count; i++)
-                        {
-                            if (snap[i].Tone == singleVariantTone.Value) { idx = i; break; }
-                        }
-                        if (idx >= 0)
-                        {
-                            _store.Update(idx, variants[0]);
-                        }
-                        else
-                        {
-                            _store.Replace(variants);
-                        }
+                        if (snap[i].Tone == singleVariantTone.Value) { idx = i; break; }
                     }
+                    if (idx >= 0) _store.Update(idx, variants[0]);
+                    else _store.Replace(variants);
                 }
 
                 RenderCards();
                 SetStatus("Done. " + _store.Count + " variant(s) ready.", false);
                 _btnRegenerateAll.Enabled = true;
             }
-            catch (OperationCanceledException)
-            {
-                TraceLog.Write("Variants OperationCanceled", "Variants");
-                SetStatus("Cancelled.", false);
-            }
             catch (Exception ex)
             {
-                TraceLog.Write("Variants EXCEPTION: " + ex, "Variants");
+                TraceLog.Write("FinalizeGeneration EXCEPTION: " + ex, "Variants");
                 SetStatus("Error: " + ex.Message, true);
             }
             finally
@@ -293,7 +342,6 @@ namespace OutlookAI.TaskPane.Variants
                 _btnCancel.Visible = false;
                 _activeCts?.Dispose();
                 _activeCts = null;
-                TraceLog.Write("<< GenerateAsync", "Variants");
             }
         }
 
