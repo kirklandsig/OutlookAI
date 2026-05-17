@@ -180,7 +180,25 @@ html, body {
 .msg-content ul, .msg-content ol { margin: 4px 0; padding-left: 24px; }
 .msg-content a { color: var(--accent); }
 
-/* ---- Tool-call cards ---- */
+/* ---- Compact tool-status indicator (Phase 3a+) ---- */
+/* Single muted italic line shown while a tool is running. Removed
+   on success; on error mutates into a muted warning line. Replaces
+   the older expandable tool-card UI which cluttered the chat. */
+.tool-status {
+  font-style: italic;
+  color: var(--text-faint);
+  font-size: 12px;
+  padding: 2px 4px;
+  align-self: flex-start;
+  max-width: 100%;
+}
+.tool-status-err {
+  color: var(--tool-err);
+  font-style: normal;
+}
+
+/* ---- Tool-call cards (legacy; kept for backward-compat if any code
+   path still calls appendToolCallCard with the old shape) ---- */
 .tool-card {
   background: var(--tool-bg);
   border: 1px solid var(--tool-border);

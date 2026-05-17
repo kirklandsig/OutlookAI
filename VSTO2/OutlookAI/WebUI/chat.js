@@ -227,51 +227,54 @@
       scrollToBottom();
     },
 
+    // Compact "working on it" status line. Replaces the previous verbose
+    // expandable tool cards (the chat got too cluttered - user feedback).
+    // Each tool call shows as a single italic line like
+    //   ... Searching messages
+    //   ... Reading message
+    //   ... Listing folders
+    // When the tool completes, the line is REMOVED entirely (we don't
+    // need a permanent record - the model uses the result to produce
+    // the actual assistant text, which is what the user reads).
+    //
+    // Friendly verbs per tool name. Anything not in the map falls back
+    // to "Working on it..." so unknown future tools still render fine.
     appendToolCallCard: function(callId, name, argsJson) {
-      var card = elt('div', 'tool-card tool-pending');
-      card.dataset.callId = callId;
-      var header = elt('div', 'tool-card-header');
-      var glyph = elt('span', 'tool-card-glyph', '\u2022');
-      var nameEl = elt('span', 'tool-card-name', name);
-      var summary = elt('span', 'tool-card-summary', 'running...');
-      var toggle = elt('span', 'tool-card-toggle', '[+]');
-      header.appendChild(glyph);
-      header.appendChild(nameEl);
-      header.appendChild(summary);
-      header.appendChild(toggle);
-      var body = elt('div', 'tool-card-body');
-      var argsLabel = elt('div', 'tool-card-label', 'arguments');
-      var argsBox = elt('div', 'tool-card-args');
-      argsBox.textContent = argsJson || '{}';
-      body.appendChild(argsLabel);
-      body.appendChild(argsBox);
-      card.appendChild(header);
-      card.appendChild(body);
-      header.addEventListener('click', function() {
-        var nowExpanded = !card.classList.contains('expanded');
-        card.classList.toggle('expanded', nowExpanded);
-        toggle.textContent = nowExpanded ? '[-]' : '[+]';
-      });
-      $messages.appendChild(card);
-      toolCards[callId] = card;
+      var verb = ({
+        outlook_get_current_compose_state: 'Reading compose context',
+        outlook_get_current_selection:     'Reading current selection',
+        outlook_list_folders:              'Listing folders',
+        outlook_search_messages:           'Searching messages',
+        outlook_read_message:              'Reading message',
+        outlook_count_messages:            'Counting messages',
+        outlook_list_recent_threads_with:  'Listing recent threads',
+        outlook_create_draft:              'Creating draft',
+        outlook_mark_as_read:              'Marking as read',
+        outlook_flag_message:              'Flagging message',
+        outlook_set_category:              'Setting category',
+      })[name] || 'Working on it';
+
+      var row = elt('div', 'tool-status');
+      row.dataset.callId = callId;
+      row.textContent = '\u2026 ' + verb;
+      $messages.appendChild(row);
+      toolCards[callId] = row;
       scrollToBottom();
     },
 
     updateToolCallCard: function(callId, ok, summary, resultJson) {
-      var card = toolCards[callId];
-      if (!card) return;
-      card.classList.remove('tool-pending');
-      card.classList.add(ok ? 'tool-ok' : 'tool-err');
-      var glyph = card.querySelector('.tool-card-glyph');
-      var summaryEl = card.querySelector('.tool-card-summary');
-      var body = card.querySelector('.tool-card-body');
-      glyph.textContent = ok ? '\u2713' : '\u26A0';
-      summaryEl.textContent = summary || (ok ? 'ok' : 'error');
-      var resultLabel = elt('div', 'tool-card-label', 'result');
-      var resultBox = elt('div', 'tool-card-result');
-      resultBox.textContent = resultJson || '{}';
-      body.appendChild(resultLabel);
-      body.appendChild(resultBox);
+      var row = toolCards[callId];
+      if (!row) return;
+      // On completion, drop the status line. Errors stick around as a
+      // muted single-line error so the user sees that something failed
+      // without the full JSON dump.
+      if (ok) {
+        if (row.parentNode) row.parentNode.removeChild(row);
+      } else {
+        row.classList.add('tool-status-err');
+        row.textContent = '\u26A0 ' + (summary || 'tool error');
+      }
+      delete toolCards[callId];
       scrollToBottom();
     },
 
