@@ -71,5 +71,31 @@ namespace OutlookAI.Tests.TaskPane.InboxCopilot
             var prompt = InboxCopilotPromptBuilder.Build("Inbox", 0, 0, null);
             Assert.Contains("Inbox Copilot", prompt);
         }
+
+        /// <summary>
+        /// Pin the search-Tips steering block. After the SSE-delta bug fix
+        /// the model CAN finally pass structured args, but it still needs
+        /// explicit conversation-level guidance to map natural language
+        /// onto from/date_from/date_to/etc. instead of dumping everything
+        /// into 'query'. Regressing this block would re-introduce the
+        /// "only finds the newest 25 messages" UX failure.
+        /// </summary>
+        [Fact]
+        public void Prompt_IncludesSearchTipsBlock_SteersTowardStructuredFields()
+        {
+            var prompt = InboxCopilotPromptBuilder.Build("Inbox", 0, 0, null);
+
+            Assert.Contains("Tips for searching", prompt);
+            Assert.Contains("structured fields", prompt);
+            // Tells the model NOT to send empty args (the cause of the
+            // "always-Uber-email" symptom).
+            Assert.Contains("empty argument object", prompt);
+            // Steers sender, dates, and keyword placement explicitly.
+            Assert.Contains("'from'", prompt);
+            Assert.Contains("ISO-8601 UTC", prompt);
+            Assert.Contains("date_to=2020-01-01T00:00:00Z", prompt);
+            // Reminds model to follow up with read_message for full body.
+            Assert.Contains("outlook_read_message", prompt);
+        }
     }
 }

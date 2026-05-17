@@ -6,6 +6,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Newtonsoft.Json.Linq;
 using OutlookAI.Services;
 using OutlookAI.Services.Chat;
 using OutlookAI.Tests.Helpers;
@@ -209,6 +210,179 @@ namespace OutlookAI.Tests.Services
                     Assert.Contains("\"call_id\":\"fc_abc123\"", round2);
                     Assert.Contains("\"type\":\"function_call\"", round2);
                     Assert.Contains("\"type\":\"function_call_output\"", round2);
+                }
+            }
+            finally
+            {
+                try { Directory.Delete(fixt.TmpDir, recursive: true); } catch { }
+            }
+        }
+
+        /// <summary>
+        /// Real-Codex-shape regression. The Responses API streams function-call
+        /// arguments via a sequence of
+        /// <c>response.function_call_arguments.delta</c> events; the initial
+        /// <c>response.output_item.added</c> event carries <c>arguments: ""</c>.
+        /// If we only read the args from <c>output_item.added</c> we dispatch
+        /// the tool with empty args, the tool produces wrong results, and the
+        /// model retries up to <c>MaxToolRounds</c> times. This pinpointed the
+        /// Inbox Copilot "always returns the top Uber email" bug where 22
+        /// consecutive <c>outlook_search_messages</c> calls all had
+        /// <c>args=</c> in the trace log.
+        /// </summary>
+        [Fact]
+        public async Task RunTurnAsync_DeltaStreamedFunctionCallArgs_AreAccumulated_AndDispatchedWithFullArgs()
+        {
+            var fixt = MakeAuth();
+            var fake = new FakeHttpMessageHandler();
+            // Round 1 SSE: function_call item starts with empty args, then
+            // arguments are streamed in three delta chunks. No
+            // function_call_arguments.done or output_item.done. The parser
+            // must concatenate the deltas to reconstruct the full args.
+            fake.QueueSse(HttpStatusCode.OK,
+                "data: {\"type\":\"response.output_item.added\",\"item\":{\"type\":\"function_call\",\"id\":\"fc_item_42\",\"call_id\":\"call_xyz\",\"name\":\"outlook_search_messages\",\"arguments\":\"\"}}\n\n"
+                + "data: {\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"fc_item_42\",\"output_index\":0,\"delta\":\"{\\\"query\\\"\"}\n\n"
+                + "data: {\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"fc_item_42\",\"output_index\":0,\"delta\":\":\\\"EIN\\\",\"}\n\n"
+                + "data: {\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"fc_item_42\",\"output_index\":0,\"delta\":\"\\\"date_to\\\":\\\"2020-01-01T00:00:00Z\\\"}\"}\n\n"
+                + "data: {\"type\":\"response.completed\"}\n\n");
+            // Round 2 SSE: model's final assistant text after seeing tool reply.
+            fake.QueueSse(HttpStatusCode.OK,
+                "data: {\"type\":\"response.output_text.delta\",\"delta\":\"Found it.\"}\n\n"
+                + "data: {\"type\":\"response.completed\"}\n\n");
+            try
+            {
+                using (fixt.AuthHttp)
+                using (fixt.Auth)
+                using (var chatHttp = new HttpClient(fake))
+                using (var chat = new CodexChatService(fixt.Auth, chatHttp))
+                {
+                    var ctx = new ConversationContext();
+                    var sink = new CapturingChatEventSink();
+                    var tools = new FakeToolHost();
+                    tools.Queue("outlook_search_messages", "{\"messages\":[]}");
+
+                    var result = await chat.RunTurnAsync(
+                        ctx, "find emails from before 2020 with the EIN", tools, sink, CancellationToken.None);
+
+                    Assert.Equal(StopReason.Completed, result.StopReason);
+                    Assert.Single(tools.Calls);
+                    Assert.Equal("outlook_search_messages", tools.Calls[0].Name);
+                    // Critical: the dispatched args are the concatenation of
+                    // the three SSE deltas, NOT the empty initial arguments.
+                    // Assert against the raw JSON string (what the tool
+                    // receives over the dispatch wire). Avoid JObject.Parse
+                    // here because Newtonsoft autoconverts ISO-8601 date
+                    // strings to DateTime tokens, which obscures the
+                    // round-tripped string content.
+                    Assert.Contains("\"query\":\"EIN\"", tools.Calls[0].ArgsJson);
+                    Assert.Contains("\"date_to\":\"2020-01-01T00:00:00Z\"", tools.Calls[0].ArgsJson);
+                    // call_id surfaces correctly to the sink and to the
+                    // function_call/function_call_output history items.
+                    Assert.Single(sink.ToolStarts);
+                    Assert.Equal("call_xyz", sink.ToolStarts[0].CallId);
+                    var fc = ctx.History[1];
+                    Assert.Equal("function_call", (string)fc["type"]);
+                    Assert.Equal("call_xyz", (string)fc["call_id"]);
+                    // The function_call we echo to round 2 must carry the
+                    // fully-assembled arguments string so the model has
+                    // matching context.
+                    Assert.Contains("\"query\":\"EIN\"", (string)fc["arguments"]);
+                    Assert.Contains("\"date_to\":\"2020-01-01T00:00:00Z\"", (string)fc["arguments"]);
+                }
+            }
+            finally
+            {
+                try { Directory.Delete(fixt.TmpDir, recursive: true); } catch { }
+            }
+        }
+
+        /// <summary>
+        /// Real-Codex-shape variant: deltas + the canonical
+        /// <c>response.function_call_arguments.done</c> finalizer event.
+        /// The .done event provides the full arguments string in one go and
+        /// MUST override whatever the deltas accumulated (in case any deltas
+        /// were dropped or reordered). This locks the "done wins" contract.
+        /// </summary>
+        [Fact]
+        public async Task RunTurnAsync_FunctionCallArgumentsDoneEvent_OverridesAccumulatedDeltas()
+        {
+            var fixt = MakeAuth();
+            var fake = new FakeHttpMessageHandler();
+            // Round 1: deltas accumulate to a TRUNCATED args string, then the
+            // .done event delivers the canonical full args. The parser MUST
+            // prefer the .done event's arguments field.
+            fake.QueueSse(HttpStatusCode.OK,
+                "data: {\"type\":\"response.output_item.added\",\"item\":{\"type\":\"function_call\",\"id\":\"fc_item_7\",\"call_id\":\"call_done\",\"name\":\"outlook_count_messages\",\"arguments\":\"\"}}\n\n"
+                + "data: {\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"fc_item_7\",\"output_index\":0,\"delta\":\"{\\\"qu\"}\n\n"
+                + "data: {\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"fc_item_7\",\"output_index\":0,\"delta\":\"ery\\\":\"}\n\n"
+                + "data: {\"type\":\"response.function_call_arguments.done\",\"item_id\":\"fc_item_7\",\"output_index\":0,\"arguments\":\"{\\\"query\\\":\\\"final-canonical\\\"}\"}\n\n"
+                + "data: {\"type\":\"response.completed\"}\n\n");
+            fake.QueueSse(HttpStatusCode.OK,
+                "data: {\"type\":\"response.output_text.delta\",\"delta\":\"3\"}\n\n"
+                + "data: {\"type\":\"response.completed\"}\n\n");
+            try
+            {
+                using (fixt.AuthHttp)
+                using (fixt.Auth)
+                using (var chatHttp = new HttpClient(fake))
+                using (var chat = new CodexChatService(fixt.Auth, chatHttp))
+                {
+                    var ctx = new ConversationContext();
+                    var sink = new CapturingChatEventSink();
+                    var tools = new FakeToolHost();
+                    tools.Queue("outlook_count_messages", "{\"count\":3}");
+
+                    var result = await chat.RunTurnAsync(ctx, "count", tools, sink, CancellationToken.None);
+
+                    Assert.Equal(StopReason.Completed, result.StopReason);
+                    Assert.Single(tools.Calls);
+                    // The .done canonical args win, not the partial deltas.
+                    Assert.Contains("\"query\":\"final-canonical\"", tools.Calls[0].ArgsJson);
+                    Assert.DoesNotContain("\"qu\"ery", tools.Calls[0].ArgsJson); // not the malformed delta concat
+                }
+            }
+            finally
+            {
+                try { Directory.Delete(fixt.TmpDir, recursive: true); } catch { }
+            }
+        }
+
+        /// <summary>
+        /// Real-Codex-shape variant: some Codex variants emit only the
+        /// <c>response.output_item.done</c> event with the fully-assembled
+        /// item (no per-delta events at all). The parser must still finalize
+        /// the args from that event. Guarantees forward-compat across
+        /// streaming variants.
+        /// </summary>
+        [Fact]
+        public async Task RunTurnAsync_OutputItemDoneEvent_FinalizesEmptyInitialArgs()
+        {
+            var fixt = MakeAuth();
+            var fake = new FakeHttpMessageHandler();
+            fake.QueueSse(HttpStatusCode.OK,
+                "data: {\"type\":\"response.output_item.added\",\"item\":{\"type\":\"function_call\",\"id\":\"fc_item_9\",\"call_id\":\"call_oid\",\"name\":\"outlook_list_folders\",\"arguments\":\"\"}}\n\n"
+                + "data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"function_call\",\"id\":\"fc_item_9\",\"call_id\":\"call_oid\",\"name\":\"outlook_list_folders\",\"arguments\":\"{\\\"max\\\":50}\"}}\n\n"
+                + "data: {\"type\":\"response.completed\"}\n\n");
+            fake.QueueSse(HttpStatusCode.OK,
+                "data: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n"
+                + "data: {\"type\":\"response.completed\"}\n\n");
+            try
+            {
+                using (fixt.AuthHttp)
+                using (fixt.Auth)
+                using (var chatHttp = new HttpClient(fake))
+                using (var chat = new CodexChatService(fixt.Auth, chatHttp))
+                {
+                    var ctx = new ConversationContext();
+                    var sink = new CapturingChatEventSink();
+                    var tools = new FakeToolHost();
+                    tools.Queue("outlook_list_folders", "{\"folders\":[]}");
+
+                    var result = await chat.RunTurnAsync(ctx, "list", tools, sink, CancellationToken.None);
+
+                    Assert.Equal(StopReason.Completed, result.StopReason);
+                    Assert.Single(tools.Calls);
+                    Assert.Contains("\"max\":50", tools.Calls[0].ArgsJson);
                 }
             }
             finally

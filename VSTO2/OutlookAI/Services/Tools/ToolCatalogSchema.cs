@@ -31,30 +31,43 @@ namespace OutlookAI.Services.Tools
                         new JProperty("additionalProperties", false))),
 
                 BuildToolEntry("outlook_search_messages",
-                    "Search messages. Combine any subset of filters via AND. Returns id+metadata+snippet for up to max_results (default 25, hard cap 100). Prefer structured filters (from, subject_contains, body_contains, has_attachment, is_unread, is_flagged, importance) over free-form 'query' when you can - one precise call beats five sequential searches.",
+                    "Search messages. Combine any subset of filters via AND. Returns id+metadata+snippet for up to max_results (default 25, hard cap 100). "
+                    + "ALWAYS translate the user's natural-language query into the structured fields below; do NOT dump the whole user sentence into 'query'. "
+                    + "Examples: "
+                    + "User says 'emails from Alice last week' -> {from:'Alice', date_from:<7d ago ISO>, date_to:<today ISO>}. "
+                    + "User says 'email from before 2020 with the EIN' -> {query:'EIN', date_to:'2020-01-01T00:00:00Z'}. "
+                    + "User says 'unread invoices' -> {body_contains:'invoice', is_unread:true}. "
+                    + "User says 'flagged messages with attachments' -> {is_flagged:true, has_attachment:true}. "
+                    + "If you pass NO filters, the tool returns the newest 25 messages in the folder - almost never what the user asked for. "
+                    + "Prefer one precise call over many. After search, use outlook_read_message on the most-relevant id for full body.",
                     new JObject(
                         new JProperty("type", "object"),
                         new JProperty("properties", new JObject(
                             new JProperty("query",            new JObject(new JProperty("type","string"),
-                                                              new JProperty("description","Free-form text matched against subject + body. Leave empty if filtering by structured fields only."))),
+                                                              new JProperty("description","Free-form keyword(s) matched against subject + body (e.g. 'EIN', 'invoice', 'contract'). Do NOT put dates, sender names, or other structured info here - use the dedicated fields."))),
                             new JProperty("from",             new JObject(new JProperty("type","string"),
-                                                              new JProperty("description","Sender substring; matches display name OR email (case-insensitive)."))),
-                            new JProperty("subject_contains", new JObject(new JProperty("type","string"))),
-                            new JProperty("body_contains",    new JObject(new JProperty("type","string"))),
+                                                              new JProperty("description","Sender substring; matches display name OR email (case-insensitive). Example: 'Alice' or 'alice@example.com'."))),
+                            new JProperty("subject_contains", new JObject(new JProperty("type","string"),
+                                                              new JProperty("description","Substring match on subject only."))),
+                            new JProperty("body_contains",    new JObject(new JProperty("type","string"),
+                                                              new JProperty("description","Substring match on body only."))),
                             new JProperty("has_attachment",   new JObject(new JProperty("type","boolean"))),
                             new JProperty("is_unread",        new JObject(new JProperty("type","boolean"))),
                             new JProperty("is_flagged",       new JObject(new JProperty("type","boolean"))),
                             new JProperty("importance",       new JObject(new JProperty("type","string"),
                                                               new JProperty("enum", new JArray("low","normal","high")))),
                             new JProperty("folder_id",        new JObject(new JProperty("type","string"),
-                                                              new JProperty("description","Default: Inbox."))),
+                                                              new JProperty("description","Default: Inbox. Use outlook_list_folders to discover folder ids."))),
                             new JProperty("date_from",        new JObject(new JProperty("type","string"),
-                                                                          new JProperty("format","date-time"))),
+                                                                          new JProperty("format","date-time"),
+                                                                          new JProperty("description","Inclusive lower bound, ISO-8601 UTC. For 'last week' compute 7 days ago. For 'this year' use Jan 1 of current year."))),
                             new JProperty("date_to",          new JObject(new JProperty("type","string"),
-                                                                          new JProperty("format","date-time"))),
+                                                                          new JProperty("format","date-time"),
+                                                                          new JProperty("description","Exclusive upper bound, ISO-8601 UTC. For 'before 2020' use '2020-01-01T00:00:00Z'. For 'older than 2 years' use today minus 2y."))),
                             new JProperty("max_results",      new JObject(new JProperty("type","integer"),
                                                                           new JProperty("minimum",1),
-                                                                          new JProperty("maximum",100))))),
+                                                                          new JProperty("maximum",100),
+                                                                          new JProperty("description","Default 25. Raise to 100 only when summarizing a folder; never for a targeted lookup."))))),
                         new JProperty("additionalProperties", false))),
 
                 BuildToolEntry("outlook_read_message",
@@ -68,7 +81,7 @@ namespace OutlookAI.Services.Tools
                         new JProperty("additionalProperties", false))),
 
                 BuildToolEntry("outlook_count_messages",
-                    "Count messages matching the given filters without returning bodies. Same filter fields as outlook_search_messages.",
+                    "Count messages matching the given filters without returning bodies. Same filter fields as outlook_search_messages; same rule: translate the user's intent into structured fields, do NOT put everything in 'query'. Examples: 'how many unread from Bob' -> {from:'Bob', is_unread:true}; 'how many emails this year' -> {date_from:<Jan 1 ISO>}. Empty filters => total folder count.",
                     new JObject(
                         new JProperty("type", "object"),
                         new JProperty("properties", new JObject(
