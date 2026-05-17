@@ -21,6 +21,17 @@ namespace OutlookAI.Services
         public Task RunAsync(Action action, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            // Reentrancy guard: when the caller is already on the target sync
+            // context (e.g. ChatController invoking surface methods from a
+            // WebMessageReceived handler that fires on the UI thread), Post +
+            // blocking-wait would deadlock. Invoke synchronously in that case.
+            if (IsOnTargetContext())
+            {
+                var tcsSync = new TaskCompletionSource<bool>();
+                try { action(); tcsSync.TrySetResult(true); }
+                catch (Exception ex) { tcsSync.TrySetException(ex); }
+                return tcsSync.Task;
+            }
             var tcs = new TaskCompletionSource<bool>();
             _context.Post(_ =>
             {
@@ -38,6 +49,14 @@ namespace OutlookAI.Services
         public Task<T> RunAsync<T>(Func<T> func, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            // See reentrancy comment in the non-generic overload above.
+            if (IsOnTargetContext())
+            {
+                var tcsSync = new TaskCompletionSource<T>();
+                try { tcsSync.TrySetResult(func()); }
+                catch (Exception ex) { tcsSync.TrySetException(ex); }
+                return tcsSync.Task;
+            }
             var tcs = new TaskCompletionSource<T>();
             _context.Post(_ =>
             {
@@ -50,6 +69,12 @@ namespace OutlookAI.Services
                 catch (Exception ex) { tcs.TrySetException(ex); }
             }, null);
             return tcs.Task;
+        }
+
+        private bool IsOnTargetContext()
+        {
+            return SynchronizationContext.Current != null
+                && ReferenceEquals(SynchronizationContext.Current, _context);
         }
     }
 }
