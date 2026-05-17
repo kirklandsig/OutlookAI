@@ -88,6 +88,21 @@ namespace OutlookAI.Services.Tools
                                                                           new JProperty("format","date-time"))))),
                         new JProperty("additionalProperties", false))),
 
+                BuildToolEntry("outlook_get_current_selection",
+                    "Read the messages currently selected in the user's active Explorer (e.g. messages they highlighted in the reading pane). Useful for 'reply to this', 'summarize this thread', etc. Returns empty when nothing is selected or when there is no active Explorer (e.g. the chat is anchored to a compose window).",
+                    new JObject(
+                        new JProperty("type", "object"),
+                        new JProperty("properties", new JObject(
+                            new JProperty("include_full_bodies", new JObject(
+                                new JProperty("type","boolean"),
+                                new JProperty("description","If true, returns full message body per item (up to 32 KB). Default false: 200-char snippet only."))),
+                            new JProperty("max_items", new JObject(
+                                new JProperty("type","integer"),
+                                new JProperty("minimum",1),
+                                new JProperty("maximum",20),
+                                new JProperty("description","Hard cap on items returned. Default 5."))))),
+                        new JProperty("additionalProperties", false))),
+
                 BuildToolEntry("outlook_list_recent_threads_with",
                     "List the most recent conversation threads involving a specific recipient (Inbox + Sent), grouped by ConversationID.",
                     new JObject(
