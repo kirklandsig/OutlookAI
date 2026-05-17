@@ -167,13 +167,44 @@ namespace OutlookAI.Services.Tools
                 try
                 {
                     var folder = ResolveFolder(args.FolderId);
-                    if (folder == null) return (IReadOnlyList<MessageSummary>)summaries;
+                    if (folder == null)
+                    {
+                        OutlookAI.Diagnostics.TraceLog.Write(
+                            "SearchMessages folderId=" + (args.FolderId ?? "<default>") + " -> folder=null",
+                            "LiveOutlookSurface");
+                        return (IReadOnlyList<MessageSummary>)summaries;
+                    }
 
                     var filter = BuildRestrictFilter(args);
-                    Outlook.Items items = string.IsNullOrEmpty(filter)
-                        ? folder.Items
-                        : folder.Items.Restrict(filter);
-                    items.Sort("[ReceivedTime]", true);
+                    OutlookAI.Diagnostics.TraceLog.Write(
+                        "SearchMessages folder=" + (folder.Name ?? "") +
+                        " filter=" + (filter ?? "<none>") +
+                        " maxResults=" + args.MaxResults,
+                        "LiveOutlookSurface");
+
+                    Outlook.Items items;
+                    int candidateCount = 0;
+                    try
+                    {
+                        items = string.IsNullOrEmpty(filter)
+                            ? folder.Items
+                            : folder.Items.Restrict(filter);
+                        try { candidateCount = items.Count; } catch { }
+                        OutlookAI.Diagnostics.TraceLog.Write(
+                            "SearchMessages Restrict produced " + candidateCount + " candidates",
+                            "LiveOutlookSurface");
+                    }
+                    catch (COMException ex)
+                    {
+                        OutlookAI.Diagnostics.TraceLog.Write(
+                            "SearchMessages Restrict FAILED: " + ex.Message + " (filter=" + filter + ")",
+                            "LiveOutlookSurface");
+                        // Fall back to unfiltered enumeration so the user gets
+                        // SOMETHING instead of silence. Capped by MaxResults.
+                        items = folder.Items;
+                    }
+
+                    try { items.Sort("[ReceivedTime]", true); } catch { }
 
                     int taken = 0;
                     foreach (var obj in items)
@@ -193,8 +224,16 @@ namespace OutlookAI.Services.Tools
                         });
                         taken++;
                     }
+                    OutlookAI.Diagnostics.TraceLog.Write(
+                        "SearchMessages returning " + summaries.Count + " summaries (of " + candidateCount + " candidates)",
+                        "LiveOutlookSurface");
                 }
-                catch (COMException) { }
+                catch (COMException ex)
+                {
+                    OutlookAI.Diagnostics.TraceLog.Write(
+                        "SearchMessages outer COMException: " + ex.Message,
+                        "LiveOutlookSurface");
+                }
                 return (IReadOnlyList<MessageSummary>)summaries;
             }) ?? (IReadOnlyList<MessageSummary>)new List<MessageSummary>();
 

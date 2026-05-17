@@ -387,18 +387,25 @@ namespace OutlookAI.TaskPane.InboxCopilot
             }
             public override void OnToolCallStart(string callId, string name, string argsJson)
             {
+                TraceLog.Write("Sink.OnToolCallStart " + name + " args=" + (argsJson?.Length > 200 ? argsJson.Substring(0, 200) + "..." : argsJson), "WebViewSink");
                 _ = _owner.RunScript("outlookai.appendToolCallCard(" +
                     JsString(callId) + ", " + JsString(name) + ", " + JsString(argsJson) + ");");
             }
             public override void OnToolCallResult(string callId, bool ok, string summary, string resultJson)
             {
+                TraceLog.Write("Sink.OnToolCallResult ok=" + ok + " summary=" + summary + " resultLen=" + (resultJson?.Length ?? 0), "WebViewSink");
                 _ = _owner.RunScript("outlookai.updateToolCallCard(" +
                     JsString(callId) + ", " + (ok ? "true" : "false") + ", " +
                     JsString(summary) + ", " + JsString(resultJson) + ");");
             }
             public override void OnError(string message)
             {
+                TraceLog.Write("Sink.OnError: " + message, "WebViewSink");
                 _ = _owner.RunScript("outlookai.showError(" + JsString(message ?? "") + ");");
+            }
+            public override void OnAssistantMessageComplete(string text)
+            {
+                TraceLog.Write("Sink.OnAssistantMessageComplete len=" + (text?.Length ?? 0), "WebViewSink");
             }
         }
     }
