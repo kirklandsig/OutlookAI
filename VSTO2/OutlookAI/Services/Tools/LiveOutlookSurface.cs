@@ -401,6 +401,18 @@ namespace OutlookAI.Services.Tools
                 catch (KeyNotFoundException) { }
             });
 
+        // Phase 3a: Explorer-anchored selection. Real implementation lands
+        // in Task 9 once the Explorer ctor parameter is wired. For now
+        // return an empty result so this file compiles.
+        public CurrentSelectionResult GetCurrentSelection(bool includeFullBodies, int maxItems) =>
+            new CurrentSelectionResult
+            {
+                Folder = "",
+                FolderId = "",
+                Count = 0,
+                Messages = new MessageDetail[0],
+            };
+
         // ---------- helpers ----------
 
         private T Run<T>(Func<T> fn) => _marshaller.RunAsync(fn, CancellationToken.None).GetAwaiter().GetResult();

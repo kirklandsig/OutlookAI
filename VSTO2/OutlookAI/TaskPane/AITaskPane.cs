@@ -601,6 +601,8 @@ namespace OutlookAI.TaskPane
             public int CountMessages(SearchMessagesArgs args) => 0;
             public IReadOnlyList<ThreadSummary> ListRecentThreadsWith(string recipientEmail, int maxThreads) => new ThreadSummary[0];
             public CreatedDraft CreateDraft(CreateDraftArgs args) => null;
+            public CurrentSelectionResult GetCurrentSelection(bool includeFullBodies, int maxItems)
+                => new CurrentSelectionResult { Folder = "", FolderId = "", Count = 0, Messages = new MessageDetail[0] };
             public void MarkAsRead(string messageId, bool read) { }
             public void FlagMessage(string messageId, string flag) { }
             public void SetCategory(string messageId, string category) { }

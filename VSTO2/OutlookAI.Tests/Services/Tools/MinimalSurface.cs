@@ -30,5 +30,7 @@ namespace OutlookAI.Tests.Services.Tools
             => throw new System.NotImplementedException();
         public virtual void SetCategory(string messageId, string category)
             => throw new System.NotImplementedException();
+        public virtual CurrentSelectionResult GetCurrentSelection(bool includeFullBodies, int maxItems)
+            => throw new System.NotImplementedException();
     }
 }
