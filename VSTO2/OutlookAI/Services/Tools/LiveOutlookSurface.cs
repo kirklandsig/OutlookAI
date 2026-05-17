@@ -24,6 +24,7 @@ namespace OutlookAI.Services.Tools
         private readonly OutlookThreadMarshaller _marshaller;
         private readonly IdResolver _ids;
         private readonly Outlook.Inspector _composeInspector;
+        private readonly Outlook.Explorer _explorer;     // Phase 3a
         // 32 KB hard cap on body bytes (in characters; close enough for ASCII).
         private const int MaxBodyChars = 32 * 1024;
         private const int MaxFolders = 200;
@@ -35,11 +36,27 @@ namespace OutlookAI.Services.Tools
             OutlookThreadMarshaller marshaller,
             IdResolver ids,
             Outlook.Inspector composeInspector)
+            : this(application, marshaller, ids, composeInspector, explorer: null)
+        {
+        }
+
+        /// <summary>
+        /// Phase 3a overload that accepts an Explorer reference for
+        /// outlook_get_current_selection. Pass null for both when neither
+        /// surface scope applies.
+        /// </summary>
+        public LiveOutlookSurface(
+            Outlook.Application application,
+            OutlookThreadMarshaller marshaller,
+            IdResolver ids,
+            Outlook.Inspector composeInspector,
+            Outlook.Explorer explorer)
         {
             _application = application ?? throw new ArgumentNullException(nameof(application));
             _marshaller = marshaller ?? throw new ArgumentNullException(nameof(marshaller));
             _ids = ids ?? throw new ArgumentNullException(nameof(ids));
-            _composeInspector = composeInspector; // may be null for non-compose contexts
+            _composeInspector = composeInspector;
+            _explorer = explorer;
         }
 
         public ComposeStateResult GetCurrentComposeState(bool includeFullBody) =>
@@ -401,17 +418,105 @@ namespace OutlookAI.Services.Tools
                 catch (KeyNotFoundException) { }
             });
 
-        // Phase 3a: Explorer-anchored selection. Real implementation lands
-        // in Task 9 once the Explorer ctor parameter is wired. For now
-        // return an empty result so this file compiles.
         public CurrentSelectionResult GetCurrentSelection(bool includeFullBodies, int maxItems) =>
-            new CurrentSelectionResult
+            Run(() =>
             {
-                Folder = "",
-                FolderId = "",
-                Count = 0,
-                Messages = new MessageDetail[0],
-            };
+                if (_explorer == null)
+                {
+                    return new CurrentSelectionResult
+                    {
+                        Folder = "",
+                        FolderId = "",
+                        Count = 0,
+                        Messages = new MessageDetail[0],
+                    };
+                }
+
+                string folderName = "";
+                string folderId = "";
+                try
+                {
+                    var folder = _explorer.CurrentFolder;
+                    if (folder != null)
+                    {
+                        folderName = folder.Name ?? "";
+                        folderId = _ids.Shorten(folder.EntryID ?? "");
+                    }
+                }
+                catch (COMException) { }
+
+                var selection = _explorer.Selection;
+                int totalCount = 0;
+                try { totalCount = selection.Count; } catch (COMException) { }
+
+                var picked = new List<MessageDetail>();
+                try
+                {
+                    int taken = 0;
+                    // Outlook Selection is 1-based.
+                    for (int i = 1; i <= totalCount && taken < maxItems; i++)
+                    {
+                        object item = null;
+                        try { item = selection[i]; } catch (COMException) { continue; }
+                        var mi = item as Outlook.MailItem;
+                        if (mi == null) continue;
+
+                        var body = mi.Body ?? "";
+                        bool truncated = false;
+                        if (!includeFullBodies && body.Length > 1000)
+                        {
+                            body = body.Substring(0, 1000);
+                            truncated = true;
+                        }
+                        else if (body.Length > MaxBodyChars)
+                        {
+                            body = body.Substring(0, MaxBodyChars);
+                            truncated = true;
+                        }
+
+                        var atts = new List<AttachmentSummary>();
+                        try
+                        {
+                            foreach (Outlook.Attachment att in mi.Attachments)
+                            {
+                                atts.Add(new AttachmentSummary
+                                {
+                                    Filename = att.FileName,
+                                    SizeBytes = att.Size,
+                                });
+                            }
+                        }
+                        catch (COMException) { }
+
+                        picked.Add(new MessageDetail
+                        {
+                            Id = _ids.Shorten(mi.EntryID ?? ""),
+                            Subject = mi.Subject ?? "",
+                            From = (mi.SenderName ?? "") +
+                                   (string.IsNullOrEmpty(mi.SenderEmailAddress) ? "" :
+                                    " <" + mi.SenderEmailAddress + ">"),
+                            To = SplitAddresses(mi.To),
+                            Cc = SplitAddresses(mi.CC),
+                            ReceivedAt = ToOffset(mi.ReceivedTime),
+                            BodyPlaintext = body,
+                            BodyTruncated = truncated,
+                            Attachments = atts,
+                            InReplyToMessageId = null,
+                            ConversationTopic = mi.ConversationTopic ?? "",
+                        });
+                        taken++;
+                    }
+                }
+                catch (COMException) { }
+
+                return new CurrentSelectionResult
+                {
+                    Folder = folderName,
+                    FolderId = folderId,
+                    Count = totalCount,
+                    Messages = picked,
+                };
+            });
 
         // ---------- helpers ----------
 
