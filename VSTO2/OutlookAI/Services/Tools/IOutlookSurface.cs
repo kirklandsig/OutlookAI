@@ -21,6 +21,12 @@ namespace OutlookAI.Services.Tools
         void MarkAsRead(string messageId, bool read);
         void FlagMessage(string messageId, string flag);
         void SetCategory(string messageId, string category);
+        /// <summary>
+        /// Returns the messages currently selected in the active Explorer.
+        /// Returns empty (Count=0, Messages=empty) when the surface was
+        /// constructed without an Explorer reference (compose-only panes).
+        /// </summary>
+        CurrentSelectionResult GetCurrentSelection(bool includeFullBodies, int maxItems);
     }
 
     public sealed class ComposeStateResult
@@ -129,5 +135,23 @@ namespace OutlookAI.Services.Tools
     {
         public string DraftId { get; set; }
         public string Location { get; set; }
+    }
+
+    /// <summary>
+    /// Phase 3a: result of <see cref="IOutlookSurface.GetCurrentSelection"/>.
+    /// Used by the Inbox Copilot's <c>outlook_get_current_selection</c> tool
+    /// so the model can act on whichever message(s) the user has highlighted
+    /// in the reading pane.
+    /// </summary>
+    public sealed class CurrentSelectionResult
+    {
+        /// <summary>Display name of the currently-active folder (e.g. "Inbox").</summary>
+        public string Folder { get; set; }
+        /// <summary>Stable short-id for the folder; matches outlook_list_folders ids.</summary>
+        public string FolderId { get; set; }
+        /// <summary>Total selection count (may exceed Messages.Count if MaxItems clamped).</summary>
+        public int Count { get; set; }
+        /// <summary>Up to MaxItems selected messages.</summary>
+        public IReadOnlyList<MessageDetail> Messages { get; set; }
     }
 }
