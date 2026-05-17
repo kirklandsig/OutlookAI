@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Threading.Tasks;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
+using OutlookAI.Diagnostics;
 
 namespace OutlookAI.TaskPane.Chat
 {
@@ -46,28 +47,35 @@ namespace OutlookAI.TaskPane.Chat
         {
             if (host == null) throw new ArgumentNullException(nameof(host));
 
+            TraceLog.Write("Bootstrap.InitializeAsync entered", "WebView2Bootstrap");
             EnsureFolders();
+            TraceLog.Write("Folders ensured", "WebView2Bootstrap");
             ExtractEmbeddedWebUi();
+            TraceLog.Write("Embedded WebUI extracted", "WebView2Bootstrap");
 
+            TraceLog.Write(">> CoreWebView2Environment.CreateAsync", "WebView2Bootstrap");
             var env = await CoreWebView2Environment.CreateAsync(
                 browserExecutableFolder: null,
                 userDataFolder: WebView2DataFolder,
                 options: null).ConfigureAwait(true);
+            TraceLog.Write("<< CreateAsync returned", "WebView2Bootstrap");
 
+            TraceLog.Write(">> host.EnsureCoreWebView2Async", "WebView2Bootstrap");
             await host.EnsureCoreWebView2Async(env).ConfigureAwait(true);
+            TraceLog.Write("<< EnsureCoreWebView2Async returned", "WebView2Bootstrap");
 
-            // Lock the surface down: no devtools / status bar / new windows /
-            // context menu so it feels like a native UI rather than a browser.
             host.CoreWebView2.Settings.AreDevToolsEnabled = false;
             host.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
             host.CoreWebView2.Settings.IsStatusBarEnabled = false;
             host.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = false;
             host.CoreWebView2.Settings.IsZoomControlEnabled = false;
+            TraceLog.Write("Settings locked down", "WebView2Bootstrap");
 
             host.CoreWebView2.SetVirtualHostNameToFolderMapping(
                 VirtualHost,
                 WebUiFolder,
                 CoreWebView2HostResourceAccessKind.Allow);
+            TraceLog.Write("Virtual host mapping set", "WebView2Bootstrap");
         }
 
         /// <summary>Returns true if the Evergreen WebView2 runtime is installed on this machine.</summary>

@@ -1,6 +1,7 @@
 ﻿using System;
 using Microsoft.Office.Tools;
 using Outlook = Microsoft.Office.Interop.Outlook;
+using OutlookAI.Diagnostics;
 using OutlookAI.Services;
 using OutlookAI.TaskPane;
 
@@ -16,6 +17,22 @@ namespace OutlookAI
 
         private void ThisAddIn_Startup(object sender, System.EventArgs e)
         {
+            TraceLog.MarkUiThread();
+            TraceLog.Write("ThisAddIn_Startup entered", "ThisAddIn");
+
+            // Catch every unhandled exception that escapes a WinForms event
+            // handler or background task. Helps us see exceptions that would
+            // otherwise be swallowed during this freeze investigation.
+            System.Windows.Forms.Application.ThreadException += (s, ev) =>
+                TraceLog.Write("Application.ThreadException: " + ev.Exception, "GlobalEx");
+            System.AppDomain.CurrentDomain.UnhandledException += (s, ev) =>
+                TraceLog.Write("AppDomain.UnhandledException: " + ev.ExceptionObject, "GlobalEx");
+            System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (s, ev) =>
+            {
+                TraceLog.Write("UnobservedTaskException: " + ev.Exception, "GlobalEx");
+                ev.SetObserved();
+            };
+
             try
             {
                 AuthService = new CodexAuthService(Config.CodexAuthPath);
@@ -30,16 +47,20 @@ namespace OutlookAI
                 // one explicitly so OutlookThreadMarshaller has somewhere to
                 // post.
                 var syncCtx = System.Threading.SynchronizationContext.Current;
+                TraceLog.Write("SynchronizationContext.Current is " + (syncCtx == null ? "NULL" : syncCtx.GetType().FullName), "ThisAddIn");
                 if (syncCtx == null)
                 {
                     syncCtx = new System.Windows.Forms.WindowsFormsSynchronizationContext();
                     System.Threading.SynchronizationContext.SetSynchronizationContext(syncCtx);
+                    TraceLog.Write("Installed new WindowsFormsSynchronizationContext", "ThisAddIn");
                 }
                 OutlookMarshaller = new OutlookThreadMarshaller(syncCtx);
                 IdResolver = new IdResolver();
+                TraceLog.Write("Services initialized OK", "ThisAddIn");
             }
             catch (Exception ex)
             {
+                TraceLog.Write("Startup error: " + ex, "ThisAddIn");
                 System.Diagnostics.Debug.WriteLine("ThisAddIn_Startup error: " + ex);
             }
         }
@@ -60,11 +81,13 @@ namespace OutlookAI
 
         public void ShowTaskPane()
         {
+            using (TraceLog.Scope("ShowTaskPane", "ThisAddIn"))
             try
             {
                 var inspector = this.Application.ActiveInspector();
                 if (inspector == null)
                 {
+                    TraceLog.Write("No active inspector", "ThisAddIn");
                     System.Windows.Forms.MessageBox.Show(
                         "Please open an email first.",
                         "AI Assistant",
@@ -78,6 +101,7 @@ namespace OutlookAI
                 {
                     if (pane.Window == inspector)
                     {
+                        TraceLog.Write("Reusing existing CustomTaskPane (toggling visibility)", "ThisAddIn");
                         // Toggle visibility, reset if showing
                         if (!pane.Visible)
                         {
@@ -89,15 +113,20 @@ namespace OutlookAI
                     }
                 }
 
-                // Create new task pane
+                TraceLog.Write("Creating new AITaskPane", "ThisAddIn");
                 var taskPaneControl = new AITaskPane();
+                TraceLog.Write("AITaskPane constructed; calling Bind", "ThisAddIn");
                 taskPaneControl.Bind(inspector);
+                TraceLog.Write("Bind returned; calling CustomTaskPanes.Add", "ThisAddIn");
                 var customTaskPane = this.CustomTaskPanes.Add(taskPaneControl, "AI Assistant", inspector);
+                TraceLog.Write("CustomTaskPane.Add returned", "ThisAddIn");
                 customTaskPane.Width = 340;
                 customTaskPane.Visible = true;
+                TraceLog.Write("CustomTaskPane.Visible = true", "ThisAddIn");
             }
             catch (Exception ex)
             {
+                TraceLog.Write("ShowTaskPane error: " + ex, "ThisAddIn");
                 System.Windows.Forms.MessageBox.Show(
                     $"Error: {ex.Message}",
                     "AI Assistant",

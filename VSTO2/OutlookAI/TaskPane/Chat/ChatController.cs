@@ -7,6 +7,7 @@ using System.Windows.Forms;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using Newtonsoft.Json.Linq;
+using OutlookAI.Diagnostics;
 using OutlookAI.Services;
 using OutlookAI.Services.Chat;
 using OutlookAI.Services.Tools;
@@ -63,25 +64,34 @@ namespace OutlookAI.TaskPane.Chat
         /// </summary>
         public async Task InitializeAsync()
         {
+            TraceLog.Write(">> InitializeAsync (sync prefix)", "ChatController");
             if (!WebView2Bootstrap.IsRuntimeInstalled())
             {
+                TraceLog.Write("WebView2 runtime NOT installed; showing fallback", "ChatController");
                 ShowFallback("WebView2 runtime not installed.\r\nRun the installer or download:\r\n" +
                              "https://developer.microsoft.com/microsoft-edge/webview2/");
                 return;
             }
+            TraceLog.Write("WebView2 runtime detected; constructing WebView2 control", "ChatController");
 
             _webView = new WebView2 { Dock = DockStyle.Fill };
+            TraceLog.Write("WebView2 control constructed", "ChatController");
             _hostContainer.Controls.Clear();
             _hostContainer.Controls.Add(_webView);
+            TraceLog.Write("WebView2 control added to host container; about to await Bootstrap.InitializeAsync", "ChatController");
 
             try
             {
                 await WebView2Bootstrap.InitializeAsync(_webView);
+                TraceLog.Write("Bootstrap.InitializeAsync awaited OK", "ChatController");
                 _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
+                TraceLog.Write("WebMessageReceived subscribed; navigating", "ChatController");
                 _webView.CoreWebView2.Navigate("https://" + WebView2Bootstrap.VirtualHost + "/index.html");
+                TraceLog.Write("Navigate called", "ChatController");
             }
             catch (Exception ex)
             {
+                TraceLog.Write("InitializeAsync EXCEPTION: " + ex, "ChatController");
                 System.Diagnostics.Debug.WriteLine("ChatController.InitializeAsync: " + ex);
                 ShowFallback("WebView2 failed to initialize: " + ex.Message);
             }
@@ -112,6 +122,7 @@ namespace OutlookAI.TaskPane.Chat
             try
             {
                 var json = e.TryGetWebMessageAsString();
+                TraceLog.Write("WebMessageReceived: " + (json?.Length > 80 ? json.Substring(0, 80) + "..." : json), "ChatController");
                 if (string.IsNullOrEmpty(json)) return;
                 var obj = JObject.Parse(json);
                 var type = (string)obj["type"] ?? "";
@@ -120,6 +131,7 @@ namespace OutlookAI.TaskPane.Chat
             }
             catch (Exception ex)
             {
+                TraceLog.Write("OnWebMessageReceived EXCEPTION: " + ex, "ChatController");
                 System.Diagnostics.Debug.WriteLine("ChatController bridge parse error: " + ex);
             }
         }
@@ -152,19 +164,21 @@ namespace OutlookAI.TaskPane.Chat
 
         private void OnWebViewReady()
         {
+            TraceLog.Write("OnWebViewReady entered", "ChatController");
             _isReady = true;
-            // Push initial theme (Phase 2 - just light for now; respect system
-            // accent in a future task) + context strip from the compose state.
             _ = RunScript("outlookai.applyTheme('light');");
             PushContextStripFromSurface();
+            TraceLog.Write("OnWebViewReady completed", "ChatController");
         }
 
         private void PushContextStripFromSurface()
         {
-            if (_surface == null) return;
+            if (_surface == null) { TraceLog.Write("PushContextStrip: _surface is null", "ChatController"); return; }
             try
             {
+                TraceLog.Write(">> PushContextStrip calling GetCurrentComposeState", "ChatController");
                 var state = _surface.GetCurrentComposeState(includeFullBody: false);
+                TraceLog.Write("<< PushContextStrip GetCurrentComposeState returned", "ChatController");
                 var ctx = new JObject(
                     new JProperty("subject", state?.Subject ?? ""),
                     new JProperty("recipients", new JArray((state?.ToRecipients ?? new string[0]).Take(3))),
@@ -173,6 +187,7 @@ namespace OutlookAI.TaskPane.Chat
             }
             catch (Exception ex)
             {
+                TraceLog.Write("PushContextStrip EXCEPTION: " + ex, "ChatController");
                 System.Diagnostics.Debug.WriteLine("PushContextStrip error: " + ex);
             }
         }

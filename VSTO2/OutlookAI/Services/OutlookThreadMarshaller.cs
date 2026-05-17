@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using OutlookAI.Diagnostics;
 
 namespace OutlookAI.Services
 {
@@ -27,11 +28,13 @@ namespace OutlookAI.Services
             // blocking-wait would deadlock. Invoke synchronously in that case.
             if (IsOnTargetContext())
             {
+                TraceLog.Write("RunAsync reentrant branch (sync invoke)", "Marshaller");
                 var tcsSync = new TaskCompletionSource<bool>();
                 try { action(); tcsSync.TrySetResult(true); }
                 catch (Exception ex) { tcsSync.TrySetException(ex); }
                 return tcsSync.Task;
             }
+            TraceLog.Write("RunAsync posting (off-thread caller)", "Marshaller");
             var tcs = new TaskCompletionSource<bool>();
             _context.Post(_ =>
             {
@@ -52,11 +55,13 @@ namespace OutlookAI.Services
             // See reentrancy comment in the non-generic overload above.
             if (IsOnTargetContext())
             {
+                TraceLog.Write("RunAsync<T> reentrant branch (sync invoke)", "Marshaller");
                 var tcsSync = new TaskCompletionSource<T>();
                 try { tcsSync.TrySetResult(func()); }
                 catch (Exception ex) { tcsSync.TrySetException(ex); }
                 return tcsSync.Task;
             }
+            TraceLog.Write("RunAsync<T> posting (off-thread caller)", "Marshaller");
             var tcs = new TaskCompletionSource<T>();
             _context.Post(_ =>
             {
