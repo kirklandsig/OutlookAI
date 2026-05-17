@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
@@ -16,19 +17,22 @@ namespace OutlookAI.Services.Tools
         {
             ct.ThrowIfCancellationRequested();
             var args = JObject.Parse(argsJson ?? "{}");
-            var query = (string)args["query"];
-            if (string.IsNullOrWhiteSpace(query))
-            {
-                return Task.FromResult(BuildError("invalid_arguments", "query is required"));
-            }
 
+            // Phase 3a: every filter is optional, matching outlook_search_messages.
             var search = new SearchMessagesArgs
             {
-                Query = query,
-                FolderId = (string)args["folder_id"],
-                DateFrom = ParseDate(args["date_from"]),
-                DateTo = ParseDate(args["date_to"]),
-                MaxResults = int.MaxValue,
+                Query           = (string)args["query"],
+                From            = (string)args["from"],
+                SubjectContains = (string)args["subject_contains"],
+                BodyContains    = (string)args["body_contains"],
+                HasAttachment   = args["has_attachment"] != null ? (bool?)(bool)args["has_attachment"] : null,
+                IsUnread        = args["is_unread"]      != null ? (bool?)(bool)args["is_unread"]      : null,
+                IsFlagged       = args["is_flagged"]     != null ? (bool?)(bool)args["is_flagged"]     : null,
+                Importance      = (string)args["importance"],
+                FolderId        = (string)args["folder_id"],
+                DateFrom        = ParseDate(args["date_from"]),
+                DateTo          = ParseDate(args["date_to"]),
+                MaxResults      = int.MaxValue,
             };
             var count = surface.CountMessages(search);
             var json = new JObject(new JProperty("count", count));
@@ -39,7 +43,11 @@ namespace OutlookAI.Services.Tools
         {
             if (token == null || token.Type == JTokenType.Null) return null;
             DateTimeOffset value;
-            return DateTimeOffset.TryParse((string)token, out value) ? value : (DateTimeOffset?)null;
+            return DateTimeOffset.TryParse(
+                (string)token,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                out value) ? value : (DateTimeOffset?)null;
         }
 
         private static string BuildError(string code, string message)
