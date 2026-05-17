@@ -15,6 +15,11 @@
       <div class="context-line context-thread" id="ctxThread"></div>
     </div>
     <div id="messages" class="messages" role="log" aria-live="polite"></div>
+    <!-- Quick-action chip row (Phase 3a). Populated by C# via
+         outlookai.setQuickActions(); collapses to zero height when empty
+         (so the compose pane, which never calls setQuickActions, looks
+         unchanged from Phase 2). -->
+    <div id="quickActions" class="quick-actions"></div>
     <div id="composer" class="composer">
       <textarea id="composerInput"
                 class="composer-input"
