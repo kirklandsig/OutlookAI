@@ -52,6 +52,20 @@ namespace OutlookAI.TaskPane.InboxCopilot
             }
 
             sb.AppendLine();
+            sb.AppendLine("Tips for searching:");
+            sb.AppendLine("- Always translate the user's words into the structured fields of");
+            sb.AppendLine("  outlook_search_messages / outlook_count_messages. Do NOT pass an");
+            sb.AppendLine("  empty argument object - that returns the newest 25 messages in the");
+            sb.AppendLine("  folder, which is almost never what the user wanted.");
+            sb.AppendLine("- Sender names go in 'from', not 'query'.");
+            sb.AppendLine("- Dates go in 'date_from' / 'date_to' as ISO-8601 UTC. 'Before 2020'");
+            sb.AppendLine("  is date_to=2020-01-01T00:00:00Z. 'Last week' is date_from = today");
+            sb.AppendLine("  minus 7 days. 'This year' is date_from = Jan 1 of current year.");
+            sb.AppendLine("- A single keyword the user wants to find ('EIN', 'invoice number',");
+            sb.AppendLine("  'contract') goes in 'query' or 'body_contains'.");
+            sb.AppendLine("- After search, call outlook_read_message on the best-matching id to");
+            sb.AppendLine("  get the full body before answering.");
+            sb.AppendLine();
             sb.AppendLine("Reply concisely; the user is busy.");
             return sb.ToString();
         }

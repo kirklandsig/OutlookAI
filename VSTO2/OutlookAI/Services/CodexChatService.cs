@@ -103,6 +103,15 @@ namespace OutlookAI.Services
                 var status = _auth.GetStatus();
                 var assistantText = new StringBuilder();
                 var pendingCalls = new List<JObject>();
+                // Codex Responses API streams function-call arguments via
+                // multiple 'response.function_call_arguments.delta' events
+                // AFTER the initial 'response.output_item.added' (which
+                // carries arguments=""). We must accumulate deltas into the
+                // same JObject the dispatch step reads from. Key: the
+                // item's 'id' field (NOT the call_id, which the deltas don't
+                // reference). pendingCalls holds the SAME JObject refs, so
+                // mutating arguments here updates what dispatch sees.
+                var pendingByItemId = new Dictionary<string, JObject>(StringComparer.Ordinal);
                 bool roundCancelled = false;
 
                 try
@@ -155,6 +164,24 @@ namespace OutlookAI.Services
                                 {
                                     var item = (JObject)evt["item"];
                                     pendingCalls.Add(item);
+                                    // Register in the item-id-keyed dict so
+                                    // subsequent arguments.delta /
+                                    // arguments.done / output_item.done events
+                                    // can mutate the SAME JObject the dispatch
+                                    // step will read from.
+                                    var itemId = (string)item["id"];
+                                    if (!string.IsNullOrEmpty(itemId))
+                                    {
+                                        pendingByItemId[itemId] = item;
+                                    }
+                                    // Ensure arguments is at least the empty
+                                    // string so the delta append below never
+                                    // hits a null when prefixing.
+                                    if (item["arguments"] == null
+                                        || item["arguments"].Type == JTokenType.Null)
+                                    {
+                                        item["arguments"] = "";
+                                    }
                                     // The Codex Responses API uses 'call_id' as
                                     // the cross-reference between a function_call
                                     // item and its function_call_output. The
@@ -170,6 +197,88 @@ namespace OutlookAI.Services
                                         resolvedCallId,
                                         (string)item["name"] ?? "",
                                         (string)item["arguments"] ?? "");
+                                }
+                                else if (type == "response.function_call_arguments.delta")
+                                {
+                                    // Per OpenAI Responses API streaming spec,
+                                    // each delta event carries 'item_id' (the
+                                    // function_call item's 'id') and 'delta'
+                                    // (a fragment of the arguments JSON
+                                    // string). Concatenate in order onto the
+                                    // tracked JObject so dispatch sees the
+                                    // fully-assembled args. Pre-fix, these
+                                    // events were ignored entirely, producing
+                                    // empty args on every dispatch -- the
+                                    // root cause of the Inbox Copilot
+                                    // "always returns the top Uber email"
+                                    // bug (22 retries, all with args="").
+                                    var itemId = (string)evt["item_id"];
+                                    var delta = (string)evt["delta"];
+                                    if (!string.IsNullOrEmpty(itemId)
+                                        && pendingByItemId.TryGetValue(itemId, out var pending))
+                                    {
+                                        var current = (string)pending["arguments"] ?? "";
+                                        pending["arguments"] = current + (delta ?? "");
+                                    }
+                                }
+                                else if (type == "response.function_call_arguments.done")
+                                {
+                                    // The .done event delivers the canonical
+                                    // fully-assembled arguments string. Use
+                                    // it to override any accumulated deltas
+                                    // (belt-and-suspenders for dropped or
+                                    // reordered chunks).
+                                    var itemId = (string)evt["item_id"];
+                                    var finalArgs = (string)evt["arguments"];
+                                    if (!string.IsNullOrEmpty(itemId)
+                                        && !string.IsNullOrEmpty(finalArgs)
+                                        && pendingByItemId.TryGetValue(itemId, out var pending))
+                                    {
+                                        pending["arguments"] = finalArgs;
+                                    }
+                                }
+                                else if (type == "response.output_item.done"
+                                         && (string)evt["item"]?["type"] == "function_call")
+                                {
+                                    // Some Codex streaming variants emit only
+                                    // output_item.done with the fully-assembled
+                                    // item (skipping per-delta events). Treat
+                                    // its arguments field as authoritative.
+                                    // Also handles the case where we never
+                                    // saw output_item.added (very rare).
+                                    var item = (JObject)evt["item"];
+                                    var itemId = (string)item["id"];
+                                    var finalArgs = (string)item["arguments"];
+                                    if (!string.IsNullOrEmpty(itemId))
+                                    {
+                                        if (pendingByItemId.TryGetValue(itemId, out var pending))
+                                        {
+                                            if (!string.IsNullOrEmpty(finalArgs))
+                                            {
+                                                pending["arguments"] = finalArgs;
+                                            }
+                                        }
+                                        else
+                                        {
+                                            // We never saw output_item.added
+                                            // for this item; register it now.
+                                            pendingByItemId[itemId] = item;
+                                            pendingCalls.Add(item);
+                                            if (item["arguments"] == null
+                                                || item["arguments"].Type == JTokenType.Null)
+                                            {
+                                                item["arguments"] = "";
+                                            }
+                                            var resolvedCallId =
+                                                (string)item["call_id"]
+                                                ?? (string)item["id"]
+                                                ?? "";
+                                            sink.OnToolCallStart(
+                                                resolvedCallId,
+                                                (string)item["name"] ?? "",
+                                                (string)item["arguments"] ?? "");
+                                        }
+                                    }
                                 }
                                     else if (type == "response.completed")
                                     {
@@ -277,6 +386,19 @@ namespace OutlookAI.Services
             // Prefer 'call_id'; fall back to 'id' for older SSE shapes (and
             // for existing test fixtures that still use 'id').
             var callId = (string)call["call_id"] ?? (string)call["id"] ?? "";
+            // Diagnostic: log resolved args AT DISPATCH TIME (after delta
+            // accumulation completed). The earlier WebViewSink.OnToolCallStart
+            // log fires at output_item.added time when args are still empty
+            // for the real Codex streaming shape -- not useful for debugging
+            // what the tool actually received. Truncate to keep traces small.
+            try
+            {
+                OutlookAI.Diagnostics.TraceLog.Write(
+                    "Dispatch " + name + " call_id=" + callId
+                    + " args=" + (args.Length > 200 ? args.Substring(0, 200) + "..." : args),
+                    "CodexChat");
+            }
+            catch { /* tracing must never break dispatch */ }
             string outputJson;
             bool ok = true;
             try
