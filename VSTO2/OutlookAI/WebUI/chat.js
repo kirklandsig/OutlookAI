@@ -34,6 +34,7 @@
   var $ctxSubject = document.getElementById('ctxSubject');
   var $ctxRecipients = document.getElementById('ctxRecipients');
   var $ctxThread = document.getElementById('ctxThread');
+  var $quickActions = document.getElementById('quickActions');
 
   // -- Bridge to host ----------------------------------------------
   function postToHost(obj) {
@@ -317,10 +318,54 @@
 
     setContextStrip: function(ctx) {
       ctx = ctx || {};
+      // Phase 3a: support two shapes of context.
+      //   Inbox shape:    { folder, unread_count, total_count, selection? }
+      //   Compose shape:  { subject, recipients, thread }
+      // Disambiguate by checking for ctx.folder.
+      if (ctx.folder !== undefined) {
+        var unread = (ctx.unread_count != null) ? (' (' + ctx.unread_count + ' unread)') : '';
+        $ctxSubject.textContent = 'In: ' + ctx.folder + unread;
+        if (ctx.selection && ctx.selection.count > 0) {
+          if (ctx.selection.count === 1) {
+            $ctxRecipients.textContent = 'Selected: ' + (ctx.selection.subject || '') +
+              (ctx.selection.from ? (' \u2014 ' + ctx.selection.from) : '');
+          } else {
+            $ctxRecipients.textContent = 'Selected: ' + ctx.selection.count + ' messages';
+          }
+        } else {
+          $ctxRecipients.textContent = '';
+        }
+        $ctxThread.textContent = '';
+        return;
+      }
+      // Compose shape (Phase 2 behaviour unchanged).
       $ctxSubject.textContent = ctx.subject ? ('Re: ' + ctx.subject) : 'New email';
       var recipients = (ctx.recipients || []).join(', ');
       $ctxRecipients.textContent = recipients ? ('To: ' + recipients) : '';
       $ctxThread.textContent = ctx.thread || '';
+    },
+
+    /**
+     * Render the row of quick-action chips above the composer. Each chip
+     * is { label, prompt }. Clicking a chip pre-fills the textarea with
+     * the prompt AND immediately sends (auto-send per the Phase 3a spec).
+     * Calling with [] empties the row.
+     */
+    setQuickActions: function(chips) {
+      if (!$quickActions) return;
+      while ($quickActions.firstChild) $quickActions.removeChild($quickActions.firstChild);
+      (chips || []).forEach(function(chip) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'qa-chip';
+        btn.textContent = chip.label;
+        btn.title = chip.prompt;
+        btn.addEventListener('click', function() {
+          $input.value = chip.prompt;
+          sendInput();
+        });
+        $quickActions.appendChild(btn);
+      });
     },
 
     /**

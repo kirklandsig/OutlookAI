@@ -247,6 +247,39 @@ html, body {
   margin-right: 4px;
 }
 
+/* ---- Quick-action chips (Phase 3a) ---- */
+.quick-actions {
+  flex: 0 0 auto;
+  padding: 6px 10px 0 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+}
+.quick-actions:empty {
+  padding: 0;
+  border-top: none;
+}
+.qa-chip {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 4px 10px;
+  background: var(--tool-bg);
+  color: var(--text);
+  font: 12px var(--font-stack);
+  cursor: pointer;
+}
+.qa-chip:hover {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+.qa-chip:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
 /* ---- Composer ---- */
 .composer {
   flex: 0 0 auto;
