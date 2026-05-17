@@ -167,8 +167,32 @@ namespace OutlookAI.TaskPane.Chat
             TraceLog.Write("OnWebViewReady entered", "ChatController");
             _isReady = true;
             _ = RunScript("outlookai.applyTheme('light');");
+            PushReasoningOptions();
             PushContextStripFromSurface();
             TraceLog.Write("OnWebViewReady completed", "ChatController");
+        }
+
+        /// <summary>
+        /// Push the model-aware reasoning-effort options to the WebUI.
+        /// Computed from Config.ReasoningEffortsForModel(Config.Model) so the
+        /// dropdown matches what the current model actually accepts (e.g.
+        /// gpt-5.5 rejects 'minimal'; gpt-4.1-mini accepts only 'none').
+        /// </summary>
+        private void PushReasoningOptions()
+        {
+            try
+            {
+                var efforts = Config.ReasoningEffortsForModel(Config.Model);
+                var arr = new JArray();
+                foreach (var e in efforts) arr.Add(e);
+                TraceLog.Write("Push reasoning options for " + Config.Model + ": " + string.Join(",", efforts), "ChatController");
+                _ = RunScript("outlookai.setReasoningOptions(" +
+                    arr.ToString(Newtonsoft.Json.Formatting.None) + ", '');");
+            }
+            catch (Exception ex)
+            {
+                TraceLog.Write("PushReasoningOptions error: " + ex.Message, "ChatController");
+            }
         }
 
         private void PushContextStripFromSurface()

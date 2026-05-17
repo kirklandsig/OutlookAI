@@ -359,11 +359,26 @@ namespace OutlookAI.Services
             var effort = !string.IsNullOrEmpty(context.ReasoningEffortOverride)
                 ? context.ReasoningEffortOverride
                 : Config.ReasoningEffort;
+            string wireEffort = null;
             if (!string.IsNullOrEmpty(effort)
                 && !string.Equals(effort, "None", StringComparison.OrdinalIgnoreCase))
             {
-                reasoning = new JObject(new JProperty("effort", effort.ToLowerInvariant()));
+                wireEffort = effort.ToLowerInvariant();
+                reasoning = new JObject(new JProperty("effort", wireEffort));
             }
+            // One-line trace so we can verify end-to-end what reached the
+            // wire on each turn (UI dropdown selection -> override -> wire).
+            try
+            {
+                OutlookAI.Diagnostics.TraceLog.Write(
+                    "BuildRunTurnRequest: model=" + Config.Model
+                    + " override=" + (context.ReasoningEffortOverride ?? "<null>")
+                    + " globalDefault=" + Config.ReasoningEffort
+                    + " resolved=" + (effort ?? "<null>")
+                    + " wire=" + (wireEffort ?? "<omitted>"),
+                    "CodexChat");
+            }
+            catch { /* tracing must never break the request */ }
 
             return new JObject(
                 new JProperty("model", Config.Model),

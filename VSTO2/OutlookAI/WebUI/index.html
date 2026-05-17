@@ -25,11 +25,9 @@
         <select id="reasoningSelect"
                 class="reasoning-select"
                 aria-label="Reasoning effort">
+          <!-- Populated by C# via outlookai.setReasoningOptions() once
+               the WebView is ready and Config.Model is known. -->
           <option value="">(default)</option>
-          <option value="Minimal">Minimal</option>
-          <option value="Low">Low</option>
-          <option value="Medium">Medium</option>
-          <option value="High">High</option>
         </select>
         <button id="btnSend" class="btn btn-primary" type="button">Send</button>
         <button id="btnStop" class="btn btn-secondary" type="button" hidden>Stop</button>

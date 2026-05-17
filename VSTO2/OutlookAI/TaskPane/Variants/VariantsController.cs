@@ -117,8 +117,19 @@ namespace OutlookAI.TaskPane.Variants
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 Font = new Font("Segoe UI", 9F)
             };
-            _cmbReasoning.Items.AddRange(new object[] { "", "Minimal", "Low", "Medium", "High" });
-            _cmbReasoning.SelectedIndex = 0;
+            // Populate the model-aware effort enum: rejects 'Minimal' on
+            // gpt-5.5, includes 'XHigh' when supported, etc.
+            // Leading "" is "(default)" - inherit Config.ReasoningEffort.
+            _cmbReasoning.Items.Add(""); // "(default)" placeholder
+            foreach (var effort in Config.ReasoningEffortsForModel(Config.Model))
+            {
+                _cmbReasoning.Items.Add(effort);
+            }
+            // Variants is a drafting task that rarely benefits from heavy
+            // reasoning; default the dropdown to 'Low' (if supported) to
+            // keep latency reasonable. Falls back to "(default)" otherwise.
+            int lowIdx = _cmbReasoning.Items.IndexOf("Low");
+            _cmbReasoning.SelectedIndex = lowIdx >= 0 ? lowIdx : 0;
 
             _btnGenerate = new Button
             {

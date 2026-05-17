@@ -78,6 +78,84 @@ namespace OutlookAI.Tests.Services
         }
 
         /// <summary>
+        /// Wire-format test: ReasoningEffortOverride value end-to-end ->
+        /// request body's reasoning.effort field. Locks the
+        /// dropdown-value-to-API-value contract.
+        /// </summary>
+        [Theory]
+        [InlineData("Low",     "\"effort\":\"low\"")]
+        [InlineData("Medium",  "\"effort\":\"medium\"")]
+        [InlineData("High",    "\"effort\":\"high\"")]
+        [InlineData("XHigh",   "\"effort\":\"xhigh\"")]
+        [InlineData("Minimal", "\"effort\":\"minimal\"")]
+        public async Task RunTurnAsync_PerTurnEffortOverride_LowercasedOnWire(string uiValue, string expectedJson)
+        {
+            var fixt = MakeAuth();
+            var fake = new FakeHttpMessageHandler();
+            fake.QueueSse(HttpStatusCode.OK,
+                "data: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n"
+                + "data: {\"type\":\"response.completed\"}\n\n");
+            try
+            {
+                using (fixt.AuthHttp)
+                using (fixt.Auth)
+                using (var chatHttp = new HttpClient(fake))
+                using (var chat = new CodexChatService(fixt.Auth, chatHttp))
+                {
+                    var ctx = new ConversationContext
+                    {
+                        SystemInstructions = "test",
+                        ReasoningEffortOverride = uiValue
+                    };
+                    await chat.RunTurnAsync(ctx, "hi", new FakeToolHost(), new CapturingChatEventSink(), CancellationToken.None);
+                    var body = fake.RequestBodies[0];
+                    Assert.Contains(expectedJson, body);
+                    // The full reasoning object should be present, not null.
+                    Assert.Contains("\"reasoning\":{", body);
+                }
+            }
+            finally { try { Directory.Delete(fixt.TmpDir, recursive: true); } catch { } }
+        }
+
+        /// <summary>
+        /// When override is "None" (or null and Config.ReasoningEffort is
+        /// "None"), the wire body sends "reasoning":null - no effort key.
+        /// </summary>
+        [Theory]
+        [InlineData("None")]
+        [InlineData(null)]
+        public async Task RunTurnAsync_NoneEffort_OmitsReasoningField(string uiValue)
+        {
+            var fixt = MakeAuth();
+            var fake = new FakeHttpMessageHandler();
+            fake.QueueSse(HttpStatusCode.OK,
+                "data: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n"
+                + "data: {\"type\":\"response.completed\"}\n\n");
+            // Config.ReasoningEffort defaults to "None"; explicitly reset
+            // so the test doesn't pick up state from another test.
+            Config.ResetDefaults();
+            try
+            {
+                using (fixt.AuthHttp)
+                using (fixt.Auth)
+                using (var chatHttp = new HttpClient(fake))
+                using (var chat = new CodexChatService(fixt.Auth, chatHttp))
+                {
+                    var ctx = new ConversationContext
+                    {
+                        SystemInstructions = "test",
+                        ReasoningEffortOverride = uiValue
+                    };
+                    await chat.RunTurnAsync(ctx, "hi", new FakeToolHost(), new CapturingChatEventSink(), CancellationToken.None);
+                    var body = fake.RequestBodies[0];
+                    Assert.Contains("\"reasoning\":null", body);
+                    Assert.DoesNotContain("\"effort\":", body);
+                }
+            }
+            finally { try { Directory.Delete(fixt.TmpDir, recursive: true); } catch { } }
+        }
+
+        /// <summary>
         /// Regression for the production Variants failure 'Missing required
         /// parameter: input[1].call_id'. The real Codex SSE event puts the
         /// cross-reference identifier in 'call_id', not 'id'. The marshaller
