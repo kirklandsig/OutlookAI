@@ -292,6 +292,7 @@
     <Compile Include="Services\OutlookToolHost.cs" />
     <Compile Include="Services\RealtimeVoiceService.cs" />
     <Compile Include="Services\ToolDispatcher.cs" />
+    <Compile Include="Services\Tools\IAdvancedSearchHost.cs" />
     <Compile Include="Services\Tools\IFolderClassifier.cs" />
     <Compile Include="Services\Tools\IOutlookSurface.cs" />
     <Compile Include="Services\Tools\IOutlookTool.cs" />
