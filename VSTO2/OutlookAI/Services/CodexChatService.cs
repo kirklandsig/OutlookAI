@@ -395,7 +395,7 @@ namespace OutlookAI.Services
             {
                 OutlookAI.Diagnostics.TraceLog.Write(
                     "Dispatch " + name + " call_id=" + callId
-                    + " args=" + (args.Length > 200 ? args.Substring(0, 200) + "..." : args),
+                    + " args=" + FormatTraceArgs(args),
                     "CodexChat");
             }
             catch { /* tracing must never break dispatch */ }
@@ -445,6 +445,15 @@ namespace OutlookAI.Services
         {
             public JObject FunctionCall;
             public JObject FunctionCallOutput;
+        }
+
+        internal static string FormatTraceArgs(string args)
+        {
+            if (string.IsNullOrEmpty(args)) return args ?? "";
+            const int maxTraceArgs = 500;
+            return args.Length > maxTraceArgs
+                ? args.Substring(0, maxTraceArgs) + "..."
+                : args;
         }
 
         private static bool LooksLikeErrorEnvelope(string outputJson)
