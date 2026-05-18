@@ -133,5 +133,56 @@ namespace OutlookAI.Tests.Services.Tools
             Assert.NotNull(props["read_status"]);
             Assert.Null(props["is_unread"]);
         }
+
+        [Fact]
+        public void ReadMessages_Schema_HasIdsArrayAndBodyToggle()
+        {
+            var tools = ToolCatalogSchema.BuildResponsesToolsArray(includeWriteTools: false);
+            var tool = FindTool(tools, "outlook_read_messages");
+            Assert.NotNull(tool);
+            var props = (JObject)tool["parameters"]["properties"];
+
+            Assert.NotNull(props["ids"]);
+            Assert.Equal("array", (string)props["ids"]["type"]);
+            Assert.NotNull(props["include_body"]);
+            Assert.Equal("boolean", (string)props["include_body"]["type"]);
+            Assert.NotNull(props["max_items"]);
+        }
+
+        [Fact]
+        public void ReadMessages_Description_HintsAtUseInsteadOfManyReadCalls()
+        {
+            var tools = ToolCatalogSchema.BuildResponsesToolsArray(includeWriteTools: false);
+            var tool = FindTool(tools, "outlook_read_messages");
+            var desc = (string)tool["description"] ?? "";
+            Assert.Contains("read_message", desc, System.StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void AggregateMessages_Schema_HasGroupByEnumAndTopN()
+        {
+            var tools = ToolCatalogSchema.BuildResponsesToolsArray(includeWriteTools: false);
+            var tool = FindTool(tools, "outlook_aggregate_messages");
+            Assert.NotNull(tool);
+            var props = (JObject)tool["parameters"]["properties"];
+
+            Assert.NotNull(props["group_by"]);
+            var groupByEnum = props["group_by"]["enum"] as JArray;
+            Assert.NotNull(groupByEnum);
+            var enumValues = groupByEnum.Select(t => (string)t).ToArray();
+            Assert.Contains("sender", enumValues);
+            Assert.Contains("day", enumValues);
+            Assert.Contains("folder", enumValues);
+            Assert.NotNull(props["top_n"]);
+        }
+
+        [Fact]
+        public void AggregateMessages_Description_HintsAtUseInsteadOfManyCountCalls()
+        {
+            var tools = ToolCatalogSchema.BuildResponsesToolsArray(includeWriteTools: false);
+            var tool = FindTool(tools, "outlook_aggregate_messages");
+            var desc = (string)tool["description"] ?? "";
+            Assert.Contains("count", desc, System.StringComparison.OrdinalIgnoreCase);
+        }
     }
 }
