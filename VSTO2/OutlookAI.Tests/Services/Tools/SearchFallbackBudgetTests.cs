@@ -12,38 +12,34 @@ namespace OutlookAI.Tests.Services.Tools
     public class SearchFallbackBudgetTests
     {
         [Fact]
-        public void PerFolderItems_MaxResults1_ReturnsAtLeastFive()
+        public void PerFolderItems_MaxResults1_ReturnsOne()
         {
+            // For "oldest email" with MaxResults=1, taking ONE oldest item
+            // per folder is exactly right. The global sort across folders
+            // picks the absolute oldest. Anything > 1 is wasted property
+            // access at ~100-300ms per item.
             var args = new SearchMessagesArgs { MaxResults = 1 };
-            var limit = SearchFallbackBudget.PerFolderItems(args);
-            Assert.True(limit >= 5);
-            // Tight upper bound: we don't want to scan thousands of items
-            // per folder just because the user asked for one result.
-            Assert.True(limit <= 20);
+            Assert.Equal(1, SearchFallbackBudget.PerFolderItems(args));
         }
 
         [Fact]
-        public void PerFolderItems_MaxResults25_BoundedAround125()
+        public void PerFolderItems_MaxResults25_Returns25()
         {
             var args = new SearchMessagesArgs { MaxResults = 25 };
-            var limit = SearchFallbackBudget.PerFolderItems(args);
-            Assert.True(limit >= 25);
-            Assert.True(limit <= 250);
+            Assert.Equal(25, SearchFallbackBudget.PerFolderItems(args));
         }
 
         [Fact]
-        public void PerFolderItems_NullArgs_ReturnsSafeDefault()
+        public void PerFolderItems_NullArgs_ReturnsOne()
         {
-            var limit = SearchFallbackBudget.PerFolderItems(null);
-            Assert.True(limit >= 5);
-            Assert.True(limit <= 50);
+            Assert.Equal(1, SearchFallbackBudget.PerFolderItems(null));
         }
 
         [Fact]
-        public void PerFolderItems_ZeroOrNegativeMaxResults_ReturnsFloor()
+        public void PerFolderItems_ZeroOrNegativeMaxResults_ReturnsOne()
         {
-            Assert.Equal(5, SearchFallbackBudget.PerFolderItems(new SearchMessagesArgs { MaxResults = 0 }));
-            Assert.Equal(5, SearchFallbackBudget.PerFolderItems(new SearchMessagesArgs { MaxResults = -10 }));
+            Assert.Equal(1, SearchFallbackBudget.PerFolderItems(new SearchMessagesArgs { MaxResults = 0 }));
+            Assert.Equal(1, SearchFallbackBudget.PerFolderItems(new SearchMessagesArgs { MaxResults = -10 }));
         }
 
         [Fact]

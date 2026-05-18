@@ -164,48 +164,70 @@ namespace OutlookAI.Services.Tools
             var filter = BuildRestrictFilter(args);
             var scopeMode = (args.Scope ?? "auto").Trim().ToLowerInvariant();
 
-            // Step 1: resolve scope on UI thread.
-            SearchScope scope;
-            try
+            // For all_mail / auto without an explicit folder, skip the
+            // AdvancedSearch primary path entirely. Application.AdvancedSearch
+            // empirically throws COMException("Sorry, something went wrong")
+            // on multi-store scopes, and building the multi-store scope
+            // costs ~10 seconds of UI-thread enumeration that the fallback
+            // would have to redo anyway. AdvancedSearch stays the right
+            // tool for narrow scopes (specific folder); for all-mail it
+            // is pure waste.
+            bool useAdvancedSearch =
+                !string.IsNullOrEmpty(args.FolderId) ||
+                scopeMode == "current_folder";
+
+            if (useAdvancedSearch)
             {
-                scope = _marshaller.RunAsync(() => BuildSearchScope(args, scopeMode, ct), ct).GetAwaiter().GetResult();
+                // Step 1: resolve scope on UI thread.
+                SearchScope scope;
+                try
+                {
+                    scope = _marshaller.RunAsync(() => BuildSearchScope(args, scopeMode, ct), ct).GetAwaiter().GetResult();
+                }
+                catch (OperationCanceledException) { throw; }
+
+                OutlookAI.Diagnostics.TraceLog.Write(
+                    "SearchMessages primary=AdvancedSearch start scope_paths=" + (scope.ResolvedFolderPaths?.Count ?? 0)
+                    + " sub=" + scope.SearchSubFolders + " filter=" + (string.IsNullOrEmpty(filter) ? "<none>" : filter),
+                    "LiveOutlookSurface");
+
+                // Step 2: try AdvancedSearch.
+                AdvancedSearchResult primary;
+                try
+                {
+                    primary = _runner.RunAsync(scope.ScopeString, filter, scope.SearchSubFolders, _searchTimeout, ct)
+                        .GetAwaiter().GetResult();
+                }
+                catch (OperationCanceledException) { throw; }
+
+                if (primary.Cancelled)
+                {
+                    OutlookAI.Diagnostics.TraceLog.Write("SearchMessages primary cancelled by user", "LiveOutlookSurface");
+                    throw new OperationCanceledException(ct);
+                }
+
+                if (primary.Completed && primary.Items != null)
+                {
+                    OutlookAI.Diagnostics.TraceLog.Write(
+                        "SearchMessages primary=AdvancedSearch complete raw_count=" + primary.Items.Count,
+                        "LiveOutlookSurface");
+                    return _marshaller.RunAsync(
+                        () => SearchResultProjector.Project(primary.Items, args, _classifier),
+                        ct).GetAwaiter().GetResult();
+                }
+
+                var reason = primary.TimedOut ? "timeout" :
+                             primary.Error != null ? "com:" + primary.Error.GetType().Name :
+                             "null_results";
+                OutlookAI.Diagnostics.TraceLog.Write("SearchMessages fallback reason=" + reason, "LiveOutlookSurface");
             }
-            catch (OperationCanceledException) { throw; }
-
-            OutlookAI.Diagnostics.TraceLog.Write(
-                "SearchMessages primary=AdvancedSearch start scope_paths=" + (scope.ResolvedFolderPaths?.Count ?? 0)
-                + " sub=" + scope.SearchSubFolders + " filter=" + (string.IsNullOrEmpty(filter) ? "<none>" : filter),
-                "LiveOutlookSurface");
-
-            // Step 2: try AdvancedSearch.
-            AdvancedSearchResult primary;
-            try
-            {
-                primary = _runner.RunAsync(scope.ScopeString, filter, scope.SearchSubFolders, _searchTimeout, ct)
-                    .GetAwaiter().GetResult();
-            }
-            catch (OperationCanceledException) { throw; }
-
-            if (primary.Cancelled)
-            {
-                OutlookAI.Diagnostics.TraceLog.Write("SearchMessages primary cancelled by user", "LiveOutlookSurface");
-                throw new OperationCanceledException(ct);
-            }
-
-            if (primary.Completed && primary.Items != null)
+            else
             {
                 OutlookAI.Diagnostics.TraceLog.Write(
-                    "SearchMessages primary=AdvancedSearch complete raw_count=" + primary.Items.Count,
+                    "SearchMessages skipping primary=AdvancedSearch (scope=" + scopeMode + " multi-store fallback path)",
                     "LiveOutlookSurface");
-                return _marshaller.RunAsync(
-                    () => SearchResultProjector.Project(primary.Items, args, _classifier),
-                    ct).GetAwaiter().GetResult();
             }
 
-            var reason = primary.TimedOut ? "timeout" :
-                         primary.Error != null ? "com:" + primary.Error.GetType().Name :
-                         "null_results";
-            OutlookAI.Diagnostics.TraceLog.Write("SearchMessages fallback reason=" + reason, "LiveOutlookSurface");
             return FallbackIterativeSearch(args, filter, scopeMode, ct);
         }
 
