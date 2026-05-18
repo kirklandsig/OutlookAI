@@ -295,6 +295,8 @@
     <Compile Include="Services\Tools\IFolderClassifier.cs" />
     <Compile Include="Services\Tools\IOutlookSurface.cs" />
     <Compile Include="Services\Tools\IOutlookTool.cs" />
+    <Compile Include="Services\Tools\MessageProjectionInput.cs" />
+    <Compile Include="Services\Tools\SearchResultProjector.cs" />
     <Compile Include="Services\Tools\LiveOutlookSurface.cs" />
     <Compile Include="Services\Tools\OutlookCountMessagesTool.cs" />
     <Compile Include="Services\Tools\OutlookCreateDraftTool.cs" />
