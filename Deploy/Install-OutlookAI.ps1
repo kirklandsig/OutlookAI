@@ -491,6 +491,29 @@ foreach ($path in @($addinPath, $addinPath32)) {
     Set-ItemProperty -Path $path -Name "LoadBehavior" -Value 3 -Type DWord
     Set-ItemProperty -Path $path -Name "Manifest"     -Value $manifestPath
 }
+
+# Prevent Outlook's resiliency detector from auto-disabling OutlookAI
+# when a single long operation (e.g. outlook_count_messages on a
+# 200-folder mailbox, or a long-running search) takes too much UI-thread
+# time. Outlook normally watches add-in event handlers and ribbon click
+# response times, and if cumulative latency crosses a threshold it pops
+# the "this add-in is slow" prompt + can move the add-in to disabled.
+# Setting a DWORD value with the add-in's name under
+# Outlook\Resiliency\DoNotDisableAddinList = 1 tells Outlook this add-in
+# is sanctioned and must remain enabled regardless of measured slowness.
+# Reference:
+#   https://learn.microsoft.com/en-us/visualstudio/vsto/how-to-prevent-the-disabling-of-an-office-solution
+$resiliencyPath = "HKLM:\SOFTWARE\Microsoft\Office\16.0\Outlook\Resiliency\DoNotDisableAddinList"
+try {
+    if (!(Test-Path $resiliencyPath)) {
+        New-Item -Path $resiliencyPath -Force | Out-Null
+    }
+    Set-ItemProperty -Path $resiliencyPath -Name "OutlookAI" -Value 1 -Type DWord
+    Write-Host "  Registered OutlookAI in DoNotDisableAddinList (auto-disable protected)." -ForegroundColor Gray
+} catch {
+    Write-Host ("  Could not set DoNotDisableAddinList: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+}
+
 Write-Host "  Done." -ForegroundColor Green
 
 # --- 10. Default user profile auto-load ----------------------------------
