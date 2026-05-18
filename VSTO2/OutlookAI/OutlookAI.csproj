@@ -292,6 +292,8 @@
     <Compile Include="Services\OutlookToolHost.cs" />
     <Compile Include="Services\RealtimeVoiceService.cs" />
     <Compile Include="Services\ToolDispatcher.cs" />
+    <Compile Include="Services\Tools\AggregateMessagesArgs.cs" />
+    <Compile Include="Services\Tools\AggregateMessagesArgsParser.cs" />
     <Compile Include="Services\Tools\AggregationBucket.cs" />
     <Compile Include="Services\Tools\DateBucketFormatter.cs" />
     <Compile Include="Services\Tools\IAdvancedSearchHost.cs" />
