@@ -309,6 +309,7 @@
     <Compile Include="Services\Tools\OutlookSearchMessagesTool.cs" />
     <Compile Include="Services\Tools\OutlookGetCurrentSelectionTool.cs" />
     <Compile Include="Services\Tools\SearchMessagesArgsParser.cs" />
+    <Compile Include="Services\Tools\SearchScopeFormatter.cs" />
     <Compile Include="Services\Tools\OutlookSetCategoryTool.cs" />
     <Compile Include="Services\Tools\ToolCatalogSchema.cs" />
     <Compile Include="Services\Variants\Tone.cs" />
