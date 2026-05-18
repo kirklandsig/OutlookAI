@@ -186,9 +186,13 @@ namespace OutlookAI
 
         private void ShowExplorerTaskPane(Outlook.Explorer explorer)
         {
+            // Match only the InboxCopilotPane on this Explorer so the two
+            // ribbon buttons each toggle their own pane. The Reports pane
+            // also lives on this Explorer; we don't want the Copilot
+            // button to toggle the Reports pane and vice versa.
             foreach (CustomTaskPane pane in this.CustomTaskPanes)
             {
-                if (pane.Window == explorer)
+                if (pane.Window == explorer && pane.Control is InboxCopilotPane)
                 {
                     TraceLog.Write("Reusing existing Explorer CustomTaskPane (toggle visibility)", "ThisAddIn");
                     pane.Visible = !pane.Visible;
@@ -202,6 +206,59 @@ namespace OutlookAI
             ctp.Width = 340;
             ctp.Visible = true;
             TraceLog.Write("Explorer CustomTaskPane.Visible = true", "ThisAddIn");
+        }
+
+        public void ShowReportsTaskPane()
+        {
+            using (TraceLog.Scope("ShowReportsTaskPane", "ThisAddIn"))
+                try
+                {
+                    object activeWindow = null;
+                    try { activeWindow = this.Application.ActiveWindow(); } catch { }
+                    TraceLog.Write("ActiveWindow=" + (activeWindow?.GetType().FullName ?? "<null>"), "ThisAddIn");
+
+                    if (activeWindow is Outlook.Explorer expl)
+                    {
+                        ShowReportsExplorerTaskPane(expl);
+                        return;
+                    }
+                    // Reports only makes sense on an Explorer (Inbox view),
+                    // not on a compose window.
+                    System.Windows.Forms.MessageBox.Show(
+                        "Open Outlook to your Inbox, then click Reports.",
+                        "Inbox Reports",
+                        System.Windows.Forms.MessageBoxButtons.OK,
+                        System.Windows.Forms.MessageBoxIcon.Information);
+                }
+                catch (Exception ex)
+                {
+                    TraceLog.Write("ShowReportsTaskPane error: " + ex, "ThisAddIn");
+                    System.Windows.Forms.MessageBox.Show(
+                        $"Error: {ex.Message}",
+                        "Inbox Reports",
+                        System.Windows.Forms.MessageBoxButtons.OK,
+                        System.Windows.Forms.MessageBoxIcon.Error);
+                }
+        }
+
+        private void ShowReportsExplorerTaskPane(Outlook.Explorer explorer)
+        {
+            foreach (CustomTaskPane pane in this.CustomTaskPanes)
+            {
+                if (pane.Window == explorer && pane.Control is OutlookAI.TaskPane.InboxReports.InboxReportsPane)
+                {
+                    TraceLog.Write("Reusing existing Reports CustomTaskPane (toggle visibility)", "ThisAddIn");
+                    pane.Visible = !pane.Visible;
+                    return;
+                }
+            }
+            TraceLog.Write("Creating new InboxReportsPane for Explorer", "ThisAddIn");
+            var paneControl = new OutlookAI.TaskPane.InboxReports.InboxReportsPane();
+            paneControl.Bind(explorer);
+            var ctp = this.CustomTaskPanes.Add(paneControl, "Inbox Reports", explorer);
+            ctp.Width = 340;
+            ctp.Visible = true;
+            TraceLog.Write("Reports CustomTaskPane.Visible = true", "ThisAddIn");
         }
 
         protected override Microsoft.Office.Core.IRibbonExtensibility CreateRibbonExtensibilityObject()

@@ -41,6 +41,11 @@ namespace OutlookAI
             Globals.ThisAddIn.ShowTaskPane();
         }
 
+        public void OnReportsClick(Office.IRibbonControl control)
+        {
+            Globals.ThisAddIn.ShowReportsTaskPane();
+        }
+
         private static string GetResourceText(string resourceName)
         {
             Assembly asm = Assembly.GetExecutingAssembly();
