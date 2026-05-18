@@ -76,6 +76,8 @@ namespace OutlookAI.Services.Tools
         public string From { get; set; }
         public string SubjectContains { get; set; }
         public string BodyContains { get; set; }
+        // Hidden backward-compat fields. These are accepted by the parser for
+        // older conversation history but are no longer advertised to the model.
         public bool? HasAttachment { get; set; }
         public bool? IsUnread { get; set; }
         public bool? IsFlagged { get; set; }
@@ -85,6 +87,18 @@ namespace OutlookAI.Services.Tools
         public DateTimeOffset? DateFrom { get; set; }
         public DateTimeOffset? DateTo { get; set; }
         public int MaxResults { get; set; } = 25;
+        /// <summary>"current_folder" | "all_mail" | "auto"; default auto.</summary>
+        public string Scope { get; set; } = "auto";
+        /// <summary>"newest" | "oldest"; default newest.</summary>
+        public string SortOrder { get; set; } = "newest";
+        /// <summary>"any" | "with" | "without"; default any.</summary>
+        public string AttachmentFilter { get; set; } = "any";
+        /// <summary>"any" | "read" | "unread"; default any.</summary>
+        public string ReadStatus { get; set; } = "any";
+        /// <summary>"any" | "flagged" | "unflagged"; default any.</summary>
+        public string FlagStatus { get; set; } = "any";
+        /// <summary>"any" | "low" | "normal" | "high"; default any.</summary>
+        public string ImportanceFilter { get; set; } = "any";
     }
 
     public sealed class MessageSummary
