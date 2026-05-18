@@ -124,6 +124,67 @@ namespace OutlookAI.Services.Tools
                                                                           new JProperty("format","date-time"))))),
                         new JProperty("additionalProperties", false))),
 
+                BuildToolEntry("outlook_read_messages",
+                    "Bulk-read message details by short ID array. Returns subject/sender/date/body/attachments per id. Use this instead of multiple outlook_read_message calls; 5-10x faster when you have many IDs from a prior outlook_search_messages and you need bodies (action items, topic-status, conversation summary reports).",
+                    new JObject(
+                        new JProperty("type", "object"),
+                        new JProperty("required", new JArray("ids")),
+                        new JProperty("properties", new JObject(
+                            new JProperty("ids", new JObject(
+                                new JProperty("type", "array"),
+                                new JProperty("items", new JObject(new JProperty("type", "string"))),
+                                new JProperty("description", "Short message IDs from a prior outlook_search_messages."))),
+                            new JProperty("include_body", new JObject(
+                                new JProperty("type", "boolean"),
+                                new JProperty("description", "Default true. Set false for a lightweight metadata-only read."))),
+                            new JProperty("max_items", new JObject(
+                                new JProperty("type", "integer"),
+                                new JProperty("minimum", 1),
+                                new JProperty("maximum", 100),
+                                new JProperty("description", "Default 25, hard cap 100."))))),
+                        new JProperty("additionalProperties", false))),
+
+                BuildToolEntry("outlook_aggregate_messages",
+                    "Group matching messages by sender, day, or folder and return the top-N buckets by count. Use this instead of calling outlook_count_messages many times when the user wants statistics ('top 10 senders this month', 'busiest days last week', 'breakdown by folder').",
+                    new JObject(
+                        new JProperty("type", "object"),
+                        new JProperty("required", new JArray("group_by")),
+                        new JProperty("properties", new JObject(
+                            new JProperty("scope", new JObject(
+                                new JProperty("type", "string"),
+                                new JProperty("enum", new JArray("auto", "current_folder", "all_mail")),
+                                new JProperty("description", "Default auto."))),
+                            new JProperty("folder_id", new JObject(
+                                new JProperty("type", "string"),
+                                new JProperty("description", "Optional explicit folder id. Overrides scope when provided."))),
+                            new JProperty("date_from", new JObject(
+                                new JProperty("type", "string"),
+                                new JProperty("format", "date-time"),
+                                new JProperty("description", "Optional lower bound on ReceivedTime."))),
+                            new JProperty("date_to", new JObject(
+                                new JProperty("type", "string"),
+                                new JProperty("format", "date-time"),
+                                new JProperty("description", "Optional upper bound on ReceivedTime."))),
+                            new JProperty("from", new JObject(
+                                new JProperty("type", "string"),
+                                new JProperty("description", "Optional sender name or email substring."))),
+                            new JProperty("subject_contains", new JObject(
+                                new JProperty("type", "string"),
+                                new JProperty("description", "Optional subject substring."))),
+                            new JProperty("body_contains", new JObject(
+                                new JProperty("type", "string"),
+                                new JProperty("description", "Optional body substring."))),
+                            new JProperty("group_by", new JObject(
+                                new JProperty("type", "string"),
+                                new JProperty("enum", new JArray("sender", "day", "folder")),
+                                new JProperty("description", "How to bucket matching messages."))),
+                            new JProperty("top_n", new JObject(
+                                new JProperty("type", "integer"),
+                                new JProperty("minimum", 1),
+                                new JProperty("maximum", 100),
+                                new JProperty("description", "Default 10, hard cap 100."))))),
+                        new JProperty("additionalProperties", false))),
+
                 BuildToolEntry("outlook_get_current_selection",
                     "Read the messages currently selected in the user's active Explorer (e.g. messages they highlighted in the reading pane). Useful for 'reply to this', 'summarize this thread', etc. Returns empty when nothing is selected or when there is no active Explorer (e.g. the chat is anchored to a compose window).",
                     new JObject(
