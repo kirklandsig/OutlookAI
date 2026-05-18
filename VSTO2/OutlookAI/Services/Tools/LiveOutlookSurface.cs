@@ -685,32 +685,46 @@ namespace OutlookAI.Services.Tools
             {
                 clauses.Add("urn:schemas:httpmail:textdescription LIKE '%" + Escape(args.BodyContains) + "%'");
             }
-            if (args.HasAttachment.HasValue)
+            var attachmentFilter = (args.AttachmentFilter ?? "any").Trim().ToLowerInvariant();
+            if (attachmentFilter == "with" || args.HasAttachment == true)
             {
-                clauses.Add("urn:schemas:httpmail:hasattachment = " + (args.HasAttachment.Value ? "1" : "0"));
+                clauses.Add("urn:schemas:httpmail:hasattachment = 1");
             }
-            if (args.IsUnread.HasValue)
+            else if (attachmentFilter == "without")
             {
-                // urn:schemas:httpmail:read is 0 for unread, 1 for read.
-                clauses.Add("urn:schemas:httpmail:read = " + (args.IsUnread.Value ? "0" : "1"));
+                clauses.Add("urn:schemas:httpmail:hasattachment = 0");
             }
-            if (args.IsFlagged.HasValue)
+
+            var readStatus = (args.ReadStatus ?? "any").Trim().ToLowerInvariant();
+            if (readStatus == "unread" || args.IsUnread == true)
             {
-                // PR_FLAG_STATUS (0x1090) PT_LONG (0x0003) => 0x10900003.
-                // Value 2 = followup flagged.
-                clauses.Add("\"http://schemas.microsoft.com/mapi/proptag/0x10900003\" " +
-                            (args.IsFlagged.Value ? "= 2" : "<> 2"));
+                clauses.Add("urn:schemas:httpmail:read = 0");
             }
-            if (!string.IsNullOrEmpty(args.Importance))
+            else if (readStatus == "read")
+            {
+                clauses.Add("urn:schemas:httpmail:read = 1");
+            }
+
+            var flagStatus = (args.FlagStatus ?? "any").Trim().ToLowerInvariant();
+            if (flagStatus == "flagged" || args.IsFlagged == true)
+            {
+                clauses.Add("\"http://schemas.microsoft.com/mapi/proptag/0x10900003\" = 2");
+            }
+            else if (flagStatus == "unflagged")
+            {
+                clauses.Add("\"http://schemas.microsoft.com/mapi/proptag/0x10900003\" <> 2");
+            }
+
+            var importanceFilter = (args.ImportanceFilter ?? "any").Trim().ToLowerInvariant();
+            if (importanceFilter == "any" && !string.IsNullOrEmpty(args.Importance))
+            {
+                importanceFilter = args.Importance.Trim().ToLowerInvariant();
+            }
+            if (importanceFilter == "low" || importanceFilter == "normal" || importanceFilter == "high")
             {
                 // PR_IMPORTANCE (0x0017) PT_LONG => 0x00170003. 0=low, 1=normal, 2=high.
-                var imp = args.Importance.Trim().ToLowerInvariant();
-                if (imp == "low" || imp == "normal" || imp == "high")
-                {
-                    var val = imp == "low" ? "0" : imp == "normal" ? "1" : "2";
-                    clauses.Add("\"http://schemas.microsoft.com/mapi/proptag/0x00170003\" = " + val);
-                }
-                // Unknown importance values are silently ignored.
+                var val = importanceFilter == "low" ? "0" : importanceFilter == "normal" ? "1" : "2";
+                clauses.Add("\"http://schemas.microsoft.com/mapi/proptag/0x00170003\" = " + val);
             }
             if (args.DateFrom.HasValue)
             {
