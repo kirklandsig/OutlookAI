@@ -288,33 +288,58 @@ namespace OutlookAI.Services.Tools
 
         public int CountMessages(SearchMessagesArgs args, CancellationToken ct = default(CancellationToken))
         {
+            // CRITICAL perf path. The Phase 3b version routed counts
+            // through SearchMessages with MaxResults=int.MaxValue, which
+            // built a MessageProjectionInput per mail item across all
+            // matching folders. On the user's 200-folder mailbox a
+            // single count_messages call could touch ~thousands of items
+            // and freeze Outlook for 30+ seconds. Outlook's resiliency
+            // detector noticed and threatened to auto-disable the add-in.
+            //
+            // Items.Count (or Items.Restrict(...).Count) is O(1) metadata
+            // most stores serve from cache. Use it. Skip-list still
+            // applied at the folder level via ResolveSearchFolders /
+            // WalkMailFolders + IFolderClassifier.
             args = args ?? new SearchMessagesArgs();
-            // Reuse the non-blocking SearchMessages path so counts honour the
-            // same engine, skip list, and cancellation. MaxResults=int.MaxValue
-            // makes the projector return every survivor; we just take the count.
-            var widened = new SearchMessagesArgs
+            var filter = BuildRestrictFilter(args);
+            var scopeMode = (args.Scope ?? "auto").Trim().ToLowerInvariant();
+            var total = 0;
+
+            IReadOnlyList<Outlook.MAPIFolder> folders;
+            try
             {
-                Query = args.Query,
-                From = args.From,
-                SubjectContains = args.SubjectContains,
-                BodyContains = args.BodyContains,
-                HasAttachment = args.HasAttachment,
-                IsUnread = args.IsUnread,
-                IsFlagged = args.IsFlagged,
-                Importance = args.Importance,
-                FolderId = args.FolderId,
-                DateFrom = args.DateFrom,
-                DateTo = args.DateTo,
-                Scope = args.Scope,
-                SortOrder = args.SortOrder,
-                AttachmentFilter = args.AttachmentFilter,
-                ReadStatus = args.ReadStatus,
-                FlagStatus = args.FlagStatus,
-                ImportanceFilter = args.ImportanceFilter,
-                MaxResults = int.MaxValue,
-            };
-            var hits = SearchMessages(widened, ct);
-            return hits?.Count ?? 0;
+                folders = _marshaller.RunAsync(
+                    () => ResolveSearchFolders(
+                        new SearchMessagesArgs { FolderId = args.FolderId },
+                        allMail: scopeMode != "current_folder",
+                        ct),
+                    ct).GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException) { throw; }
+
+            foreach (var folder in folders)
+            {
+                ct.ThrowIfCancellationRequested();
+                try
+                {
+                    _marshaller.RunAsync(() =>
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        Outlook.Items items;
+                        try
+                        {
+                            items = string.IsNullOrEmpty(filter)
+                                ? folder.Items
+                                : folder.Items.Restrict(filter);
+                        }
+                        catch (COMException) { return; }
+                        try { total += items.Count; } catch (COMException) { }
+                        YieldUi(ct);
+                    }, ct).GetAwaiter().GetResult();
+                }
+                catch (OperationCanceledException) { throw; }
+            }
+            return total;
         }
 
         public IReadOnlyList<MessageDetail> ReadMessages(string[] ids, bool includeBody, int maxItems, CancellationToken ct = default(CancellationToken))

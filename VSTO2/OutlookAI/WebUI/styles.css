@@ -373,7 +373,13 @@ html, body {
   padding: 6px 8px;
   background: var(--panel);
   color: var(--text);
-  resize: none;
+  /* Vertical-only resize so the user can drag the bottom edge to make
+     the input taller (helpful for editing long [placeholders] in the
+     Reports chip templates). Horizontal resize is disabled because the
+     pane is fixed-width. */
+  resize: vertical;
+  min-height: 60px;
+  max-height: 300px;
 }
 .composer-input:focus {
   outline: 2px solid var(--accent);
