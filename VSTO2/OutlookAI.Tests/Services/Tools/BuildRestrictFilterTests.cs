@@ -49,29 +49,37 @@ namespace OutlookAI.Tests.Services.Tools
         }
 
         [Fact]
-        public void From_MatchesFromHeaderEmailSmtpAndTransportHeaders()
+        public void From_MatchesFromHeaderEmailAndSmtp_NoTransportHeadersBlob()
         {
-            // The 'from' clause must match against multiple sender-related
-            // properties because Exchange-routed messages don't reliably
-            // populate any single field with the resolved SMTP address:
+            // The 'from' clause matches three sender-related properties:
             //   urn:schemas:httpmail:from        (RFC 822 From header: "Name" <addr>)
             //   urn:schemas:httpmail:fromemail   (PR_SENDER_EMAIL_ADDRESS; X500 DN for Exchange)
             //   proptag 0x5D01001F               (PR_SENDER_SMTP_ADDRESS; not always populated)
-            //   proptag 0x007D001F               (PR_TRANSPORT_MESSAGE_HEADERS; full raw RFC 822
-            //                                     headers - always contains SMTP From line)
-            // Real smoke evidence: user has 75 hits in Outlook UI for
-            // "itcreations" but our from= filter returned 0. Root cause:
-            // we used 'fromname' which is NOT a valid HTTPMAIL URN (the
-            // canonical one is 'from'); folder.GetTable's strict DASL parser
-            // silently evaluated the entire OR to FALSE because all three
-            // legs failed (invalid URN, X500 DN, empty SMTP).
+            //
+            // Real smoke evidence (2026-05-18): user had 75 UI-search hits
+            // for "itcreations" but our from= filter returned 0 across all
+            // 200 folders. Root cause: we previously used 'fromname' which
+            // is NOT a valid HTTPMAIL URN (canonical is 'from'). The strict
+            // folder.GetTable DASL parser silently evaluated that clause as
+            // FALSE, then the X500-formatted fromemail and empty SMTP
+            // tag killed the other two legs.
+            //
+            // We intentionally do NOT include PR_TRANSPORT_MESSAGE_HEADERS
+            // (proptag 0x007D001F) in this filter even though it always
+            // contains the SMTP From line. That property is a multi-KB
+            // raw blob, server-NOT-indexed; LIKE-filtering it forces a full
+            // per-message read across every folder, which froze Outlook
+            // for 10+ minutes on a real mailbox and tripped "trouble
+            // connecting to server". The 'from' URN above already exposes
+            // the resolved SMTP segment.
             var f = LiveOutlookSurface.BuildRestrictFilter(new SearchMessagesArgs { From = "jane" });
             Assert.Contains("\"urn:schemas:httpmail:from\" LIKE '%jane%'", f);
             Assert.Contains("\"urn:schemas:httpmail:fromemail\" LIKE '%jane%'", f);
             Assert.Contains("\"http://schemas.microsoft.com/mapi/proptag/0x5D01001F\" LIKE '%jane%'", f);
-            Assert.Contains("\"http://schemas.microsoft.com/mapi/proptag/0x007D001F\" LIKE '%jane%'", f);
             // The OLD bogus URN must be gone.
             Assert.DoesNotContain("\"urn:schemas:httpmail:fromname\"", f);
+            // And the expensive headers blob must NOT be in the filter.
+            Assert.DoesNotContain("0x007D001F", f);
         }
 
         [Fact]
