@@ -163,78 +163,51 @@ namespace OutlookAI.Services.Tools
         public IReadOnlyList<MessageSummary> SearchMessages(SearchMessagesArgs args) =>
             Run(() =>
             {
-                var summaries = new List<MessageSummary>();
+                args = args ?? new SearchMessagesArgs();
+                var filter = BuildRestrictFilter(args);
+                var scope = (args.Scope ?? "auto").Trim().ToLowerInvariant();
+                var searchedFolders = 0;
+                var broadened = false;
+
                 try
                 {
-                    var folder = ResolveFolder(args.FolderId);
-                    if (folder == null)
+                    var currentHits = new List<MessageSummary>();
+                    var searchAllMail = scope == "all_mail";
+                    if (scope == "auto" && string.IsNullOrEmpty(args.FolderId))
                     {
-                        OutlookAI.Diagnostics.TraceLog.Write(
-                            "SearchMessages folderId=" + (args.FolderId ?? "<default>") + " -> folder=null",
-                            "LiveOutlookSurface");
-                        return (IReadOnlyList<MessageSummary>)summaries;
-                    }
-
-                    var filter = BuildRestrictFilter(args);
-                    OutlookAI.Diagnostics.TraceLog.Write(
-                        "SearchMessages folder=" + (folder.Name ?? "") +
-                        " filter=" + (filter ?? "<none>") +
-                        " maxResults=" + args.MaxResults,
-                        "LiveOutlookSurface");
-
-                    Outlook.Items items;
-                    int candidateCount = 0;
-                    try
-                    {
-                        items = string.IsNullOrEmpty(filter)
-                            ? folder.Items
-                            : folder.Items.Restrict(filter);
-                        try { candidateCount = items.Count; } catch { }
-                        OutlookAI.Diagnostics.TraceLog.Write(
-                            "SearchMessages Restrict produced " + candidateCount + " candidates",
-                            "LiveOutlookSurface");
-                    }
-                    catch (COMException ex)
-                    {
-                        OutlookAI.Diagnostics.TraceLog.Write(
-                            "SearchMessages Restrict FAILED: " + ex.Message + " (filter=" + filter + ")",
-                            "LiveOutlookSurface");
-                        // Fall back to unfiltered enumeration so the user gets
-                        // SOMETHING instead of silence. Capped by MaxResults.
-                        items = folder.Items;
-                    }
-
-                    try { items.Sort("[ReceivedTime]", true); } catch { }
-
-                    int taken = 0;
-                    foreach (var obj in items)
-                    {
-                        if (taken >= args.MaxResults) break;
-                        var mi = obj as Outlook.MailItem;
-                        if (mi == null) continue;
-                        summaries.Add(new MessageSummary
+                        foreach (var folder in ResolveSearchFolders(args, allMail: false))
                         {
-                            Id = _ids.Shorten(mi.EntryID),
-                            Subject = mi.Subject ?? "",
-                            From = mi.SenderName ?? mi.SenderEmailAddress ?? "",
-                            To = SplitAddresses(mi.To),
-                            ReceivedAt = ToOffset(mi.ReceivedTime),
-                            Snippet = SnippetOf(mi.Body),
-                            HasAttachments = mi.Attachments?.Count > 0,
-                        });
-                        taken++;
+                            searchedFolders++;
+                            SearchOneFolder(folder, args, filter, currentHits);
+                        }
+                        if (currentHits.Count > 0)
+                        {
+                            var result = MergeAndSortSearchResults(currentHits, args);
+                            TraceSearch(args, filter, searchedFolders, result.Count, broadened);
+                            return result;
+                        }
+                        searchAllMail = true;
+                        broadened = true;
                     }
-                    OutlookAI.Diagnostics.TraceLog.Write(
-                        "SearchMessages returning " + summaries.Count + " summaries (of " + candidateCount + " candidates)",
-                        "LiveOutlookSurface");
+
+                    var allHits = new List<MessageSummary>();
+                    foreach (var folder in ResolveSearchFolders(args, allMail: searchAllMail))
+                    {
+                        searchedFolders++;
+                        SearchOneFolder(folder, args, filter, allHits);
+                    }
+
+                    var merged = MergeAndSortSearchResults(allHits, args);
+                    TraceSearch(args, filter, searchedFolders, merged.Count, broadened);
+                    return merged;
                 }
                 catch (COMException ex)
                 {
                     OutlookAI.Diagnostics.TraceLog.Write(
                         "SearchMessages outer COMException: " + ex.Message,
                         "LiveOutlookSurface");
+                    return (IReadOnlyList<MessageSummary>)new List<MessageSummary>();
                 }
-                return (IReadOnlyList<MessageSummary>)summaries;
             }) ?? (IReadOnlyList<MessageSummary>)new List<MessageSummary>();
 
         public MessageDetail ReadMessage(string messageId, bool includeFullBody) =>
@@ -295,15 +268,23 @@ namespace OutlookAI.Services.Tools
         public int CountMessages(SearchMessagesArgs args) =>
             Run(() =>
             {
+                args = args ?? new SearchMessagesArgs();
+                var filter = BuildRestrictFilter(args);
+                var scope = (args.Scope ?? "auto").Trim().ToLowerInvariant();
+                var countAllMail = scope == "all_mail";
+                var total = 0;
                 try
                 {
-                    var folder = ResolveFolder(args.FolderId);
-                    if (folder == null) return 0;
-                    var filter = BuildRestrictFilter(args);
-                    var items = string.IsNullOrEmpty(filter) ? folder.Items : folder.Items.Restrict(filter);
-                    return items.Count;
+                    foreach (var folder in ResolveSearchFolders(args, allMail: countAllMail))
+                    {
+                        Outlook.Items items = string.IsNullOrEmpty(filter)
+                            ? folder.Items
+                            : folder.Items.Restrict(filter);
+                        total += items.Count;
+                    }
                 }
-                catch (COMException) { return 0; }
+                catch (COMException) { }
+                return total;
             });
 
         public IReadOnlyList<ThreadSummary> ListRecentThreadsWith(string recipientEmail, int maxThreads) =>
@@ -610,6 +591,137 @@ namespace OutlookAI.Services.Tools
             if (entry == null) return null;
             try { return entry.GetExchangeUser()?.PrimarySmtpAddress ?? entry.Address; }
             catch (COMException) { return null; }
+        }
+
+        private void SearchOneFolder(
+            Outlook.MAPIFolder folder,
+            SearchMessagesArgs args,
+            string filter,
+            List<MessageSummary> summaries)
+        {
+            if (folder == null) return;
+            try
+            {
+                var items = string.IsNullOrEmpty(filter)
+                    ? folder.Items
+                    : folder.Items.Restrict(filter);
+                try { items.Sort("[ReceivedTime]", SortDescending(args)); } catch (COMException) { }
+
+                int taken = 0;
+                foreach (var obj in items)
+                {
+                    if (taken >= args.MaxResults) break;
+                    var mi = obj as Outlook.MailItem;
+                    if (mi == null) continue;
+                    summaries.Add(new MessageSummary
+                    {
+                        Id = _ids.Shorten(mi.EntryID),
+                        Subject = mi.Subject ?? "",
+                        From = mi.SenderName ?? mi.SenderEmailAddress ?? "",
+                        To = SplitAddresses(mi.To),
+                        ReceivedAt = ToOffset(mi.ReceivedTime),
+                        Snippet = SnippetOf(mi.Body),
+                        HasAttachments = mi.Attachments?.Count > 0,
+                    });
+                    taken++;
+                }
+            }
+            catch (COMException ex)
+            {
+                OutlookAI.Diagnostics.TraceLog.Write(
+                    "SearchMessages folder=" + SafeFolderName(folder) + " failed: " + ex.Message,
+                    "LiveOutlookSurface");
+            }
+        }
+
+        private static void TraceSearch(SearchMessagesArgs args, string filter, int foldersSearched, int returned, bool broadened)
+        {
+            try
+            {
+                OutlookAI.Diagnostics.TraceLog.Write(
+                    "SearchMessages scope=" + (args.Scope ?? "auto")
+                    + " sort_order=" + (args.SortOrder ?? "newest")
+                    + " filter=" + (filter ?? "<none>")
+                    + " folders_searched=" + foldersSearched
+                    + " returned=" + returned
+                    + " broadened=" + broadened
+                    + " maxResults=" + args.MaxResults,
+                    "LiveOutlookSurface");
+            }
+            catch { }
+        }
+
+        private Outlook.MAPIFolder ResolveCurrentFolder()
+        {
+            try
+            {
+                var folder = _explorer?.CurrentFolder as Outlook.MAPIFolder;
+                if (folder != null) return folder;
+            }
+            catch (COMException) { }
+
+            try { return _application.Session.GetDefaultFolder(Outlook.OlDefaultFolders.olFolderInbox); }
+            catch (COMException) { return null; }
+        }
+
+        private IReadOnlyList<Outlook.MAPIFolder> ResolveSearchFolders(SearchMessagesArgs args, bool allMail)
+        {
+            var folders = new List<Outlook.MAPIFolder>();
+            if (!string.IsNullOrEmpty(args?.FolderId))
+            {
+                var folder = ResolveFolder(args.FolderId);
+                if (folder != null) folders.Add(folder);
+                return folders;
+            }
+
+            if (!allMail)
+            {
+                var folder = ResolveCurrentFolder();
+                if (folder != null) folders.Add(folder);
+                return folders;
+            }
+
+            try
+            {
+                foreach (Outlook.Store store in _application.Session.Stores)
+                {
+                    WalkMailFolders(store.GetRootFolder(), folders, depth: 0);
+                }
+            }
+            catch (COMException) { }
+            return folders;
+        }
+
+        private void WalkMailFolders(Outlook.MAPIFolder folder, List<Outlook.MAPIFolder> results, int depth)
+        {
+            if (folder == null || depth > MaxFolderDepth) return;
+            var name = SafeFolderName(folder);
+            if (!ShouldSkipAllMailFolder(name))
+            {
+                try
+                {
+                    if (folder.DefaultItemType == Outlook.OlItemType.olMailItem)
+                    {
+                        results.Add(folder);
+                    }
+                }
+                catch (COMException) { }
+            }
+
+            try
+            {
+                foreach (Outlook.MAPIFolder child in folder.Folders)
+                {
+                    WalkMailFolders(child, results, depth + 1);
+                }
+            }
+            catch (COMException) { }
+        }
+
+        private static string SafeFolderName(Outlook.MAPIFolder folder)
+        {
+            try { return folder?.Name ?? ""; }
+            catch (COMException) { return ""; }
         }
 
         private Outlook.MAPIFolder ResolveFolder(string folderId)
