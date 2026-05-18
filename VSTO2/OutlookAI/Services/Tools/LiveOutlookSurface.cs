@@ -317,6 +317,16 @@ namespace OutlookAI.Services.Tools
             return hits?.Count ?? 0;
         }
 
+        public IReadOnlyList<MessageDetail> ReadMessages(string[] ids, bool includeBody, int maxItems, CancellationToken ct = default(CancellationToken))
+        {
+            throw new System.NotImplementedException("LiveOutlookSurface.ReadMessages will be implemented in a follow-up task.");
+        }
+
+        public IReadOnlyList<AggregationBucket> AggregateMessages(AggregateMessagesArgs args, CancellationToken ct = default(CancellationToken))
+        {
+            throw new System.NotImplementedException("LiveOutlookSurface.AggregateMessages will be implemented in a follow-up task.");
+        }
+
         public IReadOnlyList<ThreadSummary> ListRecentThreadsWith(string recipientEmail, int maxThreads) =>
             Run(() =>
             {
