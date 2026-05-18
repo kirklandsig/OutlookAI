@@ -319,7 +319,94 @@ namespace OutlookAI.Services.Tools
 
         public IReadOnlyList<MessageDetail> ReadMessages(string[] ids, bool includeBody, int maxItems, CancellationToken ct = default(CancellationToken))
         {
-            throw new System.NotImplementedException("LiveOutlookSurface.ReadMessages will be implemented in a follow-up task.");
+            if (ids == null || ids.Length == 0) return new MessageDetail[0];
+            if (maxItems < 1) maxItems = 1;
+            if (maxItems > 100) maxItems = 100;
+
+            var capped = ids.Take(maxItems).ToArray();
+            var results = new List<MessageDetail>(capped.Length);
+
+            _marshaller.RunAsync(() =>
+            {
+                foreach (var shortId in capped)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    try
+                    {
+                        var entryId = _ids.Resolve(shortId);
+                        var item = _application.Session.GetItemFromID(entryId) as Outlook.MailItem;
+                        if (item == null) continue;
+                        results.Add(BuildMessageDetail(shortId, item, includeBody));
+                    }
+                    catch (COMException ex)
+                    {
+                        try { OutlookAI.Diagnostics.TraceLog.Write("ReadMessages COMException id=" + shortId + ": " + ex.Message, "LiveOutlookSurface"); } catch { }
+                    }
+                    catch (System.Collections.Generic.KeyNotFoundException)
+                    {
+                        try { OutlookAI.Diagnostics.TraceLog.Write("ReadMessages unknown short id=" + shortId, "LiveOutlookSurface"); } catch { }
+                    }
+                    // Pump Outlook UI between items so a long ids[] does not
+                    // freeze the UI thread for the full read sweep.
+                    YieldUi(ct);
+                }
+            }, ct).GetAwaiter().GetResult();
+
+            return results;
+        }
+
+        // Builds a MessageDetail for a single MailItem. Mirrors ReadMessage's
+        // projection so the bulk and single tools return identical shapes.
+        private MessageDetail BuildMessageDetail(string shortId, Outlook.MailItem item, bool includeBody)
+        {
+            var body = "";
+            bool truncated = false;
+            if (includeBody)
+            {
+                try { body = item.Body ?? ""; } catch (COMException) { }
+                if (body.Length > MaxBodyChars)
+                {
+                    body = body.Substring(0, MaxBodyChars);
+                    truncated = true;
+                }
+            }
+
+            var attachments = new List<AttachmentSummary>();
+            try
+            {
+                foreach (Outlook.Attachment att in item.Attachments)
+                {
+                    attachments.Add(new AttachmentSummary
+                    {
+                        Filename = att.FileName,
+                        SizeBytes = att.Size,
+                    });
+                }
+            }
+            catch (COMException) { }
+
+            string subject = ""; try { subject = item.Subject ?? ""; } catch (COMException) { }
+            string sender = ""; try { sender = item.SenderName ?? item.SenderEmailAddress ?? ""; } catch (COMException) { }
+            string to = ""; try { to = item.To ?? ""; } catch (COMException) { }
+            string cc = ""; try { cc = item.CC ?? ""; } catch (COMException) { }
+            DateTimeOffset receivedAt = DateTimeOffset.MinValue;
+            try { receivedAt = ToOffset(item.ReceivedTime); } catch (COMException) { }
+            string conversationTopic = ""; try { conversationTopic = item.ConversationTopic ?? ""; } catch (COMException) { }
+
+            return new MessageDetail
+            {
+                Id = shortId,
+                Subject = subject,
+                From = sender,
+                To = SplitAddresses(to),
+                Cc = SplitAddresses(cc),
+                ReceivedAt = receivedAt,
+                BodyPlaintext = body,
+                BodyTruncated = truncated,
+                Attachments = attachments,
+                InReplyToMessageId = null,
+                ConversationTopic = conversationTopic,
+            };
         }
 
         public IReadOnlyList<AggregationBucket> AggregateMessages(AggregateMessagesArgs args, CancellationToken ct = default(CancellationToken))
