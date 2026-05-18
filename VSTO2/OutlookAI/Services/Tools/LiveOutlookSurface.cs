@@ -487,7 +487,7 @@ namespace OutlookAI.Services.Tools
             if (!string.IsNullOrEmpty(args.From))
             {
                 var f = (args.From ?? "").Replace("'", "''");
-                clauses.Add("(" + PropFromName + " LIKE '%" + f + "%' OR " + PropFromEmail + " LIKE '%" + f + "%' OR " + PropFromSmtp + " LIKE '%" + f + "%')");
+                clauses.Add("(" + PropFrom + " LIKE '%" + f + "%' OR " + PropFromEmail + " LIKE '%" + f + "%' OR " + PropFromSmtp + " LIKE '%" + f + "%' OR " + PropTransportHeaders + " LIKE '%" + f + "%')");
             }
             if (!string.IsNullOrEmpty(args.SubjectContains))
             {
@@ -1385,14 +1385,25 @@ namespace OutlookAI.Services.Tools
         // https://learn.microsoft.com/en-us/office/vba/outlook/concepts/forms/refer-to-properties-by-namespace
         private const string PropSubject     = "\"urn:schemas:httpmail:subject\"";
         private const string PropBody        = "\"urn:schemas:httpmail:textdescription\"";
-        private const string PropFromName    = "\"urn:schemas:httpmail:fromname\"";
+        // urn:schemas:httpmail:from is the RFC 822 From header value as
+        // Outlook resolves it - typically "Display Name" <smtp@domain> or
+        // just smtp@domain. This is the property the model means when it
+        // says "from X". 'fromname' (which we used previously) is NOT a
+        // real DASL URN; folder.GetTable's strict parser silently treated
+        // it as FALSE, killing every from= search.
+        private const string PropFrom        = "\"urn:schemas:httpmail:from\"";
         private const string PropFromEmail   = "\"urn:schemas:httpmail:fromemail\"";
         // PR_SENDER_SMTP_ADDRESS (0x5D01) PT_UNICODE_STRING (0x001F) ->
-        // the always-SMTP form of the sender. PR_SENDER_EMAIL_ADDRESS (above)
-        // can be the X500 DN for Exchange-routed mail, so a "from=itcreations"
-        // search misses messages from murad@itcreations.com unless we
-        // also match this SMTP property.
+        // always-SMTP form of the sender, when set. Not populated for many
+        // Exchange-routed messages. Backstop only.
         private const string PropFromSmtp    = "\"http://schemas.microsoft.com/mapi/proptag/0x5D01001F\"";
+        // PR_TRANSPORT_MESSAGE_HEADERS (0x007D) PT_UNICODE_STRING (0x001F) ->
+        // the full RFC 822 header blob received from the transport. Always
+        // contains a "From: ... <smtp@domain>" line for any received mail,
+        // regardless of whether the message routed through Exchange or SMTP.
+        // The most reliable property for SMTP-substring matching across an
+        // entire mailbox.
+        private const string PropTransportHeaders = "\"http://schemas.microsoft.com/mapi/proptag/0x007D001F\"";
         private const string PropHasAttach   = "\"urn:schemas:httpmail:hasattachment\"";
         private const string PropRead        = "\"urn:schemas:httpmail:read\"";
         private const string PropReceivedAt  = "\"urn:schemas:httpmail:datereceived\"";
@@ -1413,9 +1424,10 @@ namespace OutlookAI.Services.Tools
             if (!string.IsNullOrEmpty(args.From))
             {
                 var v = Escape(args.From);
-                clauses.Add("(" + PropFromName + " LIKE '%" + v + "%' OR " +
+                clauses.Add("(" + PropFrom + " LIKE '%" + v + "%' OR " +
                             PropFromEmail + " LIKE '%" + v + "%' OR " +
-                            PropFromSmtp + " LIKE '%" + v + "%')");
+                            PropFromSmtp + " LIKE '%" + v + "%' OR " +
+                            PropTransportHeaders + " LIKE '%" + v + "%')");
             }
             if (!string.IsNullOrEmpty(args.SubjectContains))
             {
