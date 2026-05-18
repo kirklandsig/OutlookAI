@@ -411,7 +411,174 @@ namespace OutlookAI.Services.Tools
 
         public IReadOnlyList<AggregationBucket> AggregateMessages(AggregateMessagesArgs args, CancellationToken ct = default(CancellationToken))
         {
-            throw new System.NotImplementedException("LiveOutlookSurface.AggregateMessages will be implemented in a follow-up task.");
+            args = args ?? new AggregateMessagesArgs();
+            var scopeMode = (args.Scope ?? "auto").Trim().ToLowerInvariant();
+            var filter = BuildAggregateFilter(args);
+            var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+            // Step 1: resolve folder list on UI thread (reuse the existing
+            // method used by the search fallback).
+            IReadOnlyList<Outlook.MAPIFolder> folders;
+            try
+            {
+                folders = _marshaller.RunAsync(
+                    () => ResolveSearchFolders(
+                        new SearchMessagesArgs { FolderId = args.FolderId },
+                        allMail: scopeMode != "current_folder",
+                        ct),
+                    ct).GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException) { throw; }
+
+            // Step 2: per-folder Table API read, classifier-filter mail rows,
+            // group into the dictionary. One marshalled call per folder so the
+            // UI thread is released between folders.
+            foreach (var folder in folders)
+            {
+                ct.ThrowIfCancellationRequested();
+                try
+                {
+                    _marshaller.RunAsync(
+                        () => AccumulateFolderBuckets(folder, args, filter, counts, ct),
+                        ct).GetAwaiter().GetResult();
+                }
+                catch (OperationCanceledException) { throw; }
+            }
+
+            // Step 3: convert dictionary to AggregationBucket list and clamp
+            // via TopNBucketSelector for deterministic ordering.
+            var allBuckets = counts.Select(kv => new AggregationBucket { Label = kv.Key, Count = kv.Value }).ToList();
+            return TopNBucketSelector.TakeTop(allBuckets, args.TopN);
+        }
+
+        // Builds a DASL @SQL filter for the aggregate query. Mirrors the
+        // existing BuildRestrictFilter clauses for date_from / date_to / from /
+        // subject_contains / body_contains. Returns null if no clauses.
+        private static string BuildAggregateFilter(AggregateMessagesArgs args)
+        {
+            var clauses = new List<string>();
+            if (!string.IsNullOrEmpty(args.From))
+            {
+                var f = (args.From ?? "").Replace("'", "''");
+                clauses.Add("(urn:schemas:httpmail:fromname LIKE '%" + f + "%' OR urn:schemas:httpmail:fromemail LIKE '%" + f + "%')");
+            }
+            if (!string.IsNullOrEmpty(args.SubjectContains))
+            {
+                clauses.Add("urn:schemas:httpmail:subject LIKE '%" + args.SubjectContains.Replace("'", "''") + "%'");
+            }
+            if (!string.IsNullOrEmpty(args.BodyContains))
+            {
+                clauses.Add("urn:schemas:httpmail:textdescription LIKE '%" + args.BodyContains.Replace("'", "''") + "%'");
+            }
+            if (args.DateFrom.HasValue)
+            {
+                clauses.Add("urn:schemas:httpmail:datereceived >= '" + args.DateFrom.Value.ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture) + "'");
+            }
+            if (args.DateTo.HasValue)
+            {
+                clauses.Add("urn:schemas:httpmail:datereceived <= '" + args.DateTo.Value.ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture) + "'");
+            }
+            if (clauses.Count == 0) return null;
+            return "@SQL=" + string.Join(" AND ", clauses);
+        }
+
+        // Read one folder's rows via the Table API, classify mail-only, and
+        // accumulate counts into the shared dictionary keyed by args.GroupBy.
+        private void AccumulateFolderBuckets(
+            Outlook.MAPIFolder folder,
+            AggregateMessagesArgs args,
+            string filter,
+            Dictionary<string, int> counts,
+            CancellationToken ct)
+        {
+            if (folder == null) return;
+
+            string folderName = "";
+            bool folderIsMail = true;
+            try { folderName = folder.Name ?? ""; } catch (COMException) { }
+            try { folderIsMail = folder.DefaultItemType == Outlook.OlItemType.olMailItem; } catch (COMException) { }
+            if (_classifier.IsSystemFolder(folderName, folderIsMail)) return;
+
+            Outlook.Table table;
+            try
+            {
+                table = folder.GetTable(filter ?? "", Outlook.OlTableContents.olUserItems);
+            }
+            catch (COMException ex)
+            {
+                try { OutlookAI.Diagnostics.TraceLog.Write("AggregateMessages GetTable COMException folder=" + folderName + ": " + ex.Message, "LiveOutlookSurface"); } catch { }
+                return;
+            }
+
+            try
+            {
+                table.Columns.RemoveAll();
+                table.Columns.Add("SenderName");
+                table.Columns.Add("SenderEmailAddress");
+                table.Columns.Add("ReceivedTime");
+                table.Columns.Add("MessageClass");
+            }
+            catch (COMException) { }
+
+            int rowsScanned = 0;
+            try
+            {
+                while (!table.EndOfTable)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    rowsScanned++;
+                    Outlook.Row row;
+                    try { row = table.GetNextRow(); }
+                    catch (COMException) { break; }
+                    if (row == null) break;
+
+                    string messageClass = "";
+                    try { messageClass = row["MessageClass"] as string ?? ""; } catch (COMException) { }
+                    if (!TableMessageClassFilter.IsMailMessage(messageClass)) continue;
+
+                    string key = ResolveBucketKey(row, folderName, args.GroupBy);
+                    if (key == null) continue;
+
+                    int existing;
+                    counts.TryGetValue(key, out existing);
+                    counts[key] = existing + 1;
+
+                    // Pump UI every ~50 rows so a big folder doesn't freeze
+                    // the UI for the whole folder scan.
+                    if ((rowsScanned % 50) == 0) YieldUi(ct);
+                }
+            }
+            catch (COMException ex)
+            {
+                try { OutlookAI.Diagnostics.TraceLog.Write("AggregateMessages row scan COMException folder=" + folderName + ": " + ex.Message, "LiveOutlookSurface"); } catch { }
+            }
+        }
+
+        // Picks the bucket key for one row given args.GroupBy.
+        private static string ResolveBucketKey(Outlook.Row row, string folderName, string groupBy)
+        {
+            if (string.Equals(groupBy, "folder", StringComparison.OrdinalIgnoreCase))
+            {
+                return string.IsNullOrEmpty(folderName) ? null : folderName;
+            }
+
+            if (string.Equals(groupBy, "day", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    var rt = row["ReceivedTime"];
+                    if (rt is DateTime dt) return DateBucketFormatter.Format(new DateTimeOffset(dt));
+                }
+                catch (COMException) { }
+                return DateBucketFormatter.UnknownDate;
+            }
+
+            // Default: sender
+            string name = "";
+            string email = "";
+            try { name = row["SenderName"] as string ?? ""; } catch (COMException) { }
+            try { email = row["SenderEmailAddress"] as string ?? ""; } catch (COMException) { }
+            return SenderKeyNormalizer.Normalize(name, email);
         }
 
         public IReadOnlyList<ThreadSummary> ListRecentThreadsWith(string recipientEmail, int maxThreads) =>
