@@ -65,6 +65,22 @@ namespace OutlookAI.Tests.Services.Tools
             Assert.Contains("\"count\":7", json);
         }
 
+        [Fact]
+        public async Task Execute_UsesSharedParser_ForScopeAndTriStates()
+        {
+            SearchMessagesArgs observed = null;
+            var surface = new Surface { OnCount = a => { observed = a; return 5; } };
+            var tool = new OutlookCountMessagesTool();
+
+            await tool.ExecuteAsync(
+                "{\"scope\":\"all_mail\",\"read_status\":\"read\"}",
+                surface, CancellationToken.None);
+
+            Assert.Equal("all_mail", observed.Scope);
+            Assert.Equal("read", observed.ReadStatus);
+            Assert.Equal(int.MaxValue, observed.MaxResults);
+        }
+
         private sealed class Surface : MinimalSurface
         {
             public Func<SearchMessagesArgs, int> OnCount { get; set; }
