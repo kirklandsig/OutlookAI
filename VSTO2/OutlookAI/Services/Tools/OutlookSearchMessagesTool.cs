@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -15,21 +17,28 @@ namespace OutlookAI.Services.Tools
 
         public Task<string> ExecuteAsync(string argsJson, IOutlookSurface surface, CancellationToken ct)
         {
-            ct.ThrowIfCancellationRequested();
-            var search = SearchMessagesArgsParser.ParseSearch(argsJson);
+            try
+            {
+                ct.ThrowIfCancellationRequested();
+                var search = SearchMessagesArgsParser.ParseSearch(argsJson);
+                var hits = surface.SearchMessages(search, ct) ?? new MessageSummary[0];
 
-            var hits = surface.SearchMessages(search) ?? new MessageSummary[0];
-            var json = new JObject(
-                new JProperty("messages", new JArray(hits.Select(m =>
-                    new JObject(
-                        new JProperty("id", m.Id ?? ""),
-                        new JProperty("subject", m.Subject ?? ""),
-                        new JProperty("from", m.From ?? ""),
-                        new JProperty("to", new JArray((m.To ?? new string[0]).Cast<object>())),
-                        new JProperty("received_at", m.ReceivedAt.ToString("o")),
-                        new JProperty("snippet", m.Snippet ?? ""),
-                        new JProperty("has_attachments", m.HasAttachments))))));
-            return Task.FromResult(json.ToString(Newtonsoft.Json.Formatting.None));
+                var json = new JObject(
+                    new JProperty("messages", new JArray(hits.Select(m =>
+                        new JObject(
+                            new JProperty("id", m.Id ?? ""),
+                            new JProperty("subject", m.Subject ?? ""),
+                            new JProperty("from", m.From ?? ""),
+                            new JProperty("to", new JArray((m.To ?? new string[0]).Cast<object>())),
+                            new JProperty("received_at", m.ReceivedAt.ToString("o")),
+                            new JProperty("snippet", m.Snippet ?? ""),
+                            new JProperty("has_attachments", m.HasAttachments))))));
+                return Task.FromResult(json.ToString(Newtonsoft.Json.Formatting.None));
+            }
+            catch (OperationCanceledException)
+            {
+                return Task.FromResult(BuildError("cancelled", "Search cancelled by user."));
+            }
         }
 
         private static string BuildError(string code, string message)

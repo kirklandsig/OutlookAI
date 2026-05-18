@@ -1,3 +1,4 @@
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
@@ -13,11 +14,18 @@ namespace OutlookAI.Services.Tools
 
         public Task<string> ExecuteAsync(string argsJson, IOutlookSurface surface, CancellationToken ct)
         {
-            ct.ThrowIfCancellationRequested();
-            var search = SearchMessagesArgsParser.ParseCount(argsJson);
-            var count = surface.CountMessages(search);
-            var json = new JObject(new JProperty("count", count));
-            return Task.FromResult(json.ToString(Newtonsoft.Json.Formatting.None));
+            try
+            {
+                ct.ThrowIfCancellationRequested();
+                var search = SearchMessagesArgsParser.ParseCount(argsJson);
+                var count = surface.CountMessages(search, ct);
+                var json = new JObject(new JProperty("count", count));
+                return Task.FromResult(json.ToString(Newtonsoft.Json.Formatting.None));
+            }
+            catch (OperationCanceledException)
+            {
+                return Task.FromResult(BuildError("cancelled", "Search cancelled by user."));
+            }
         }
 
         private static string BuildError(string code, string message)

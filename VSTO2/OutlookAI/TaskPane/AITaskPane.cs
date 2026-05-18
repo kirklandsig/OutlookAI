@@ -596,9 +596,9 @@ namespace OutlookAI.TaskPane
         {
             public ComposeStateResult GetCurrentComposeState(bool includeFullBody) => new ComposeStateResult();
             public IReadOnlyList<FolderResult> ListFolders() => new FolderResult[0];
-            public IReadOnlyList<MessageSummary> SearchMessages(SearchMessagesArgs args) => new MessageSummary[0];
+            public IReadOnlyList<MessageSummary> SearchMessages(SearchMessagesArgs args, System.Threading.CancellationToken ct = default(System.Threading.CancellationToken)) => new MessageSummary[0];
             public MessageDetail ReadMessage(string messageId, bool includeFullBody) => null;
-            public int CountMessages(SearchMessagesArgs args) => 0;
+            public int CountMessages(SearchMessagesArgs args, System.Threading.CancellationToken ct = default(System.Threading.CancellationToken)) => 0;
             public IReadOnlyList<ThreadSummary> ListRecentThreadsWith(string recipientEmail, int maxThreads) => new ThreadSummary[0];
             public CreatedDraft CreateDraft(CreateDraftArgs args) => null;
             public CurrentSelectionResult GetCurrentSelection(bool includeFullBodies, int maxItems)
