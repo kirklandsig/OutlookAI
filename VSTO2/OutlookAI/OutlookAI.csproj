@@ -348,6 +348,7 @@
     <Compile Include="TaskPane\InboxCopilot\InboxCopilotPane.Designer.cs">
       <DependentUpon>InboxCopilotPane.cs</DependentUpon>
     </Compile>
+    <Compile Include="TaskPane\InboxReports\InboxReportsPromptBuilder.cs" />
     <Compile Include="ThisAddIn.cs">
       <SubType>Code</SubType>
     </Compile>
