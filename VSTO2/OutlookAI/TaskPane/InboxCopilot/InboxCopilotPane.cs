@@ -53,12 +53,16 @@ namespace OutlookAI.TaskPane.InboxCopilot
                     var marshaller = Globals.ThisAddIn?.OutlookMarshaller;
                     var ids = Globals.ThisAddIn?.IdResolver;
                     var app = Globals.ThisAddIn?.Application;
+                    var runner = Globals.ThisAddIn?.AdvancedSearchRunner;
+                    var classifier = Globals.ThisAddIn?.FolderClassifier;
                     TraceLog.Write("Services: marshaller=" + (marshaller != null) +
-                        " ids=" + (ids != null) + " app=" + (app != null), "InboxCopilotPane");
-                    if (marshaller != null && ids != null && app != null)
+                        " ids=" + (ids != null) + " app=" + (app != null) +
+                        " runner=" + (runner != null), "InboxCopilotPane");
+                    if (marshaller != null && ids != null && app != null && runner != null)
                     {
                         _surface = new LiveOutlookSurface(app, marshaller, ids,
-                            composeInspector: null, explorer: explorer);
+                            composeInspector: null, explorer: explorer,
+                            runner: runner, classifier: classifier);
                         _toolHost = new OutlookToolHost(_surface, Config.WriteToolsEnabled);
                         TraceLog.Write("surface + toolHost constructed", "InboxCopilotPane");
                     }
