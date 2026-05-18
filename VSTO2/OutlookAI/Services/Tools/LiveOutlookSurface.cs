@@ -168,7 +168,7 @@ namespace OutlookAI.Services.Tools
             SearchScope scope;
             try
             {
-                scope = _marshaller.RunAsync(() => BuildSearchScope(args, scopeMode), ct).GetAwaiter().GetResult();
+                scope = _marshaller.RunAsync(() => BuildSearchScope(args, scopeMode, ct), ct).GetAwaiter().GetResult();
             }
             catch (OperationCanceledException) { throw; }
 
@@ -604,8 +604,13 @@ namespace OutlookAI.Services.Tools
         // Phase 3b primary scope resolver. Runs on the UI thread via the
         // marshaller in SearchMessages. Builds a SearchScope (DASL scope
         // string + SearchSubFolders flag) for Application.AdvancedSearch.
-        private SearchScope BuildSearchScope(SearchMessagesArgs args, string scopeMode)
+        // Yields the message pump (Application.DoEvents) between each
+        // store so Outlook's UI stays responsive while we walk many
+        // stores synchronously on the UI thread (35 stores observed in
+        // one real trace; that alone froze the UI for ~10 seconds).
+        private SearchScope BuildSearchScope(SearchMessagesArgs args, string scopeMode, CancellationToken ct)
         {
+            var started = DateTimeOffset.UtcNow;
             var paths = new List<string>();
             bool searchSubFolders = true;
 
@@ -641,6 +646,7 @@ namespace OutlookAI.Services.Tools
                             }
                         }
                         catch (COMException) { }
+                        YieldUi(ct);
                     }
                 }
             }
@@ -649,12 +655,29 @@ namespace OutlookAI.Services.Tools
                 try { OutlookAI.Diagnostics.TraceLog.Write("BuildSearchScope COMException: " + ex.Message, "LiveOutlookSurface"); } catch { }
             }
 
+            var elapsedMs = (long)(DateTimeOffset.UtcNow - started).TotalMilliseconds;
+            try { OutlookAI.Diagnostics.TraceLog.Write("BuildSearchScope elapsed_ms=" + elapsedMs + " paths=" + paths.Count, "LiveOutlookSurface"); } catch { }
+
             return new SearchScope
             {
                 ScopeString = SearchScopeFormatter.Format(paths),
                 SearchSubFolders = searchSubFolders,
                 ResolvedFolderPaths = paths,
             };
+        }
+
+        // Pumps Outlook's UI message queue briefly so the user's clicks,
+        // hover, scroll and ribbon stay responsive while we hold the UI
+        // thread to enumerate Outlook COM collections. We're already
+        // executing on the Outlook UI thread (called from inside
+        // marshaller.RunAsync); DoEvents is safe here because our caller
+        // does only read-only enumeration. Cancellation is checked twice
+        // so a user Stop click that fires during the pump still aborts.
+        private static void YieldUi(CancellationToken ct)
+        {
+            if (ct.IsCancellationRequested) ct.ThrowIfCancellationRequested();
+            try { System.Windows.Forms.Application.DoEvents(); } catch { }
+            if (ct.IsCancellationRequested) ct.ThrowIfCancellationRequested();
         }
 
         // Phase 3b yielding fallback. Walks each folder via one
@@ -670,7 +693,7 @@ namespace OutlookAI.Services.Tools
             try
             {
                 folders = _marshaller.RunAsync(
-                    () => ResolveSearchFolders(args, allMail: searchAllMail),
+                    () => ResolveSearchFolders(args, allMail: searchAllMail, ct),
                     ct).GetAwaiter().GetResult();
             }
             catch (OperationCanceledException) { throw; }
@@ -683,7 +706,7 @@ namespace OutlookAI.Services.Tools
                 try
                 {
                     folderInputs = _marshaller.RunAsync(
-                        () => CollectFolderInputs(folder, args, filter),
+                        () => CollectFolderInputs(folder, args, filter, ct),
                         ct).GetAwaiter().GetResult();
                 }
                 catch (OperationCanceledException) { throw; }
@@ -713,7 +736,7 @@ namespace OutlookAI.Services.Tools
         // each folder costs at most a few hundred ms, so the UI thread is
         // released between folders fast enough that Outlook stays usable.
         private List<MessageProjectionInput> CollectFolderInputs(
-            Outlook.MAPIFolder folder, SearchMessagesArgs args, string filter)
+            Outlook.MAPIFolder folder, SearchMessagesArgs args, string filter, CancellationToken ct)
         {
             var inputs = new List<MessageProjectionInput>();
             if (folder == null) return inputs;
@@ -751,6 +774,11 @@ namespace OutlookAI.Services.Tools
                     if (mi == null) continue;
                     inputs.Add(BuildFallbackInput(mi, folderName, folderIsMail));
                     taken++;
+                    // Pump Outlook UI between items so a slow folder
+                    // (uncached items requiring server fetch) does not
+                    // freeze the UI for the duration of the per-folder
+                    // budget.
+                    YieldUi(ct);
                 }
                 catch (COMException) { /* skip the item */ }
             }
@@ -802,8 +830,9 @@ namespace OutlookAI.Services.Tools
             catch (COMException) { return null; }
         }
 
-        private IReadOnlyList<Outlook.MAPIFolder> ResolveSearchFolders(SearchMessagesArgs args, bool allMail)
+        private IReadOnlyList<Outlook.MAPIFolder> ResolveSearchFolders(SearchMessagesArgs args, bool allMail, CancellationToken ct)
         {
+            var started = DateTimeOffset.UtcNow;
             var folders = new List<Outlook.MAPIFolder>();
             if (!string.IsNullOrEmpty(args?.FolderId))
             {
@@ -823,16 +852,24 @@ namespace OutlookAI.Services.Tools
             {
                 foreach (Outlook.Store store in _application.Session.Stores)
                 {
-                    WalkMailFolders(store.GetRootFolder(), folders, depth: 0);
+                    WalkMailFolders(store.GetRootFolder(), folders, depth: 0, ct);
+                    // Pump Outlook UI between each store so the mailbox
+                    // tree walk does not freeze Outlook for many seconds
+                    // when the user has many stores.
+                    YieldUi(ct);
+                    if (folders.Count >= MaxFolders) break;
                 }
             }
             catch (COMException) { }
+            var elapsedMs = (long)(DateTimeOffset.UtcNow - started).TotalMilliseconds;
+            try { OutlookAI.Diagnostics.TraceLog.Write("ResolveSearchFolders elapsed_ms=" + elapsedMs + " folders=" + folders.Count, "LiveOutlookSurface"); } catch { }
             return folders;
         }
 
-        private void WalkMailFolders(Outlook.MAPIFolder folder, List<Outlook.MAPIFolder> results, int depth)
+        private void WalkMailFolders(Outlook.MAPIFolder folder, List<Outlook.MAPIFolder> results, int depth, CancellationToken ct)
         {
             if (folder == null || depth > MaxFolderDepth) return;
+            ct.ThrowIfCancellationRequested();
             var name = SafeFolderName(folder);
             bool isMailFolder = false;
             try { isMailFolder = folder.DefaultItemType == Outlook.OlItemType.olMailItem; }
@@ -842,11 +879,18 @@ namespace OutlookAI.Services.Tools
                 if (isMailFolder) results.Add(folder);
             }
 
+            if (results.Count >= MaxFolders) return;
+
             try
             {
+                int childIndex = 0;
                 foreach (Outlook.MAPIFolder child in folder.Folders)
                 {
-                    WalkMailFolders(child, results, depth + 1);
+                    WalkMailFolders(child, results, depth + 1, ct);
+                    // Yield every few children to keep the UI responsive
+                    // during deep folder trees.
+                    if ((++childIndex % 5) == 0) YieldUi(ct);
+                    if (results.Count >= MaxFolders) break;
                 }
             }
             catch (COMException) { }
