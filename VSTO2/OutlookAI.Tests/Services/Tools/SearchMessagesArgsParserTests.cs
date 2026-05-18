@@ -98,5 +98,22 @@ namespace OutlookAI.Tests.Services.Tools
             Assert.Equal("all_mail", args.Scope);
             Assert.Equal(int.MaxValue, args.MaxResults);
         }
+
+        [Fact]
+        public void ParseSearch_DropsAllTimeSentinelDateBounds()
+        {
+            var args = SearchMessagesArgsParser.ParseSearch("{"
+                + "\"scope\":\"all_mail\","
+                + "\"sort_order\":\"oldest\","
+                + "\"date_from\":\"1970-01-01T00:00:00Z\","
+                + "\"date_to\":\"9999-12-31T00:00:00Z\","
+                + "\"max_results\":1}");
+
+            Assert.Null(args.DateFrom);
+            Assert.Null(args.DateTo);
+            Assert.Equal("all_mail", args.Scope);
+            Assert.Equal("oldest", args.SortOrder);
+            Assert.Equal(1, args.MaxResults);
+        }
     }
 }

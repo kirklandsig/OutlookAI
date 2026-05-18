@@ -171,11 +171,14 @@ namespace OutlookAI.Services.Tools
 
                 try
                 {
+                    TraceSearchProgress(args, filter, "start");
                     var currentHits = new List<MessageSummary>();
                     var searchAllMail = scope == "all_mail";
                     if (scope == "auto" && string.IsNullOrEmpty(args.FolderId))
                     {
-                        foreach (var folder in ResolveSearchFolders(args, allMail: false))
+                        var currentFolders = ResolveSearchFolders(args, allMail: false);
+                        TraceSearchProgress(args, filter, "current_folders=" + currentFolders.Count);
+                        foreach (var folder in currentFolders)
                         {
                             searchedFolders++;
                             SearchOneFolder(folder, args, filter, currentHits);
@@ -188,10 +191,13 @@ namespace OutlookAI.Services.Tools
                         }
                         searchAllMail = true;
                         broadened = true;
+                        TraceSearchProgress(args, filter, "auto_broadened_to_all_mail");
                     }
 
                     var allHits = new List<MessageSummary>();
-                    foreach (var folder in ResolveSearchFolders(args, allMail: searchAllMail))
+                    var allFolders = ResolveSearchFolders(args, allMail: searchAllMail);
+                    TraceSearchProgress(args, filter, "folders=" + allFolders.Count + " allMail=" + searchAllMail);
+                    foreach (var folder in allFolders)
                     {
                         searchedFolders++;
                         SearchOneFolder(folder, args, filter, allHits);
@@ -600,8 +606,10 @@ namespace OutlookAI.Services.Tools
             List<MessageSummary> summaries)
         {
             if (folder == null) return;
+            var startedAt = DateTimeOffset.UtcNow;
             try
             {
+                TraceSearchProgress(args, filter, "folder_start=" + SafeFolderName(folder));
                 var items = string.IsNullOrEmpty(filter)
                     ? folder.Items
                     : folder.Items.Restrict(filter);
@@ -625,11 +633,12 @@ namespace OutlookAI.Services.Tools
                     });
                     taken++;
                 }
+                TraceSearchProgress(args, filter, "folder_done=" + SafeFolderName(folder) + " taken=" + taken + " elapsed_ms=" + ElapsedMs(startedAt));
             }
             catch (COMException ex)
             {
                 OutlookAI.Diagnostics.TraceLog.Write(
-                    "SearchMessages folder=" + SafeFolderName(folder) + " failed: " + ex.Message,
+                    "SearchMessages folder=" + SafeFolderName(folder) + " failed elapsed_ms=" + ElapsedMs(startedAt) + ": " + ex.Message,
                     "LiveOutlookSurface");
             }
         }
@@ -649,6 +658,26 @@ namespace OutlookAI.Services.Tools
                     "LiveOutlookSurface");
             }
             catch { }
+        }
+
+        private static void TraceSearchProgress(SearchMessagesArgs args, string filter, string stage)
+        {
+            try
+            {
+                OutlookAI.Diagnostics.TraceLog.Write(
+                    "SearchMessages " + stage
+                    + " scope=" + (args.Scope ?? "auto")
+                    + " sort_order=" + (args.SortOrder ?? "newest")
+                    + " filter=" + (filter ?? "<none>")
+                    + " maxResults=" + args.MaxResults,
+                    "LiveOutlookSurface");
+            }
+            catch { }
+        }
+
+        private static long ElapsedMs(DateTimeOffset startedAt)
+        {
+            return (long)(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds;
         }
 
         private Outlook.MAPIFolder ResolveCurrentFolder()
