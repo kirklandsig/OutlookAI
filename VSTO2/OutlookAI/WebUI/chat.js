@@ -263,19 +263,35 @@
 
       // Live time counter. Updates the status line every second with the
       // elapsed seconds so the user can see the tool is making progress
-      // rather than guessing whether Outlook has frozen. Cancellation is
-      // already wired through the Stop button (postToHost {type:'stop'})
-      // which cancels the active turn's CTS, which cascades into
-      // OutlookAdvancedSearchRunner.Stop().
-      var tickId = setInterval(function() {
-        if (!row.parentNode) { clearInterval(tickId); return; }
+      // rather than guessing whether Outlook has frozen. Counter math
+      // uses Date.now() - startedAt so the displayed value is always
+      // wall-clock-correct even if setInterval is throttled when the
+      // WebView2 loses focus.
+      var tick = function() {
+        if (!row.parentNode) { return; }
         var ms = Date.now() - parseInt(row.dataset.startedAt, 10);
         var secs = Math.max(0, Math.floor(ms / 1000));
         if (secs > 0) {
           row.textContent = '\u2026 ' + verb + ' (' + secs + 's)';
         }
+      };
+      var tickId = setInterval(function() {
+        if (!row.parentNode) { clearInterval(tickId); return; }
+        tick();
       }, 1000);
       row.dataset.tickId = String(tickId);
+
+      // Force an immediate refresh when the WebView2 regains focus.
+      // WebView2 throttles setInterval while hidden; without this, the
+      // counter appears to lag (or to "reset" perceptually) until the
+      // next tick after focus returns.
+      var visHandler = function() {
+        if (document.visibilityState === 'visible') tick();
+      };
+      document.addEventListener('visibilitychange', visHandler);
+      window.addEventListener('focus', visHandler);
+      row.dataset.hasVisHandler = '1';
+      row._oai_visHandler = visHandler;
 
       toolCards[callId] = row;
       scrollToBottom();
@@ -287,6 +303,14 @@
       // Stop the live time counter.
       var tickId = parseInt(row.dataset.tickId || '0', 10);
       if (tickId) clearInterval(tickId);
+      // Drop the visibility-change handler (one was attached per row).
+      if (row._oai_visHandler) {
+        try {
+          document.removeEventListener('visibilitychange', row._oai_visHandler);
+          window.removeEventListener('focus', row._oai_visHandler);
+        } catch (e) { /* best-effort */ }
+        row._oai_visHandler = null;
+      }
       // On completion, drop the status line. Errors stick around as a
       // muted single-line error so the user sees that something failed
       // without the full JSON dump.
@@ -329,12 +353,20 @@
     },
 
     clear: function() {
-      // Stop any live tool-status time counters before tossing their DOM.
+      // Stop any live tool-status time counters and unbind any
+      // visibility-change handlers before tossing their DOM.
       for (var cid in toolCards) {
         try {
           var row = toolCards[cid];
           var tickId = row && parseInt(row.dataset && row.dataset.tickId || '0', 10);
           if (tickId) clearInterval(tickId);
+          if (row && row._oai_visHandler) {
+            try {
+              document.removeEventListener('visibilitychange', row._oai_visHandler);
+              window.removeEventListener('focus', row._oai_visHandler);
+            } catch (e) { /* best-effort */ }
+            row._oai_visHandler = null;
+          }
         } catch (e) { /* best-effort */ }
       }
       $messages.innerHTML = '';
@@ -443,6 +475,12 @@
 
   // -- Composer event wiring --------------------------------------
   function sendInput() {
+    // Guard against double-send when a previous turn is still running.
+    // The host disables $input + $btnSend when a turn is in flight, but
+    // a fast Enter or a race between WebMessageReceived and the C# side
+    // re-enabling the composer can still let a second submission through
+    // and produce two concurrent tool-status rows.
+    if ($input.disabled || $btnSend.disabled) return;
     var text = $input.value.trim();
     if (!text) return;
     $input.value = '';
