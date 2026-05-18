@@ -15,17 +15,21 @@ namespace OutlookAI.Services.Tools
     /// </summary>
     public static class SearchFallbackBudget
     {
-        // Floor: even for MaxResults=1 we take a few extra to leave room
-        // for the projector's classifier filter to drop a few system-folder
-        // items before clamping to the user's requested top-N globally.
-        private const int Floor = 5;
-
-        // Multiplier: take this many candidate items per folder relative
-        // to the user's MaxResults. Five is enough that the global
-        // classifier filter + sort + clamp can produce a clean top-N from
-        // a buffered pool without being burnt by edge cases (system
-        // subfolders inside an otherwise mail-typed folder, etc.).
-        private const int Multiplier = 5;
+        // Tight floor. For oldest/newest queries with MaxResults=1, taking
+        // exactly ONE item per folder is correct: the global sort across
+        // all folders picks the absolute oldest/newest. Each additional
+        // per-folder item costs ~100-300 ms of Outlook COM property
+        // access on uncached items, so over-provisioning here adds tens
+        // of seconds of pointless work on big mailboxes.
+        //
+        // The CollectFolderInputs loop already filters non-MailItems
+        // (continue without incrementing taken), so taking N == MaxResults
+        // MailItems is exact.
+        //
+        // The classifier is applied at the folder level (whole system
+        // folders are skipped before CollectFolderInputs is called), so
+        // no per-item classifier buffer is needed here.
+        private const int Floor = 1;
 
         // Hard cap used in count mode (MaxResults = int.MaxValue) so
         // CountMessages still bounds per-folder work. Counts of bigger
@@ -36,8 +40,8 @@ namespace OutlookAI.Services.Tools
         {
             if (args == null) return Floor;
             if (args.MaxResults == int.MaxValue) return CountModeCap;
-            if (args.MaxResults < 1) return Floor;
-            return Math.Max(Floor, args.MaxResults * Multiplier);
+            if (args.MaxResults < Floor) return Floor;
+            return args.MaxResults;
         }
 
         /// <summary>
