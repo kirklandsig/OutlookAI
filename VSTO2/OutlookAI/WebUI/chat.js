@@ -256,8 +256,27 @@
 
       var row = elt('div', 'tool-status');
       row.dataset.callId = callId;
+      row.dataset.verb = verb;
+      row.dataset.startedAt = String(Date.now());
       row.textContent = '\u2026 ' + verb;
       $messages.appendChild(row);
+
+      // Live time counter. Updates the status line every second with the
+      // elapsed seconds so the user can see the tool is making progress
+      // rather than guessing whether Outlook has frozen. Cancellation is
+      // already wired through the Stop button (postToHost {type:'stop'})
+      // which cancels the active turn's CTS, which cascades into
+      // OutlookAdvancedSearchRunner.Stop().
+      var tickId = setInterval(function() {
+        if (!row.parentNode) { clearInterval(tickId); return; }
+        var ms = Date.now() - parseInt(row.dataset.startedAt, 10);
+        var secs = Math.max(0, Math.floor(ms / 1000));
+        if (secs > 0) {
+          row.textContent = '\u2026 ' + verb + ' (' + secs + 's)';
+        }
+      }, 1000);
+      row.dataset.tickId = String(tickId);
+
       toolCards[callId] = row;
       scrollToBottom();
     },
@@ -265,6 +284,9 @@
     updateToolCallCard: function(callId, ok, summary, resultJson) {
       var row = toolCards[callId];
       if (!row) return;
+      // Stop the live time counter.
+      var tickId = parseInt(row.dataset.tickId || '0', 10);
+      if (tickId) clearInterval(tickId);
       // On completion, drop the status line. Errors stick around as a
       // muted single-line error so the user sees that something failed
       // without the full JSON dump.
@@ -307,6 +329,14 @@
     },
 
     clear: function() {
+      // Stop any live tool-status time counters before tossing their DOM.
+      for (var cid in toolCards) {
+        try {
+          var row = toolCards[cid];
+          var tickId = row && parseInt(row.dataset && row.dataset.tickId || '0', 10);
+          if (tickId) clearInterval(tickId);
+        } catch (e) { /* best-effort */ }
+      }
       $messages.innerHTML = '';
       assistantMessages = {};
       toolCards = {};
