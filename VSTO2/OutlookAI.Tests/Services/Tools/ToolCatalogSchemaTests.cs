@@ -52,6 +52,39 @@ namespace OutlookAI.Tests.Services.Tools
         }
 
         [Fact]
+        public void SearchMessages_Description_TeachesVendorSearchAndZeroResultFallback()
+        {
+            // Real failure from the IT Creations smoke: user asked
+            // "quotes I received from IT Creations" and the model
+            //   1) put "ITCreations" (no space) into `query`
+            //   2) AND'd with body_contains="quote"
+            //   3) gave up after 2 attempts with the same shape
+            // Both searches returned 0 and the user was told no emails
+            // existed when they actually did. The description must steer
+            // the model toward preserving the user's exact spelling,
+            // trying `from` before `query` for vendor/sender lookups,
+            // and a fallback ladder before declaring "no results".
+            var tools = ToolCatalogSchema.BuildResponsesToolsArray(includeWriteTools: false);
+            var search = FindTool(tools, "outlook_search_messages");
+            var desc = (string)search["description"];
+
+            // Preserve user's whitespace / spelling exactly.
+            Assert.Contains("preserve", desc, System.StringComparison.OrdinalIgnoreCase);
+
+            // Prefer 'from' for sender lookups.
+            Assert.Contains("vendor", desc, System.StringComparison.OrdinalIgnoreCase);
+
+            // Concrete "IT Creations" example that pins the right shape
+            // and prevents the model from collapsing the space.
+            Assert.Contains("IT Creations", desc);
+            Assert.Contains("from:'IT Creations'", desc);
+
+            // Fallback ladder on zero results.
+            Assert.Contains("fallback", desc, System.StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("zero", desc, System.StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
         public void SearchMessages_QueryField_Description_TellsModelNotToDumpStructuredInfoIntoIt()
         {
             var tools = ToolCatalogSchema.BuildResponsesToolsArray(includeWriteTools: false);
