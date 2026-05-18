@@ -314,6 +314,7 @@
     <Compile Include="Services\Tools\SearchFallbackBudget.cs" />
     <Compile Include="Services\Tools\SearchMessagesArgsParser.cs" />
     <Compile Include="Services\Tools\SearchScopeFormatter.cs" />
+    <Compile Include="Services\Tools\SenderKeyNormalizer.cs" />
     <Compile Include="Services\Tools\TableMessageClassFilter.cs" />
     <Compile Include="Services\Tools\OutlookSetCategoryTool.cs" />
     <Compile Include="Services\Tools\ToolCatalogSchema.cs" />
