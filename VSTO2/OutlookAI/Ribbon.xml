@@ -24,6 +24,12 @@
 							onAction="OnAIAssistantClick"
 							supertip="Open the AI Assistant to chat with your mailbox - summarize, search, and act on messages."
 							imageMso="SmartArtChangeColorsGallery" />
+					<button id="btnReports"
+							label="Reports"
+							size="large"
+							onAction="OnReportsClick"
+							supertip="Open the Inbox Reports pane to generate digests, action items, conversation summaries, and stats."
+							imageMso="ChartTypeMenu" />
 				</group>
 			</tab>
 		</tabs>

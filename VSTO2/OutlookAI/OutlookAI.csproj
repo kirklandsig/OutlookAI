@@ -350,6 +350,13 @@
     <Compile Include="TaskPane\InboxCopilot\InboxCopilotPane.Designer.cs">
       <DependentUpon>InboxCopilotPane.cs</DependentUpon>
     </Compile>
+    <Compile Include="TaskPane\InboxReports\InboxReportsController.cs" />
+    <Compile Include="TaskPane\InboxReports\InboxReportsPane.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="TaskPane\InboxReports\InboxReportsPane.Designer.cs">
+      <DependentUpon>InboxReportsPane.cs</DependentUpon>
+    </Compile>
     <Compile Include="TaskPane\InboxReports\InboxReportsPromptBuilder.cs" />
     <Compile Include="TaskPane\InboxReports\ReportQuickActionChip.cs" />
     <Compile Include="ThisAddIn.cs">
