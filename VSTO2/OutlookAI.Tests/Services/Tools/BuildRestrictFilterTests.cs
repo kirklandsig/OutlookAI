@@ -49,11 +49,23 @@ namespace OutlookAI.Tests.Services.Tools
         }
 
         [Fact]
-        public void From_MatchesDisplayNameOrEmail()
+        public void From_MatchesDisplayNameOrLegacyOrSmtpAddress()
         {
+            // The 'from' clause must match against three different sender
+            // properties because Exchange-routed messages don't all expose
+            // the SMTP address in PR_SENDER_EMAIL_ADDRESS:
+            //   PR_SENDER_NAME           -> urn:schemas:httpmail:fromname    (display name)
+            //   PR_SENDER_EMAIL_ADDRESS  -> urn:schemas:httpmail:fromemail   (legacy: may be X500 for Exchange)
+            //   PR_SENDER_SMTP_ADDRESS   -> 0x5D01001F                        (always SMTP, when present)
+            // Without the SMTP property, from="itcreations" misses emails
+            // from murad@itcreations.com because their fromemail field is
+            // an X500 DN, not the SMTP address. Real smoke evidence: user
+            // has 75 hits in Outlook UI for "itcreations" but our from=
+            // filter returned 0.
             var f = LiveOutlookSurface.BuildRestrictFilter(new SearchMessagesArgs { From = "jane" });
             Assert.Contains("\"urn:schemas:httpmail:fromname\" LIKE '%jane%'", f);
             Assert.Contains("\"urn:schemas:httpmail:fromemail\" LIKE '%jane%'", f);
+            Assert.Contains("\"http://schemas.microsoft.com/mapi/proptag/0x5D01001F\" LIKE '%jane%'", f);
         }
 
         [Fact]

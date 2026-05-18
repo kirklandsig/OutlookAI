@@ -487,7 +487,7 @@ namespace OutlookAI.Services.Tools
             if (!string.IsNullOrEmpty(args.From))
             {
                 var f = (args.From ?? "").Replace("'", "''");
-                clauses.Add("(" + PropFromName + " LIKE '%" + f + "%' OR " + PropFromEmail + " LIKE '%" + f + "%')");
+                clauses.Add("(" + PropFromName + " LIKE '%" + f + "%' OR " + PropFromEmail + " LIKE '%" + f + "%' OR " + PropFromSmtp + " LIKE '%" + f + "%')");
             }
             if (!string.IsNullOrEmpty(args.SubjectContains))
             {
@@ -1387,6 +1387,12 @@ namespace OutlookAI.Services.Tools
         private const string PropBody        = "\"urn:schemas:httpmail:textdescription\"";
         private const string PropFromName    = "\"urn:schemas:httpmail:fromname\"";
         private const string PropFromEmail   = "\"urn:schemas:httpmail:fromemail\"";
+        // PR_SENDER_SMTP_ADDRESS (0x5D01) PT_UNICODE_STRING (0x001F) ->
+        // the always-SMTP form of the sender. PR_SENDER_EMAIL_ADDRESS (above)
+        // can be the X500 DN for Exchange-routed mail, so a "from=itcreations"
+        // search misses messages from murad@itcreations.com unless we
+        // also match this SMTP property.
+        private const string PropFromSmtp    = "\"http://schemas.microsoft.com/mapi/proptag/0x5D01001F\"";
         private const string PropHasAttach   = "\"urn:schemas:httpmail:hasattachment\"";
         private const string PropRead        = "\"urn:schemas:httpmail:read\"";
         private const string PropReceivedAt  = "\"urn:schemas:httpmail:datereceived\"";
@@ -1408,7 +1414,8 @@ namespace OutlookAI.Services.Tools
             {
                 var v = Escape(args.From);
                 clauses.Add("(" + PropFromName + " LIKE '%" + v + "%' OR " +
-                            PropFromEmail + " LIKE '%" + v + "%')");
+                            PropFromEmail + " LIKE '%" + v + "%' OR " +
+                            PropFromSmtp + " LIKE '%" + v + "%')");
             }
             if (!string.IsNullOrEmpty(args.SubjectContains))
             {
