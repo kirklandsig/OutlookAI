@@ -313,6 +313,7 @@
     <Compile Include="Services\Tools\OutlookListRecentThreadsWithTool.cs" />
     <Compile Include="Services\Tools\OutlookMarkAsReadTool.cs" />
     <Compile Include="Services\Tools\OutlookReadMessageTool.cs" />
+    <Compile Include="Services\Tools\OutlookReadMessagesTool.cs" />
     <Compile Include="Services\Tools\OutlookSearchMessagesTool.cs" />
     <Compile Include="Services\Tools\OutlookGetCurrentSelectionTool.cs" />
     <Compile Include="Services\Tools\SearchFallbackBudget.cs" />
