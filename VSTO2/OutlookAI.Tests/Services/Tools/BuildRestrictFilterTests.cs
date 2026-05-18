@@ -52,32 +52,26 @@ namespace OutlookAI.Tests.Services.Tools
             Assert.DoesNotContain("subject LIKE", f);
         }
 
-        [Theory]
-        [InlineData(true,  "urn:schemas:httpmail:hasattachment = 1")]
-        [InlineData(false, "urn:schemas:httpmail:hasattachment = 0")]
-        public void HasAttachment_MapsToBool(bool value, string expected)
+        [Fact]
+        public void HasAttachment_TrueMapsToAttachmentClause()
         {
-            var f = LiveOutlookSurface.BuildRestrictFilter(new SearchMessagesArgs { HasAttachment = value });
-            Assert.Contains(expected, f);
+            var f = LiveOutlookSurface.BuildRestrictFilter(new SearchMessagesArgs { HasAttachment = true });
+            Assert.Contains("urn:schemas:httpmail:hasattachment = 1", f);
         }
 
-        [Theory]
-        [InlineData(true,  "urn:schemas:httpmail:read = 0")]
-        [InlineData(false, "urn:schemas:httpmail:read = 1")]
-        public void IsUnread_MapsToInverseRead(bool value, string expected)
+        [Fact]
+        public void IsUnread_TrueMapsToUnreadClause()
         {
-            var f = LiveOutlookSurface.BuildRestrictFilter(new SearchMessagesArgs { IsUnread = value });
-            Assert.Contains(expected, f);
+            var f = LiveOutlookSurface.BuildRestrictFilter(new SearchMessagesArgs { IsUnread = true });
+            Assert.Contains("urn:schemas:httpmail:read = 0", f);
         }
 
-        [Theory]
-        [InlineData(true,  "= 2")]
-        [InlineData(false, "<> 2")]
-        public void IsFlagged_UsesFlagStatusProperty(bool value, string expected)
+        [Fact]
+        public void IsFlagged_TrueUsesFlagStatusProperty()
         {
-            var f = LiveOutlookSurface.BuildRestrictFilter(new SearchMessagesArgs { IsFlagged = value });
+            var f = LiveOutlookSurface.BuildRestrictFilter(new SearchMessagesArgs { IsFlagged = true });
             Assert.Contains("0x10900003", f);
-            Assert.Contains(expected, f);
+            Assert.Contains("= 2", f);
         }
 
         [Theory]
@@ -123,6 +117,99 @@ namespace OutlookAI.Tests.Services.Tools
             var f = LiveOutlookSurface.BuildRestrictFilter(new SearchMessagesArgs { Query = "Jane's Q4" });
             // Single quote inside DASL string is escaped by doubling.
             Assert.Contains("'%Jane''s Q4%'", f);
+        }
+
+        [Theory]
+        [InlineData("any", null)]
+        [InlineData("with", "urn:schemas:httpmail:hasattachment = 1")]
+        [InlineData("without", "urn:schemas:httpmail:hasattachment = 0")]
+        public void AttachmentFilter_MapsTriState(string value, string expected)
+        {
+            var f = LiveOutlookSurface.BuildRestrictFilter(new SearchMessagesArgs { AttachmentFilter = value });
+            if (expected == null)
+                Assert.Null(f);
+            else
+                Assert.Contains(expected, f);
+        }
+
+        [Theory]
+        [InlineData("any", null)]
+        [InlineData("unread", "urn:schemas:httpmail:read = 0")]
+        [InlineData("read", "urn:schemas:httpmail:read = 1")]
+        public void ReadStatus_MapsTriState(string value, string expected)
+        {
+            var f = LiveOutlookSurface.BuildRestrictFilter(new SearchMessagesArgs { ReadStatus = value });
+            if (expected == null)
+                Assert.Null(f);
+            else
+                Assert.Contains(expected, f);
+        }
+
+        [Theory]
+        [InlineData("any", null)]
+        [InlineData("flagged", "= 2")]
+        [InlineData("unflagged", "<> 2")]
+        public void FlagStatus_MapsTriState(string value, string expected)
+        {
+            var f = LiveOutlookSurface.BuildRestrictFilter(new SearchMessagesArgs { FlagStatus = value });
+            if (expected == null)
+                Assert.Null(f);
+            else
+            {
+                Assert.Contains("0x10900003", f);
+                Assert.Contains(expected, f);
+            }
+        }
+
+        [Theory]
+        [InlineData("any", null)]
+        [InlineData("low", "= 0")]
+        [InlineData("normal", "= 1")]
+        [InlineData("high", "= 2")]
+        public void ImportanceFilter_MapsTriState(string value, string expected)
+        {
+            var f = LiveOutlookSurface.BuildRestrictFilter(new SearchMessagesArgs { ImportanceFilter = value });
+            if (expected == null)
+                Assert.Null(f);
+            else
+            {
+                Assert.Contains("0x00170003", f);
+                Assert.Contains(expected, f);
+            }
+        }
+
+        [Fact]
+        public void OldDefaultFalseFields_DoNotCreateClauses()
+        {
+            var f = LiveOutlookSurface.BuildRestrictFilter(new SearchMessagesArgs
+            {
+                HasAttachment = null,
+                IsUnread = null,
+                IsFlagged = null,
+                Importance = null,
+                AttachmentFilter = "any",
+                ReadStatus = "any",
+                FlagStatus = "any",
+                ImportanceFilter = "any",
+            });
+            Assert.Null(f);
+        }
+
+        [Fact]
+        public void FirstEmailEverArgs_DoNotContainDefaultFilterClauses()
+        {
+            var f = LiveOutlookSurface.BuildRestrictFilter(new SearchMessagesArgs
+            {
+                Scope = "all_mail",
+                SortOrder = "oldest",
+                MaxResults = 1,
+                AttachmentFilter = "any",
+                ReadStatus = "any",
+                FlagStatus = "any",
+                ImportanceFilter = "any",
+            });
+
+            Assert.Null(f);
         }
     }
 }
