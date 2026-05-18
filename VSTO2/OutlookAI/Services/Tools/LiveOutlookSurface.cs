@@ -741,6 +741,34 @@ namespace OutlookAI.Services.Tools
             return "@SQL=" + string.Join(" AND ", clauses);
         }
 
+        internal static bool SortDescending(SearchMessagesArgs args)
+        {
+            return !string.Equals(args?.SortOrder, "oldest", StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static bool ShouldSkipAllMailFolder(string folderName)
+        {
+            if (string.IsNullOrWhiteSpace(folderName)) return true;
+            var name = folderName.Trim();
+            return string.Equals(name, "Deleted Items", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "Junk Email", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "Drafts", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "Outbox", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "Sync Issues", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "RSS Feeds", StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static IReadOnlyList<MessageSummary> MergeAndSortSearchResults(
+            IEnumerable<MessageSummary> hits,
+            SearchMessagesArgs args)
+        {
+            var safeHits = hits ?? new MessageSummary[0];
+            var ordered = SortDescending(args)
+                ? safeHits.OrderByDescending(m => m.ReceivedAt)
+                : safeHits.OrderBy(m => m.ReceivedAt);
+            return ordered.Take(Math.Max(1, args?.MaxResults ?? 25)).ToList();
+        }
+
         private static string Escape(string s) => (s ?? "").Replace("'", "''");
     }
 }
