@@ -75,10 +75,15 @@ namespace OutlookAI.TaskPane
                     var marshaller = Globals.ThisAddIn?.OutlookMarshaller;
                     var ids = Globals.ThisAddIn?.IdResolver;
                     var app = Globals.ThisAddIn?.Application;
-                    TraceLog.Write("Services: marshaller=" + (marshaller != null) + " ids=" + (ids != null) + " app=" + (app != null), "AITaskPane");
-                    if (marshaller != null && ids != null && app != null)
+                    var runner = Globals.ThisAddIn?.AdvancedSearchRunner;
+                    var classifier = Globals.ThisAddIn?.FolderClassifier;
+                    TraceLog.Write("Services: marshaller=" + (marshaller != null) + " ids=" + (ids != null)
+                        + " app=" + (app != null) + " runner=" + (runner != null), "AITaskPane");
+                    if (marshaller != null && ids != null && app != null && runner != null)
                     {
-                        _surface = new LiveOutlookSurface(app, marshaller, ids, inspector);
+                        _surface = new LiveOutlookSurface(app, marshaller, ids,
+                            composeInspector: inspector, explorer: null,
+                            runner: runner, classifier: classifier);
                         _toolHost = new OutlookToolHost(_surface, Config.WriteToolsEnabled);
                         TraceLog.Write("surface + toolHost constructed", "AITaskPane");
                     }

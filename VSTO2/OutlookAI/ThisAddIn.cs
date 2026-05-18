@@ -15,6 +15,10 @@ namespace OutlookAI
         public RealtimeVoiceService VoiceService { get; private set; }
         public OutlookThreadMarshaller OutlookMarshaller { get; private set; }
         public IdResolver IdResolver { get; private set; }
+        public OutlookAI.Services.Tools.IOutlookAdvancedSearchRunner AdvancedSearchRunner { get; private set; }
+        public OutlookAI.Services.Tools.IFolderClassifier FolderClassifier { get; private set; }
+
+        private OutlookAI.Services.Tools.LiveAdvancedSearchHost _advancedSearchHost;
 
         private void ThisAddIn_Startup(object sender, System.EventArgs e)
         {
@@ -70,6 +74,15 @@ namespace OutlookAI
                 OutlookMarshaller = new OutlookThreadMarshaller(syncCtx);
                 IdResolver = new IdResolver();
                 TraceLog.Write("Services initialized OK; marshaller _uiThreadId=" + OutlookMarshaller.UiThreadId, "ThisAddIn");
+
+                // Phase 3b: shared AdvancedSearch host + runner. One host
+                // owns the AdvancedSearchComplete subscription for the whole
+                // process; one runner serialises in-flight searches.
+                FolderClassifier = new OutlookAI.Services.Tools.FolderClassifier();
+                _advancedSearchHost = new OutlookAI.Services.Tools.LiveAdvancedSearchHost(
+                    this.Application, OutlookMarshaller, IdResolver);
+                AdvancedSearchRunner = new OutlookAI.Services.Tools.OutlookAdvancedSearchRunner(_advancedSearchHost);
+                TraceLog.Write("AdvancedSearch services constructed", "ThisAddIn");
             }
             catch (Exception ex)
             {
@@ -82,6 +95,14 @@ namespace OutlookAI
         {
             try
             {
+                // Runner before host: runner unsubscribes its handler from
+                // the host on Dispose; the host then drops its own COM
+                // subscription. Reverse order would leave a dangling handler.
+                try { AdvancedSearchRunner?.Dispose(); }
+                catch (Exception ex) { TraceLog.Write("Runner dispose: " + ex.Message, "ThisAddIn"); }
+                try { _advancedSearchHost?.Dispose(); }
+                catch (Exception ex) { TraceLog.Write("Host dispose: " + ex.Message, "ThisAddIn"); }
+
                 VoiceService?.Dispose();
                 ChatService?.Dispose();
                 AuthService?.Dispose();
