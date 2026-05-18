@@ -499,11 +499,13 @@ namespace OutlookAI.Services.Tools
             }
             if (args.DateFrom.HasValue)
             {
-                clauses.Add(PropReceivedAt + " >= '" + args.DateFrom.Value.ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture) + "'");
+                // Same DASL date-literal fix as BuildRestrictFilter; see
+                // detailed comment there.
+                clauses.Add(PropReceivedAt + " >= '" + args.DateFrom.Value.ToString("yyyy-MM-ddTHH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) + "'");
             }
             if (args.DateTo.HasValue)
             {
-                clauses.Add(PropReceivedAt + " <= '" + args.DateTo.Value.ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture) + "'");
+                clauses.Add(PropReceivedAt + " <= '" + args.DateTo.Value.ToString("yyyy-MM-ddTHH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) + "'");
             }
             if (clauses.Count == 0) return null;
             return "@SQL=" + string.Join(" AND ", clauses);
@@ -1480,13 +1482,19 @@ namespace OutlookAI.Services.Tools
             }
             if (args.DateFrom.HasValue)
             {
+                // ISO 8601 WITH T separator + seconds. Outlook DASL's strict
+                // parser silently rejects 'yyyy-MM-dd HH:mm' (space, no T,
+                // no seconds) and treats the whole comparison as FALSE,
+                // killing the entire AND-combined filter and returning 0
+                // rows for every folder. Reproduces in tests
+                // DateFrom_UsesIso8601WithTSeparator and DateRange_*.
                 clauses.Add(PropReceivedAt + " >= '" +
-                    args.DateFrom.Value.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + "'");
+                    args.DateFrom.Value.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture) + "'");
             }
             if (args.DateTo.HasValue)
             {
                 clauses.Add(PropReceivedAt + " <= '" +
-                    args.DateTo.Value.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + "'");
+                    args.DateTo.Value.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture) + "'");
             }
 
             if (clauses.Count == 0) return null;
