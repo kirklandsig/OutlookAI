@@ -29,7 +29,7 @@
 							size="large"
 							onAction="OnReportsClick"
 							supertip="Open the Inbox Reports pane to generate digests, action items, conversation summaries, and stats."
-							imageMso="ChartTypeMenu" />
+							imageMso="PivotTableInsert" />
 				</group>
 			</tab>
 		</tabs>

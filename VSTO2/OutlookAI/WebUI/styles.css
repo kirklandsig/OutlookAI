@@ -178,7 +178,64 @@ html, body {
 }
 .msg-content pre code { background: transparent; padding: 0; }
 .msg-content ul, .msg-content ol { margin: 4px 0; padding-left: 24px; }
+.msg-content li { margin: 2px 0; }
 .msg-content a { color: var(--accent); }
+
+/* Headers from the Reports system prompt. Compact sizes since the
+   chat pane is narrow. */
+.msg-content h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 12px 0 4px 0;
+}
+.msg-content h4 {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 10px 0 4px 0;
+}
+.msg-content h5, .msg-content h6 {
+  font-size: 12px;
+  font-weight: 600;
+  margin: 8px 0 4px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+/* GFM tables (digest tables, stats reports). */
+.msg-content table.md-table {
+  border-collapse: collapse;
+  margin: 6px 0;
+  font-size: 12px;
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+}
+.msg-content table.md-table th,
+.msg-content table.md-table td {
+  border: 1px solid var(--tool-border);
+  padding: 4px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+.msg-content table.md-table th {
+  background: var(--tool-bg);
+  font-weight: 600;
+}
+
+/* Blockquote: light left rule, muted text. */
+.msg-content blockquote {
+  margin: 6px 0;
+  padding: 2px 8px;
+  border-left: 3px solid var(--tool-border);
+  color: var(--muted, #666);
+}
+
+/* Horizontal rule */
+.msg-content hr {
+  border: 0;
+  border-top: 1px solid var(--tool-border);
+  margin: 10px 0;
+}
 
 /* ---- Compact tool-status indicator (Phase 3a+) ---- */
 /* Single muted italic line shown while a tool is running. Removed

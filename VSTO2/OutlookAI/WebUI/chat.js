@@ -50,10 +50,13 @@
     }
   }
 
-  // -- Minimal markdown renderer ----------------------------------
-  // Supports: fenced code blocks (```), inline code, bold (**),
-  // italic (*), links [text](url), unordered lists, ordered lists,
-  // paragraphs. Anything else is escaped and rendered as plain text.
+  // -- Markdown renderer (small but real) -------------------------
+  // Supports: ATX headers (#..######), fenced code blocks (```),
+  // inline code, bold (**), italic (*), links [text](url), unordered
+  // lists, ordered lists, GitHub-flavored tables (|col|col| with
+  // |---|---| separator), horizontal rules (---), blockquotes (>),
+  // and GitHub-style single-newline = <br> inside paragraphs so reports
+  // with terse line-broken output render legibly.
   function escapeHtml(s) {
     return String(s)
       .replace(/&/g, '&amp;')
@@ -83,6 +86,25 @@
     return out;
   }
 
+  // Split a markdown table row into cells, trimming leading/trailing
+  // pipes and stripping whitespace. Returns null for non-table rows.
+  function splitTableRow(line) {
+    if (!/^\s*\|.*\|\s*$/.test(line)) return null;
+    var body = line.trim().replace(/^\|/, '').replace(/\|$/, '');
+    return body.split('|').map(function (c) { return c.trim(); });
+  }
+
+  // Is this the separator row that follows the header in a GFM table?
+  // Cells contain only - and : (with optional whitespace).
+  function isTableSeparator(line) {
+    var cells = splitTableRow(line);
+    if (!cells || cells.length === 0) return false;
+    for (var i = 0; i < cells.length; i++) {
+      if (!/^:?-{1,}:?$/.test(cells[i])) return false;
+    }
+    return true;
+  }
+
   function renderMarkdown(src) {
     if (!src) return '';
     var html = [];
@@ -108,17 +130,26 @@
     var paraBuf = [];
     function flushPara() {
       if (paraBuf.length > 0) {
-        html.push('<p>' + renderInline(paraBuf.join(' ')) + '</p>');
+        // GFM-style: join paragraph lines with <br> so single-newline
+        // text the model produced (terse digests, indented items
+        // without bullet markers, address blocks, etc.) renders with
+        // visible line breaks rather than collapsing onto one line.
+        var rendered = paraBuf.map(renderInline).join('<br>');
+        html.push('<p>' + rendered + '</p>');
         paraBuf = [];
       }
     }
 
+    function flushAll() { flushList(); flushPara(); }
+
     for (var i = 0; i < lines.length; i++) {
       var line = lines[i];
+
+      // Fenced code blocks first (highest precedence).
       var fenceMatch = line.match(/^```(\w*)\s*$/);
       if (fenceMatch) {
         if (!inFence) {
-          flushList(); flushPara();
+          flushAll();
           inFence = true;
           fenceLang = fenceMatch[1] || '';
           fenceBuf = [];
@@ -135,9 +166,64 @@
         fenceBuf.push(line);
         continue;
       }
+
+      // ATX headers: # Title .. ###### Title
+      var headerMatch = line.match(/^(#{1,6})\s+(.+?)\s*#*\s*$/);
+      if (headerMatch) {
+        flushAll();
+        // Compact UI: clamp to h3..h6 so a top-level # does not produce
+        // a giant heading inside a 340px-wide pane.
+        var level = Math.min(6, Math.max(3, headerMatch[1].length + 2));
+        html.push('<h' + level + '>' + renderInline(headerMatch[2]) + '</h' + level + '>');
+        continue;
+      }
+
+      // Horizontal rule
+      if (/^\s*([-*_])\s*\1\s*\1[\s\1]*$/.test(line)) {
+        flushAll();
+        html.push('<hr>');
+        continue;
+      }
+
+      // GFM table: header row + separator row + body rows
+      var headerCells = splitTableRow(line);
+      if (headerCells && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
+        flushAll();
+        var tableHtml = ['<table class="md-table">'];
+        tableHtml.push('<thead><tr>');
+        headerCells.forEach(function (c) {
+          tableHtml.push('<th>' + renderInline(c) + '</th>');
+        });
+        tableHtml.push('</tr></thead>');
+        tableHtml.push('<tbody>');
+        i += 2; // skip header + separator
+        while (i < lines.length) {
+          var rowCells = splitTableRow(lines[i]);
+          if (!rowCells) break;
+          tableHtml.push('<tr>');
+          for (var j = 0; j < headerCells.length; j++) {
+            tableHtml.push('<td>' + renderInline(rowCells[j] || '') + '</td>');
+          }
+          tableHtml.push('</tr>');
+          i++;
+        }
+        tableHtml.push('</tbody></table>');
+        html.push(tableHtml.join(''));
+        i--; // outer loop will i++ past the last row
+        continue;
+      }
+
+      // Blockquote
+      var quoteMatch = line.match(/^>\s?(.*)$/);
+      if (quoteMatch) {
+        flushAll();
+        html.push('<blockquote>' + renderInline(quoteMatch[1]) + '</blockquote>');
+        continue;
+      }
+
       // Lists
-      var ulMatch = line.match(/^[-*]\s+(.+)$/);
-      var olMatch = line.match(/^\d+\.\s+(.+)$/);
+      var ulMatch = line.match(/^\s*[-*]\s+(.+)$/);
+      var olMatch = line.match(/^\s*\d+\.\s+(.+)$/);
       if (ulMatch) {
         if (listType !== 'ul') { flushList(); flushPara(); listType = 'ul'; }
         listBuf.push(ulMatch[1]);
@@ -148,19 +234,19 @@
         listBuf.push(olMatch[1]);
         continue;
       }
-      // Paragraph break
+
+      // Paragraph break on blank line
       if (/^\s*$/.test(line)) {
-        flushList(); flushPara();
+        flushAll();
         continue;
       }
+
       paraBuf.push(line);
     }
     if (inFence) {
-      // Unterminated fence - treat the rest as plain text.
       html.push('<pre><code>' + escapeHtml(fenceBuf.join('\n')) + '</code></pre>');
     }
-    flushList();
-    flushPara();
+    flushAll();
     return html.join('\n');
   }
 
@@ -413,11 +499,19 @@
     /**
      * Render the row of quick-action chips above the composer. Each chip
      * is { label, prompt }. Clicking a chip pre-fills the textarea with
-     * the prompt AND immediately sends (auto-send per the Phase 3a spec).
+     * the prompt and (by default) immediately sends - the Phase 3a
+     * InboxCopilot behavior.
+     *
+     * Phase 4: callers can pass options = { autoSubmit: false } to
+     * disable auto-send and prefill only, so the user can edit
+     * [placeholders] in the template before sending. The Reports pane
+     * uses this mode.
+     *
      * Calling with [] empties the row.
      */
-    setQuickActions: function(chips) {
+    setQuickActions: function(chips, options) {
       if (!$quickActions) return;
+      var autoSubmit = !(options && options.autoSubmit === false);
       while ($quickActions.firstChild) $quickActions.removeChild($quickActions.firstChild);
       (chips || []).forEach(function(chip) {
         var btn = document.createElement('button');
@@ -427,7 +521,17 @@
         btn.title = chip.prompt;
         btn.addEventListener('click', function() {
           $input.value = chip.prompt;
-          sendInput();
+          if (autoSubmit) {
+            sendInput();
+          } else {
+            // Prefill-only: focus the input and move the caret to the
+            // end so the user can immediately edit the [placeholders].
+            try { $input.focus(); } catch (e) { /* best-effort */ }
+            try {
+              var len = $input.value.length;
+              if ($input.setSelectionRange) $input.setSelectionRange(len, len);
+            } catch (e) { /* best-effort */ }
+          }
         });
         $quickActions.appendChild(btn);
       });
