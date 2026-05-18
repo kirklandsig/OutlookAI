@@ -49,23 +49,29 @@ namespace OutlookAI.Tests.Services.Tools
         }
 
         [Fact]
-        public void From_MatchesDisplayNameOrLegacyOrSmtpAddress()
+        public void From_MatchesFromHeaderEmailSmtpAndTransportHeaders()
         {
-            // The 'from' clause must match against three different sender
-            // properties because Exchange-routed messages don't all expose
-            // the SMTP address in PR_SENDER_EMAIL_ADDRESS:
-            //   PR_SENDER_NAME           -> urn:schemas:httpmail:fromname    (display name)
-            //   PR_SENDER_EMAIL_ADDRESS  -> urn:schemas:httpmail:fromemail   (legacy: may be X500 for Exchange)
-            //   PR_SENDER_SMTP_ADDRESS   -> 0x5D01001F                        (always SMTP, when present)
-            // Without the SMTP property, from="itcreations" misses emails
-            // from murad@itcreations.com because their fromemail field is
-            // an X500 DN, not the SMTP address. Real smoke evidence: user
-            // has 75 hits in Outlook UI for "itcreations" but our from=
-            // filter returned 0.
+            // The 'from' clause must match against multiple sender-related
+            // properties because Exchange-routed messages don't reliably
+            // populate any single field with the resolved SMTP address:
+            //   urn:schemas:httpmail:from        (RFC 822 From header: "Name" <addr>)
+            //   urn:schemas:httpmail:fromemail   (PR_SENDER_EMAIL_ADDRESS; X500 DN for Exchange)
+            //   proptag 0x5D01001F               (PR_SENDER_SMTP_ADDRESS; not always populated)
+            //   proptag 0x007D001F               (PR_TRANSPORT_MESSAGE_HEADERS; full raw RFC 822
+            //                                     headers - always contains SMTP From line)
+            // Real smoke evidence: user has 75 hits in Outlook UI for
+            // "itcreations" but our from= filter returned 0. Root cause:
+            // we used 'fromname' which is NOT a valid HTTPMAIL URN (the
+            // canonical one is 'from'); folder.GetTable's strict DASL parser
+            // silently evaluated the entire OR to FALSE because all three
+            // legs failed (invalid URN, X500 DN, empty SMTP).
             var f = LiveOutlookSurface.BuildRestrictFilter(new SearchMessagesArgs { From = "jane" });
-            Assert.Contains("\"urn:schemas:httpmail:fromname\" LIKE '%jane%'", f);
+            Assert.Contains("\"urn:schemas:httpmail:from\" LIKE '%jane%'", f);
             Assert.Contains("\"urn:schemas:httpmail:fromemail\" LIKE '%jane%'", f);
             Assert.Contains("\"http://schemas.microsoft.com/mapi/proptag/0x5D01001F\" LIKE '%jane%'", f);
+            Assert.Contains("\"http://schemas.microsoft.com/mapi/proptag/0x007D001F\" LIKE '%jane%'", f);
+            // The OLD bogus URN must be gone.
+            Assert.DoesNotContain("\"urn:schemas:httpmail:fromname\"", f);
         }
 
         [Fact]
