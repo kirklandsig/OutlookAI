@@ -16,7 +16,9 @@ namespace OutlookAI.Services.Tools
         IReadOnlyList<FolderResult> ListFolders();
         IReadOnlyList<MessageSummary> SearchMessages(SearchMessagesArgs args, CancellationToken ct = default(CancellationToken));
         MessageDetail ReadMessage(string messageId, bool includeFullBody);
+        IReadOnlyList<MessageDetail> ReadMessages(string[] ids, bool includeBody, int maxItems, CancellationToken ct = default(CancellationToken));
         int CountMessages(SearchMessagesArgs args, CancellationToken ct = default(CancellationToken));
+        IReadOnlyList<AggregationBucket> AggregateMessages(AggregateMessagesArgs args, CancellationToken ct = default(CancellationToken));
         IReadOnlyList<ThreadSummary> ListRecentThreadsWith(string recipientEmail, int maxThreads);
         CreatedDraft CreateDraft(CreateDraftArgs args);
         void MarkAsRead(string messageId, bool read);

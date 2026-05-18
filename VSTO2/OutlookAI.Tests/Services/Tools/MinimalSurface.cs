@@ -19,7 +19,11 @@ namespace OutlookAI.Tests.Services.Tools
             => throw new System.NotImplementedException();
         public virtual MessageDetail ReadMessage(string messageId, bool includeFullBody)
             => throw new System.NotImplementedException();
+        public virtual IReadOnlyList<MessageDetail> ReadMessages(string[] ids, bool includeBody, int maxItems, CancellationToken ct = default(CancellationToken))
+            => throw new System.NotImplementedException();
         public virtual int CountMessages(SearchMessagesArgs args, CancellationToken ct = default(CancellationToken))
+            => throw new System.NotImplementedException();
+        public virtual IReadOnlyList<AggregationBucket> AggregateMessages(AggregateMessagesArgs args, CancellationToken ct = default(CancellationToken))
             => throw new System.NotImplementedException();
         public virtual IReadOnlyList<ThreadSummary> ListRecentThreadsWith(string recipientEmail, int maxThreads)
             => throw new System.NotImplementedException();
