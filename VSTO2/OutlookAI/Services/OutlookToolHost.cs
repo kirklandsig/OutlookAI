@@ -25,7 +25,9 @@ namespace OutlookAI.Services
                 new OutlookListFoldersTool(),
                 new OutlookSearchMessagesTool(),
                 new OutlookReadMessageTool(),
+                new OutlookReadMessagesTool(),           // Phase 4: bulk read
                 new OutlookCountMessagesTool(),
+                new OutlookAggregateMessagesTool(),      // Phase 4: group + count
                 new OutlookListRecentThreadsWithTool(),
             };
             if (includeWriteTools)
