@@ -30,8 +30,8 @@ namespace OutlookAI.Services.Tools
                 SubjectContains = Clean(args["subject_contains"]),
                 BodyContains = Clean(args["body_contains"]),
                 FolderId = Clean(args["folder_id"]),
-                DateFrom = ParseDate(args["date_from"]),
-                DateTo = ParseDate(args["date_to"]),
+                DateFrom = ParseDate(args["date_from"], isUpperBound: false),
+                DateTo = ParseDate(args["date_to"], isUpperBound: true),
                 MaxResults = maxResults,
                 Scope = EnumOrDefault(args["scope"], "auto", "current_folder", "all_mail", "auto"),
                 SortOrder = EnumOrDefault(args["sort_order"], "newest", "newest", "oldest"),
@@ -91,15 +91,33 @@ namespace OutlookAI.Services.Tools
             return fallback;
         }
 
-        private static DateTimeOffset? ParseDate(JToken token)
+        private static DateTimeOffset? ParseDate(JToken token, bool isUpperBound)
         {
             if (token == null || token.Type == JTokenType.Null) return null;
             DateTimeOffset value;
-            return DateTimeOffset.TryParse(
+            if (!DateTimeOffset.TryParse(
                 (string)token,
                 CultureInfo.InvariantCulture,
                 DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
-                out value) ? value : (DateTimeOffset?)null;
+                out value))
+            {
+                return null;
+            }
+
+            // Codex frequently emits these as "all time" sentinel bounds.
+            // Treat them as no date filter; otherwise Outlook must Restrict
+            // almost every message in every folder for queries like
+            // "oldest email", freezing the UI thread on large mailboxes.
+            if (!isUpperBound && value <= new DateTimeOffset(1970, 1, 1, 0, 0, 0, TimeSpan.Zero))
+            {
+                return null;
+            }
+            if (isUpperBound && value.Year >= 9999)
+            {
+                return null;
+            }
+
+            return value;
         }
     }
 }
