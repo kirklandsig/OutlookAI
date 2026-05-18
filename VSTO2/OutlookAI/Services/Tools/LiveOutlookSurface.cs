@@ -478,30 +478,32 @@ namespace OutlookAI.Services.Tools
 
         // Builds a DASL @SQL filter for the aggregate query. Mirrors the
         // existing BuildRestrictFilter clauses for date_from / date_to / from /
-        // subject_contains / body_contains. Returns null if no clauses.
+        // subject_contains / body_contains. Property names are double-quoted
+        // for folder.GetTable() compatibility (same Phase 3b bug).
+        // Returns null if no clauses.
         private static string BuildAggregateFilter(AggregateMessagesArgs args)
         {
             var clauses = new List<string>();
             if (!string.IsNullOrEmpty(args.From))
             {
                 var f = (args.From ?? "").Replace("'", "''");
-                clauses.Add("(urn:schemas:httpmail:fromname LIKE '%" + f + "%' OR urn:schemas:httpmail:fromemail LIKE '%" + f + "%')");
+                clauses.Add("(" + PropFromName + " LIKE '%" + f + "%' OR " + PropFromEmail + " LIKE '%" + f + "%')");
             }
             if (!string.IsNullOrEmpty(args.SubjectContains))
             {
-                clauses.Add("urn:schemas:httpmail:subject LIKE '%" + args.SubjectContains.Replace("'", "''") + "%'");
+                clauses.Add(PropSubject + " LIKE '%" + args.SubjectContains.Replace("'", "''") + "%'");
             }
             if (!string.IsNullOrEmpty(args.BodyContains))
             {
-                clauses.Add("urn:schemas:httpmail:textdescription LIKE '%" + args.BodyContains.Replace("'", "''") + "%'");
+                clauses.Add(PropBody + " LIKE '%" + args.BodyContains.Replace("'", "''") + "%'");
             }
             if (args.DateFrom.HasValue)
             {
-                clauses.Add("urn:schemas:httpmail:datereceived >= '" + args.DateFrom.Value.ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture) + "'");
+                clauses.Add(PropReceivedAt + " >= '" + args.DateFrom.Value.ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture) + "'");
             }
             if (args.DateTo.HasValue)
             {
-                clauses.Add("urn:schemas:httpmail:datereceived <= '" + args.DateTo.Value.ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture) + "'");
+                clauses.Add(PropReceivedAt + " <= '" + args.DateTo.Value.ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture) + "'");
             }
             if (clauses.Count == 0) return null;
             return "@SQL=" + string.Join(" AND ", clauses);
@@ -1375,6 +1377,22 @@ namespace OutlookAI.Services.Tools
             catch (COMException) { }
         }
 
+        // DASL property name constants. Property names in @SQL= filter
+        // expressions MUST be wrapped in double quotes for folder.GetTable()
+        // (which is what Phase 3b's iterative fallback uses); Items.Restrict
+        // is forgiving and accepts unquoted names. Without the quotes,
+        // GetTable silently returns 0 rows. Microsoft DASL spec:
+        // https://learn.microsoft.com/en-us/office/vba/outlook/concepts/forms/refer-to-properties-by-namespace
+        private const string PropSubject     = "\"urn:schemas:httpmail:subject\"";
+        private const string PropBody        = "\"urn:schemas:httpmail:textdescription\"";
+        private const string PropFromName    = "\"urn:schemas:httpmail:fromname\"";
+        private const string PropFromEmail   = "\"urn:schemas:httpmail:fromemail\"";
+        private const string PropHasAttach   = "\"urn:schemas:httpmail:hasattachment\"";
+        private const string PropRead        = "\"urn:schemas:httpmail:read\"";
+        private const string PropReceivedAt  = "\"urn:schemas:httpmail:datereceived\"";
+        private const string PropFlagStatus  = "\"http://schemas.microsoft.com/mapi/proptag/0x10900003\"";
+        private const string PropImportance  = "\"http://schemas.microsoft.com/mapi/proptag/0x00170003\"";
+
         internal static string BuildRestrictFilter(SearchMessagesArgs args)
         {
             if (args == null) return null;
@@ -1383,51 +1401,51 @@ namespace OutlookAI.Services.Tools
             if (!string.IsNullOrEmpty(args.Query))
             {
                 var q = Escape(args.Query);
-                clauses.Add("(urn:schemas:httpmail:subject LIKE '%" + q + "%' OR " +
-                            "urn:schemas:httpmail:textdescription LIKE '%" + q + "%')");
+                clauses.Add("(" + PropSubject + " LIKE '%" + q + "%' OR " +
+                            PropBody + " LIKE '%" + q + "%')");
             }
             if (!string.IsNullOrEmpty(args.From))
             {
                 var v = Escape(args.From);
-                clauses.Add("(urn:schemas:httpmail:fromname LIKE '%" + v + "%' OR " +
-                            "urn:schemas:httpmail:fromemail LIKE '%" + v + "%')");
+                clauses.Add("(" + PropFromName + " LIKE '%" + v + "%' OR " +
+                            PropFromEmail + " LIKE '%" + v + "%')");
             }
             if (!string.IsNullOrEmpty(args.SubjectContains))
             {
-                clauses.Add("urn:schemas:httpmail:subject LIKE '%" + Escape(args.SubjectContains) + "%'");
+                clauses.Add(PropSubject + " LIKE '%" + Escape(args.SubjectContains) + "%'");
             }
             if (!string.IsNullOrEmpty(args.BodyContains))
             {
-                clauses.Add("urn:schemas:httpmail:textdescription LIKE '%" + Escape(args.BodyContains) + "%'");
+                clauses.Add(PropBody + " LIKE '%" + Escape(args.BodyContains) + "%'");
             }
             var attachmentFilter = (args.AttachmentFilter ?? "any").Trim().ToLowerInvariant();
             if (attachmentFilter == "with" || args.HasAttachment == true)
             {
-                clauses.Add("urn:schemas:httpmail:hasattachment = 1");
+                clauses.Add(PropHasAttach + " = 1");
             }
             else if (attachmentFilter == "without")
             {
-                clauses.Add("urn:schemas:httpmail:hasattachment = 0");
+                clauses.Add(PropHasAttach + " = 0");
             }
 
             var readStatus = (args.ReadStatus ?? "any").Trim().ToLowerInvariant();
             if (readStatus == "unread" || args.IsUnread == true)
             {
-                clauses.Add("urn:schemas:httpmail:read = 0");
+                clauses.Add(PropRead + " = 0");
             }
             else if (readStatus == "read")
             {
-                clauses.Add("urn:schemas:httpmail:read = 1");
+                clauses.Add(PropRead + " = 1");
             }
 
             var flagStatus = (args.FlagStatus ?? "any").Trim().ToLowerInvariant();
             if (flagStatus == "flagged" || args.IsFlagged == true)
             {
-                clauses.Add("\"http://schemas.microsoft.com/mapi/proptag/0x10900003\" = 2");
+                clauses.Add(PropFlagStatus + " = 2");
             }
             else if (flagStatus == "unflagged")
             {
-                clauses.Add("\"http://schemas.microsoft.com/mapi/proptag/0x10900003\" <> 2");
+                clauses.Add(PropFlagStatus + " <> 2");
             }
 
             var importanceFilter = (args.ImportanceFilter ?? "any").Trim().ToLowerInvariant();
@@ -1439,16 +1457,16 @@ namespace OutlookAI.Services.Tools
             {
                 // PR_IMPORTANCE (0x0017) PT_LONG => 0x00170003. 0=low, 1=normal, 2=high.
                 var val = importanceFilter == "low" ? "0" : importanceFilter == "normal" ? "1" : "2";
-                clauses.Add("\"http://schemas.microsoft.com/mapi/proptag/0x00170003\" = " + val);
+                clauses.Add(PropImportance + " = " + val);
             }
             if (args.DateFrom.HasValue)
             {
-                clauses.Add("urn:schemas:httpmail:datereceived >= '" +
+                clauses.Add(PropReceivedAt + " >= '" +
                     args.DateFrom.Value.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + "'");
             }
             if (args.DateTo.HasValue)
             {
-                clauses.Add("urn:schemas:httpmail:datereceived <= '" +
+                clauses.Add(PropReceivedAt + " <= '" +
                     args.DateTo.Value.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + "'");
             }
 

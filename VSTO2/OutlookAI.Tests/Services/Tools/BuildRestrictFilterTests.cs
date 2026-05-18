@@ -20,27 +20,47 @@ namespace OutlookAI.Tests.Services.Tools
         }
 
         [Fact]
+        public void BuildRestrictFilter_PropertyNamesAreQuoted_ForGetTableCompatibility()
+        {
+            // folder.GetTable() requires DASL property names to be wrapped
+            // in double quotes; Items.Restrict() is forgiving and accepts
+            // unquoted names. Phase 3b switched the iterative fallback to
+            // folder.GetTable() (CollectFolderInputs + AccumulateFolderBuckets),
+            // which silently matched zero rows when the filter contained
+            // unquoted property URNs like
+            //   urn:schemas:httpmail:subject LIKE '%X%'.
+            // The user's IT Creations smoke surfaced this: Outlook's UI
+            // search found 75 matching emails, every one of our DASL
+            // searches returned 0. Quoted property names work for BOTH
+            // Restrict and GetTable, so the fix is universal.
+            var f = LiveOutlookSurface.BuildRestrictFilter(
+                new SearchMessagesArgs { SubjectContains = "IT Creations" });
+            Assert.Contains("\"urn:schemas:httpmail:subject\"", f);
+            Assert.Contains("LIKE '%IT Creations%'", f);
+        }
+
+        [Fact]
         public void QueryOnly_BuildsSubjectOrBodyLike()
         {
             var f = LiveOutlookSurface.BuildRestrictFilter(new SearchMessagesArgs { Query = "Q4" });
             Assert.StartsWith("@SQL=", f);
-            Assert.Contains("urn:schemas:httpmail:subject LIKE '%Q4%'", f);
-            Assert.Contains("urn:schemas:httpmail:textdescription LIKE '%Q4%'", f);
+            Assert.Contains("\"urn:schemas:httpmail:subject\" LIKE '%Q4%'", f);
+            Assert.Contains("\"urn:schemas:httpmail:textdescription\" LIKE '%Q4%'", f);
         }
 
         [Fact]
         public void From_MatchesDisplayNameOrEmail()
         {
             var f = LiveOutlookSurface.BuildRestrictFilter(new SearchMessagesArgs { From = "jane" });
-            Assert.Contains("urn:schemas:httpmail:fromname LIKE '%jane%'", f);
-            Assert.Contains("urn:schemas:httpmail:fromemail LIKE '%jane%'", f);
+            Assert.Contains("\"urn:schemas:httpmail:fromname\" LIKE '%jane%'", f);
+            Assert.Contains("\"urn:schemas:httpmail:fromemail\" LIKE '%jane%'", f);
         }
 
         [Fact]
         public void SubjectContains_AddsSubjectLikeClause()
         {
             var f = LiveOutlookSurface.BuildRestrictFilter(new SearchMessagesArgs { SubjectContains = "plan" });
-            Assert.Contains("urn:schemas:httpmail:subject LIKE '%plan%'", f);
+            Assert.Contains("\"urn:schemas:httpmail:subject\" LIKE '%plan%'", f);
             Assert.DoesNotContain("textdescription", f);
         }
 
@@ -48,22 +68,22 @@ namespace OutlookAI.Tests.Services.Tools
         public void BodyContains_AddsBodyLikeClause()
         {
             var f = LiveOutlookSurface.BuildRestrictFilter(new SearchMessagesArgs { BodyContains = "draft" });
-            Assert.Contains("urn:schemas:httpmail:textdescription LIKE '%draft%'", f);
-            Assert.DoesNotContain("subject LIKE", f);
+            Assert.Contains("\"urn:schemas:httpmail:textdescription\" LIKE '%draft%'", f);
+            Assert.DoesNotContain("subject\" LIKE", f);
         }
 
         [Fact]
         public void HasAttachment_TrueMapsToAttachmentClause()
         {
             var f = LiveOutlookSurface.BuildRestrictFilter(new SearchMessagesArgs { HasAttachment = true });
-            Assert.Contains("urn:schemas:httpmail:hasattachment = 1", f);
+            Assert.Contains("\"urn:schemas:httpmail:hasattachment\" = 1", f);
         }
 
         [Fact]
         public void IsUnread_TrueMapsToUnreadClause()
         {
             var f = LiveOutlookSurface.BuildRestrictFilter(new SearchMessagesArgs { IsUnread = true });
-            Assert.Contains("urn:schemas:httpmail:read = 0", f);
+            Assert.Contains("\"urn:schemas:httpmail:read\" = 0", f);
         }
 
         [Fact]
@@ -121,8 +141,8 @@ namespace OutlookAI.Tests.Services.Tools
 
         [Theory]
         [InlineData("any", null)]
-        [InlineData("with", "urn:schemas:httpmail:hasattachment = 1")]
-        [InlineData("without", "urn:schemas:httpmail:hasattachment = 0")]
+        [InlineData("with", "\"urn:schemas:httpmail:hasattachment\" = 1")]
+        [InlineData("without", "\"urn:schemas:httpmail:hasattachment\" = 0")]
         public void AttachmentFilter_MapsTriState(string value, string expected)
         {
             var f = LiveOutlookSurface.BuildRestrictFilter(new SearchMessagesArgs { AttachmentFilter = value });
@@ -134,8 +154,8 @@ namespace OutlookAI.Tests.Services.Tools
 
         [Theory]
         [InlineData("any", null)]
-        [InlineData("unread", "urn:schemas:httpmail:read = 0")]
-        [InlineData("read", "urn:schemas:httpmail:read = 1")]
+        [InlineData("unread", "\"urn:schemas:httpmail:read\" = 0")]
+        [InlineData("read", "\"urn:schemas:httpmail:read\" = 1")]
         public void ReadStatus_MapsTriState(string value, string expected)
         {
             var f = LiveOutlookSurface.BuildRestrictFilter(new SearchMessagesArgs { ReadStatus = value });
