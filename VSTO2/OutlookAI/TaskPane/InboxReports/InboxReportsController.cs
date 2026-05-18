@@ -174,8 +174,12 @@ namespace OutlookAI.TaskPane.InboxReports
                         new JProperty("label", c.Label),
                         new JProperty("prompt", c.TemplateText)));
                 }
+                // Reports chips are prefill-only (not auto-submit) so the
+                // user can edit [placeholders] in the template before
+                // sending. Mirrors the spec.
                 _ = RunScript("outlookai.setQuickActions(" +
-                    chipsArr.ToString(Newtonsoft.Json.Formatting.None) + ");");
+                    chipsArr.ToString(Newtonsoft.Json.Formatting.None) +
+                    ", {autoSubmit: false});");
             }
             catch (Exception ex)
             {
