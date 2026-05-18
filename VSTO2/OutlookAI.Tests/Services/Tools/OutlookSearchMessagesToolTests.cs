@@ -111,11 +111,41 @@ namespace OutlookAI.Tests.Services.Tools
             Assert.Equal("draft", observed.BodyContains);
             Assert.Equal(true, observed.HasAttachment);
             Assert.Equal(true, observed.IsUnread);
-            Assert.Equal(false, observed.IsFlagged);
+            // Hidden old-shape false values are ignored so model defaults do
+            // not pollute searches. Use flag_status=unflagged for an explicit
+            // negative flag filter.
+            Assert.Null(observed.IsFlagged);
             Assert.Equal("high", observed.Importance);
             Assert.Equal(50, observed.MaxResults);
             Assert.Equal(new DateTimeOffset(2026, 5, 10, 0, 0, 0, TimeSpan.Zero), observed.DateFrom);
             Assert.Equal(new DateTimeOffset(2026, 5, 17, 0, 0, 0, TimeSpan.Zero), observed.DateTo);
+        }
+
+        [Fact]
+        public async Task Execute_UsesSharedParser_NewTriStateAndScopeFields()
+        {
+            SearchMessagesArgs observed = null;
+            var surface = new Surface
+            {
+                OnSearch = a => { observed = a; return new MessageSummary[0]; }
+            };
+            var tool = new OutlookSearchMessagesTool();
+            var argsJson = "{"
+                + "\"scope\":\"all_mail\","
+                + "\"sort_order\":\"oldest\","
+                + "\"read_status\":\"unread\","
+                + "\"attachment_filter\":\"with\","
+                + "\"flag_status\":\"flagged\","
+                + "\"importance_filter\":\"high\"}";
+
+            await tool.ExecuteAsync(argsJson, surface, CancellationToken.None);
+
+            Assert.Equal("all_mail", observed.Scope);
+            Assert.Equal("oldest", observed.SortOrder);
+            Assert.Equal("unread", observed.ReadStatus);
+            Assert.Equal("with", observed.AttachmentFilter);
+            Assert.Equal("flagged", observed.FlagStatus);
+            Assert.Equal("high", observed.ImportanceFilter);
         }
 
         private sealed class Surface : MinimalSurface
