@@ -97,5 +97,18 @@ namespace OutlookAI.Tests.TaskPane.InboxCopilot
             // Reminds model to follow up with read_message for full body.
             Assert.Contains("outlook_read_message", prompt);
         }
+
+        [Fact]
+        public void Prompt_IncludesOldestAllMailAndTriStateSearchGuidance()
+        {
+            var prompt = InboxCopilotPromptBuilder.Build("Inbox", 0, 0, null);
+
+            Assert.Contains("first email ever", prompt);
+            Assert.Contains("scope=all_mail", prompt);
+            Assert.Contains("sort_order=oldest", prompt);
+            Assert.Contains("read_status", prompt);
+            Assert.Contains("attachment_filter", prompt);
+            Assert.Contains("Do not use has_attachment:false", prompt);
+        }
     }
 }

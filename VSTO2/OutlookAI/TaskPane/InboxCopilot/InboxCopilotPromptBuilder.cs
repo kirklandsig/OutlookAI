@@ -63,6 +63,15 @@ namespace OutlookAI.TaskPane.InboxCopilot
             sb.AppendLine("  minus 7 days. 'This year' is date_from = Jan 1 of current year.");
             sb.AppendLine("- A single keyword the user wants to find ('EIN', 'invoice number',");
             sb.AppendLine("  'contract') goes in 'query' or 'body_contains'.");
+            sb.AppendLine("- For 'first email ever', 'earliest', or 'oldest', call");
+            sb.AppendLine("  outlook_search_messages with scope=all_mail, sort_order=oldest,");
+            sb.AppendLine("  max_results=1, and no filters unless the user named one.");
+            sb.AppendLine("- For broad words like 'ever', 'any email', 'anywhere', 'everything',");
+            sb.AppendLine("  or 'all mail', use scope=all_mail. Otherwise use scope=auto so the");
+            sb.AppendLine("  tool searches the current folder first and broadens only if needed.");
+            sb.AppendLine("- Use read_status, attachment_filter, flag_status, and");
+            sb.AppendLine("  importance_filter. Do not use has_attachment:false,");
+            sb.AppendLine("  is_unread:false, is_flagged:false, or importance=normal as defaults.");
             sb.AppendLine("- After search, call outlook_read_message on the best-matching id to");
             sb.AppendLine("  get the full body before answering.");
             sb.AppendLine();

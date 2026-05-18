@@ -89,5 +89,49 @@ namespace OutlookAI.Tests.Services.Tools
             Assert.Contains("how many unread from Bob", desc);
             Assert.Contains("how many emails this year", desc);
         }
+
+        [Fact]
+        public void SearchMessages_Schema_AdvertisesScopeSortAndTriStates_NotOldBooleans()
+        {
+            var tools = ToolCatalogSchema.BuildResponsesToolsArray(includeWriteTools: false);
+            var search = FindTool(tools, "outlook_search_messages");
+            var props = (JObject)search["parameters"]["properties"];
+
+            Assert.NotNull(props["scope"]);
+            Assert.NotNull(props["sort_order"]);
+            Assert.NotNull(props["attachment_filter"]);
+            Assert.NotNull(props["read_status"]);
+            Assert.NotNull(props["flag_status"]);
+            Assert.NotNull(props["importance_filter"]);
+            Assert.Null(props["has_attachment"]);
+            Assert.Null(props["is_unread"]);
+            Assert.Null(props["is_flagged"]);
+            Assert.Null(props["importance"]);
+        }
+
+        [Fact]
+        public void SearchMessages_Description_IncludesOldestAndAllMailExamples()
+        {
+            var tools = ToolCatalogSchema.BuildResponsesToolsArray(includeWriteTools: false);
+            var search = FindTool(tools, "outlook_search_messages");
+            var desc = (string)search["description"];
+
+            Assert.Contains("first email ever", desc);
+            Assert.Contains("scope:'all_mail'", desc);
+            Assert.Contains("sort_order:'oldest'", desc);
+            Assert.Contains("EIN", desc);
+        }
+
+        [Fact]
+        public void CountMessages_Schema_AdvertisesScopeAndTriStates()
+        {
+            var tools = ToolCatalogSchema.BuildResponsesToolsArray(includeWriteTools: false);
+            var count = FindTool(tools, "outlook_count_messages");
+            var props = (JObject)count["parameters"]["properties"];
+
+            Assert.NotNull(props["scope"]);
+            Assert.NotNull(props["read_status"]);
+            Assert.Null(props["is_unread"]);
+        }
     }
 }

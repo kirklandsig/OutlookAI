@@ -34,11 +34,14 @@ namespace OutlookAI.Services.Tools
                     "Search messages. Combine any subset of filters via AND. Returns id+metadata+snippet for up to max_results (default 25, hard cap 100). "
                     + "ALWAYS translate the user's natural-language query into the structured fields below; do NOT dump the whole user sentence into 'query'. "
                     + "Examples: "
+                    + "User says 'what was my first email ever' -> {scope:'all_mail', sort_order:'oldest', max_results:1}. "
                     + "User says 'emails from Alice last week' -> {from:'Alice', date_from:<7d ago ISO>, date_to:<today ISO>}. "
                     + "User says 'email from before 2020 with the EIN' -> {query:'EIN', date_to:'2020-01-01T00:00:00Z'}. "
-                    + "User says 'unread invoices' -> {body_contains:'invoice', is_unread:true}. "
-                    + "User says 'flagged messages with attachments' -> {is_flagged:true, has_attachment:true}. "
-                    + "If you pass NO filters, the tool returns the newest 25 messages in the folder - almost never what the user asked for. "
+                    + "User says 'find an email with EIN' -> {query:'EIN', scope:'auto'}; if zero, try {query:'Employer Identification Number', scope:'auto'}. "
+                    + "User says 'unread invoices' -> {body_contains:'invoice', read_status:'unread'}. "
+                    + "User says 'flagged messages with attachments' -> {flag_status:'flagged', attachment_filter:'with'}. "
+                    + "Never send default false filters such as has_attachment:false or is_unread:false; use attachment_filter/read_status/flag_status/importance_filter and use 'any' when not requested. "
+                    + "If you pass NO filters, the tool returns the newest 25 messages in the current folder - almost never what the user asked for. "
                     + "Prefer one precise call over many. After search, use outlook_read_message on the most-relevant id for full body.",
                     new JObject(
                         new JProperty("type", "object"),
@@ -51,11 +54,24 @@ namespace OutlookAI.Services.Tools
                                                               new JProperty("description","Substring match on subject only."))),
                             new JProperty("body_contains",    new JObject(new JProperty("type","string"),
                                                               new JProperty("description","Substring match on body only."))),
-                            new JProperty("has_attachment",   new JObject(new JProperty("type","boolean"))),
-                            new JProperty("is_unread",        new JObject(new JProperty("type","boolean"))),
-                            new JProperty("is_flagged",       new JObject(new JProperty("type","boolean"))),
-                            new JProperty("importance",       new JObject(new JProperty("type","string"),
-                                                              new JProperty("enum", new JArray("low","normal","high")))),
+                            new JProperty("scope",            new JObject(new JProperty("type","string"),
+                                                              new JProperty("enum", new JArray("current_folder","all_mail","auto")),
+                                                              new JProperty("description","Default auto. Use all_mail directly for 'ever', 'any email', 'anywhere', 'everything', or 'all mail'. folder_id overrides scope."))),
+                            new JProperty("sort_order",       new JObject(new JProperty("type","string"),
+                                                              new JProperty("enum", new JArray("newest","oldest")),
+                                                              new JProperty("description","Default newest. Use oldest for 'first', 'earliest', or 'oldest'."))),
+                            new JProperty("attachment_filter", new JObject(new JProperty("type","string"),
+                                                              new JProperty("enum", new JArray("any","with","without")),
+                                                              new JProperty("description","Use with only when the user asks for attachments; without only when they ask for no attachments; otherwise any."))),
+                            new JProperty("read_status",      new JObject(new JProperty("type","string"),
+                                                              new JProperty("enum", new JArray("any","read","unread")),
+                                                              new JProperty("description","Use unread/read only when explicitly requested; otherwise any."))),
+                            new JProperty("flag_status",      new JObject(new JProperty("type","string"),
+                                                              new JProperty("enum", new JArray("any","flagged","unflagged")),
+                                                              new JProperty("description","Use flagged/unflagged only when explicitly requested; otherwise any."))),
+                            new JProperty("importance_filter", new JObject(new JProperty("type","string"),
+                                                              new JProperty("enum", new JArray("any","low","normal","high")),
+                                                              new JProperty("description","Use low/normal/high only when explicitly requested; otherwise any."))),
                             new JProperty("folder_id",        new JObject(new JProperty("type","string"),
                                                               new JProperty("description","Default: Inbox. Use outlook_list_folders to discover folder ids."))),
                             new JProperty("date_from",        new JObject(new JProperty("type","string"),
@@ -81,7 +97,7 @@ namespace OutlookAI.Services.Tools
                         new JProperty("additionalProperties", false))),
 
                 BuildToolEntry("outlook_count_messages",
-                    "Count messages matching the given filters without returning bodies. Same filter fields as outlook_search_messages; same rule: translate the user's intent into structured fields, do NOT put everything in 'query'. Examples: 'how many unread from Bob' -> {from:'Bob', is_unread:true}; 'how many emails this year' -> {date_from:<Jan 1 ISO>}. Empty filters => total folder count.",
+                    "Count messages matching the given filters without returning bodies. Same filter fields as outlook_search_messages; same rule: translate the user's intent into structured fields, do NOT put everything in 'query'. Examples: 'how many unread from Bob' -> {from:'Bob', read_status:'unread'}; 'how many emails this year' -> {date_from:<Jan 1 ISO>}. Empty filters => current-folder count unless scope:'all_mail'.",
                     new JObject(
                         new JProperty("type", "object"),
                         new JProperty("properties", new JObject(
@@ -89,11 +105,18 @@ namespace OutlookAI.Services.Tools
                             new JProperty("from",             new JObject(new JProperty("type","string"))),
                             new JProperty("subject_contains", new JObject(new JProperty("type","string"))),
                             new JProperty("body_contains",    new JObject(new JProperty("type","string"))),
-                            new JProperty("has_attachment",   new JObject(new JProperty("type","boolean"))),
-                            new JProperty("is_unread",        new JObject(new JProperty("type","boolean"))),
-                            new JProperty("is_flagged",       new JObject(new JProperty("type","boolean"))),
-                            new JProperty("importance",       new JObject(new JProperty("type","string"),
-                                                              new JProperty("enum", new JArray("low","normal","high")))),
+                            new JProperty("scope",            new JObject(new JProperty("type","string"),
+                                                              new JProperty("enum", new JArray("current_folder","all_mail","auto")))),
+                            new JProperty("sort_order",       new JObject(new JProperty("type","string"),
+                                                              new JProperty("enum", new JArray("newest","oldest")))),
+                            new JProperty("attachment_filter", new JObject(new JProperty("type","string"),
+                                                              new JProperty("enum", new JArray("any","with","without")))),
+                            new JProperty("read_status",      new JObject(new JProperty("type","string"),
+                                                              new JProperty("enum", new JArray("any","read","unread")))),
+                            new JProperty("flag_status",      new JObject(new JProperty("type","string"),
+                                                              new JProperty("enum", new JArray("any","flagged","unflagged")))),
+                            new JProperty("importance_filter", new JObject(new JProperty("type","string"),
+                                                              new JProperty("enum", new JArray("any","low","normal","high")))),
                             new JProperty("folder_id",        new JObject(new JProperty("type","string"))),
                             new JProperty("date_from",        new JObject(new JProperty("type","string"),
                                                                           new JProperty("format","date-time"))),
