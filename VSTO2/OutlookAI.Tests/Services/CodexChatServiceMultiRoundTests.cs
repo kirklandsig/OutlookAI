@@ -455,6 +455,18 @@ namespace OutlookAI.Tests.Services
         }
 
         [Fact]
+        public void FormatTraceArgs_TruncatesAtFiveHundredCharacters()
+        {
+            var input = new string('x', 501);
+
+            var formatted = CodexChatService.FormatTraceArgs(input);
+
+            Assert.Equal(503, formatted.Length);
+            Assert.EndsWith("...", formatted);
+            Assert.Equal(new string('x', 500), formatted.Substring(0, 500));
+        }
+
+        [Fact]
         public async Task RunTurnAsync_ParallelToolCalls_AreDispatchedConcurrently_AndBothLogged()
         {
             var fixt = MakeAuth();
