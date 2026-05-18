@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Threading;
 using OutlookAI.Services.Tools;
 
 namespace OutlookAI.Tests.Services.Tools
@@ -14,11 +15,11 @@ namespace OutlookAI.Tests.Services.Tools
             => throw new System.NotImplementedException();
         public virtual IReadOnlyList<FolderResult> ListFolders()
             => throw new System.NotImplementedException();
-        public virtual IReadOnlyList<MessageSummary> SearchMessages(SearchMessagesArgs args)
+        public virtual IReadOnlyList<MessageSummary> SearchMessages(SearchMessagesArgs args, CancellationToken ct = default(CancellationToken))
             => throw new System.NotImplementedException();
         public virtual MessageDetail ReadMessage(string messageId, bool includeFullBody)
             => throw new System.NotImplementedException();
-        public virtual int CountMessages(SearchMessagesArgs args)
+        public virtual int CountMessages(SearchMessagesArgs args, CancellationToken ct = default(CancellationToken))
             => throw new System.NotImplementedException();
         public virtual IReadOnlyList<ThreadSummary> ListRecentThreadsWith(string recipientEmail, int maxThreads)
             => throw new System.NotImplementedException();

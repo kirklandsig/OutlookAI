@@ -160,7 +160,7 @@ namespace OutlookAI.Services.Tools
                 return (IReadOnlyList<FolderResult>)results;
             }) ?? (IReadOnlyList<FolderResult>)new List<FolderResult>();
 
-        public IReadOnlyList<MessageSummary> SearchMessages(SearchMessagesArgs args) =>
+        public IReadOnlyList<MessageSummary> SearchMessages(SearchMessagesArgs args, CancellationToken ct = default(CancellationToken)) =>
             Run(() =>
             {
                 args = args ?? new SearchMessagesArgs();
@@ -271,7 +271,7 @@ namespace OutlookAI.Services.Tools
                 catch (KeyNotFoundException) { return null; }
             });
 
-        public int CountMessages(SearchMessagesArgs args) =>
+        public int CountMessages(SearchMessagesArgs args, CancellationToken ct = default(CancellationToken)) =>
             Run(() =>
             {
                 args = args ?? new SearchMessagesArgs();

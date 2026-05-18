@@ -66,6 +66,39 @@ namespace OutlookAI.Tests.Services.Tools
         }
 
         [Fact]
+        public async Task Execute_PassesCancellationTokenThroughToSurface()
+        {
+            CancellationToken observedCt = default(CancellationToken);
+            var surface = new Surface
+            {
+                OnCountWithCt = (a, ct) => { observedCt = ct; return 0; }
+            };
+            var tool = new OutlookCountMessagesTool();
+            using (var cts = new CancellationTokenSource())
+            {
+                await tool.ExecuteAsync("{}", surface, cts.Token);
+                Assert.Equal(cts.Token, observedCt);
+            }
+        }
+
+        [Fact]
+        public async Task Execute_OnSurfaceCancellation_EmitsStructuredCancelEnvelope()
+        {
+            var surface = new Surface
+            {
+                OnCountWithCt = (a, ct) => { throw new OperationCanceledException(ct); }
+            };
+            var tool = new OutlookCountMessagesTool();
+            using (var cts = new CancellationTokenSource())
+            {
+                cts.Cancel();
+                var json = await tool.ExecuteAsync("{}", surface, cts.Token);
+                Assert.Contains("\"error\"", json);
+                Assert.Contains("\"code\":\"cancelled\"", json);
+            }
+        }
+
+        [Fact]
         public async Task Execute_UsesSharedParser_ForScopeAndTriStates()
         {
             SearchMessagesArgs observed = null;
@@ -84,7 +117,14 @@ namespace OutlookAI.Tests.Services.Tools
         private sealed class Surface : MinimalSurface
         {
             public Func<SearchMessagesArgs, int> OnCount { get; set; }
-            public override int CountMessages(SearchMessagesArgs args) => OnCount(args);
+            public Func<SearchMessagesArgs, CancellationToken, int> OnCountWithCt { get; set; }
+            public CancellationToken LastCt { get; private set; }
+            public override int CountMessages(SearchMessagesArgs args, CancellationToken ct = default(CancellationToken))
+            {
+                LastCt = ct;
+                if (OnCountWithCt != null) return OnCountWithCt(args, ct);
+                return OnCount(args);
+            }
         }
     }
 }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace OutlookAI.Services.Tools
 {
@@ -13,9 +14,9 @@ namespace OutlookAI.Services.Tools
     {
         ComposeStateResult GetCurrentComposeState(bool includeFullBody);
         IReadOnlyList<FolderResult> ListFolders();
-        IReadOnlyList<MessageSummary> SearchMessages(SearchMessagesArgs args);
+        IReadOnlyList<MessageSummary> SearchMessages(SearchMessagesArgs args, CancellationToken ct = default(CancellationToken));
         MessageDetail ReadMessage(string messageId, bool includeFullBody);
-        int CountMessages(SearchMessagesArgs args);
+        int CountMessages(SearchMessagesArgs args, CancellationToken ct = default(CancellationToken));
         IReadOnlyList<ThreadSummary> ListRecentThreadsWith(string recipientEmail, int maxThreads);
         CreatedDraft CreateDraft(CreateDraftArgs args);
         void MarkAsRead(string messageId, bool read);

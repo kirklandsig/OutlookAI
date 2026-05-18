@@ -122,6 +122,39 @@ namespace OutlookAI.Tests.Services.Tools
         }
 
         [Fact]
+        public async Task Execute_PassesCancellationTokenThroughToSurface()
+        {
+            CancellationToken observedCt = default(CancellationToken);
+            var surface = new Surface
+            {
+                OnSearchWithCt = (a, ct) => { observedCt = ct; return new MessageSummary[0]; }
+            };
+            var tool = new OutlookSearchMessagesTool();
+            using (var cts = new CancellationTokenSource())
+            {
+                await tool.ExecuteAsync("{}", surface, cts.Token);
+                Assert.Equal(cts.Token, observedCt);
+            }
+        }
+
+        [Fact]
+        public async Task Execute_OnSurfaceCancellation_EmitsStructuredCancelEnvelope()
+        {
+            var surface = new Surface
+            {
+                OnSearchWithCt = (a, ct) => { throw new OperationCanceledException(ct); }
+            };
+            var tool = new OutlookSearchMessagesTool();
+            using (var cts = new CancellationTokenSource())
+            {
+                cts.Cancel();
+                var json = await tool.ExecuteAsync("{}", surface, cts.Token);
+                Assert.Contains("\"error\"", json);
+                Assert.Contains("\"code\":\"cancelled\"", json);
+            }
+        }
+
+        [Fact]
         public async Task Execute_UsesSharedParser_NewTriStateAndScopeFields()
         {
             SearchMessagesArgs observed = null;
@@ -151,8 +184,14 @@ namespace OutlookAI.Tests.Services.Tools
         private sealed class Surface : MinimalSurface
         {
             public Func<SearchMessagesArgs, IReadOnlyList<MessageSummary>> OnSearch { get; set; }
-            public override IReadOnlyList<MessageSummary> SearchMessages(SearchMessagesArgs args)
-                => OnSearch(args);
+            public Func<SearchMessagesArgs, CancellationToken, IReadOnlyList<MessageSummary>> OnSearchWithCt { get; set; }
+            public CancellationToken LastCt { get; private set; }
+            public override IReadOnlyList<MessageSummary> SearchMessages(SearchMessagesArgs args, CancellationToken ct = default(CancellationToken))
+            {
+                LastCt = ct;
+                if (OnSearchWithCt != null) return OnSearchWithCt(args, ct);
+                return OnSearch(args);
+            }
         }
     }
 }
