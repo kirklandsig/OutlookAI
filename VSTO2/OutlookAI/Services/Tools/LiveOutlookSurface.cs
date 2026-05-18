@@ -706,6 +706,12 @@ namespace OutlookAI.Services.Tools
 
         // Collect one folder's worth of MessageProjectionInput WITHOUT body
         // access. Snippet is deferred to the projector via SnippetFactory.
+        // CRITICAL: sorts by [ReceivedTime] using Outlook's index, then
+        // enumerates AT MOST SearchFallbackBudget.PerFolderItems items.
+        // Without this cap a single 588-item folder enumerated ~63 seconds
+        // on the UI thread (~107 ms per COM property access). With the cap
+        // each folder costs at most a few hundred ms, so the UI thread is
+        // released between folders fast enough that Outlook stays usable.
         private List<MessageProjectionInput> CollectFolderInputs(
             Outlook.MAPIFolder folder, SearchMessagesArgs args, string filter)
         {
@@ -729,13 +735,22 @@ namespace OutlookAI.Services.Tools
                 return inputs;
             }
 
+            // Pre-sort using Outlook's index so the items we visit first
+            // are the items most likely to survive the global sort + clamp.
+            try { items.Sort("[ReceivedTime]", SearchFallbackBudget.DescendingForSortOrder(args.SortOrder)); }
+            catch (COMException) { /* sort is best-effort; index may be unavailable on some stores */ }
+
+            var limit = SearchFallbackBudget.PerFolderItems(args);
+            int taken = 0;
             foreach (var obj in items)
             {
+                if (taken >= limit) break;
                 try
                 {
                     var mi = obj as Outlook.MailItem;
                     if (mi == null) continue;
                     inputs.Add(BuildFallbackInput(mi, folderName, folderIsMail));
+                    taken++;
                 }
                 catch (COMException) { /* skip the item */ }
             }
