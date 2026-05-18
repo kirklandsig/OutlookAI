@@ -158,6 +158,56 @@ namespace OutlookAI.Tests.Services.Tools
         }
 
         [Fact]
+        public void DateFrom_UsesIso8601WithTSeparator()
+        {
+            // Outlook DASL date literals MUST use ISO 8601 with T separator
+            // (or US m/d/yyyy format) - a space-separated 'yyyy-MM-dd HH:mm'
+            // is silently rejected by folder.GetTable's strict parser, which
+            // makes the entire AND-combined filter evaluate FALSE and return
+            // 0 rows for every folder. Real smoke evidence (2026-05-18):
+            // the model started padding every search with
+            //   date_from:"1900-01-01T00:00:00Z", date_to:"<today>T00:00:00Z"
+            // and our format string "yyyy-MM-dd HH:mm" produced a bad literal
+            // -> every search returned 0 across all 200 folders even though
+            // the data was demonstrably there (Outlook UI search found it).
+            var f = LiveOutlookSurface.BuildRestrictFilter(new SearchMessagesArgs
+            {
+                DateFrom = new DateTimeOffset(2026, 5, 10, 14, 30, 0, TimeSpan.Zero),
+            });
+            // The literal must contain a 'T' between date and time.
+            Assert.Matches(@"datereceived"" >= '\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}'", f);
+            // And the OLD broken format (space instead of T) must be gone.
+            Assert.DoesNotMatch(@"datereceived"" >= '\d{4}-\d{2}-\d{2} \d{2}:\d{2}'", f);
+        }
+
+        [Fact]
+        public void DateTo_UsesIso8601WithTSeparator()
+        {
+            var f = LiveOutlookSurface.BuildRestrictFilter(new SearchMessagesArgs
+            {
+                DateTo = new DateTimeOffset(2026, 5, 18, 23, 59, 59, TimeSpan.Zero),
+            });
+            Assert.Matches(@"datereceived"" <= '\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}'", f);
+            Assert.DoesNotMatch(@"datereceived"" <= '\d{4}-\d{2}-\d{2} \d{2}:\d{2}'", f);
+        }
+
+        [Fact]
+        public void DateRange_BothBoundsPresent_UsesIso8601()
+        {
+            // Reproduces the exact model-generated args from the smoke trace:
+            //   date_from=1900-01-01T00:00:00Z, date_to=2026-05-18T00:00:00Z
+            // This is the case that broke every search.
+            var f = LiveOutlookSurface.BuildRestrictFilter(new SearchMessagesArgs
+            {
+                From = "itcreations",
+                DateFrom = new DateTimeOffset(1900, 1, 1, 0, 0, 0, TimeSpan.Zero),
+                DateTo = new DateTimeOffset(2026, 5, 18, 0, 0, 0, TimeSpan.Zero),
+            });
+            Assert.Contains("'1900-01-01T00:00:00'", f);
+            Assert.Contains("'2026-05-18T00:00:00'", f);
+        }
+
+        [Fact]
         public void EscapesSingleQuotes()
         {
             var f = LiveOutlookSurface.BuildRestrictFilter(new SearchMessagesArgs { Query = "Jane's Q4" });
