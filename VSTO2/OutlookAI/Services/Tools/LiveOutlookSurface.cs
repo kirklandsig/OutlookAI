@@ -487,7 +487,7 @@ namespace OutlookAI.Services.Tools
             if (!string.IsNullOrEmpty(args.From))
             {
                 var f = (args.From ?? "").Replace("'", "''");
-                clauses.Add("(" + PropFrom + " LIKE '%" + f + "%' OR " + PropFromEmail + " LIKE '%" + f + "%' OR " + PropFromSmtp + " LIKE '%" + f + "%' OR " + PropTransportHeaders + " LIKE '%" + f + "%')");
+                clauses.Add("(" + PropFrom + " LIKE '%" + f + "%' OR " + PropFromEmail + " LIKE '%" + f + "%' OR " + PropFromSmtp + " LIKE '%" + f + "%')");
             }
             if (!string.IsNullOrEmpty(args.SubjectContains))
             {
@@ -1397,13 +1397,14 @@ namespace OutlookAI.Services.Tools
         // always-SMTP form of the sender, when set. Not populated for many
         // Exchange-routed messages. Backstop only.
         private const string PropFromSmtp    = "\"http://schemas.microsoft.com/mapi/proptag/0x5D01001F\"";
-        // PR_TRANSPORT_MESSAGE_HEADERS (0x007D) PT_UNICODE_STRING (0x001F) ->
-        // the full RFC 822 header blob received from the transport. Always
-        // contains a "From: ... <smtp@domain>" line for any received mail,
-        // regardless of whether the message routed through Exchange or SMTP.
-        // The most reliable property for SMTP-substring matching across an
-        // entire mailbox.
-        private const string PropTransportHeaders = "\"http://schemas.microsoft.com/mapi/proptag/0x007D001F\"";
+        // NOTE: we deliberately do NOT include PR_TRANSPORT_MESSAGE_HEADERS
+        // (proptag 0x007D001F) in any routine filter. It is a multi-KB raw
+        // RFC 822 header blob, server-NOT-indexed, and LIKE'ing against it
+        // forces a full per-message read across every folder. On a large
+        // mailbox this freezes Outlook for 10+ minutes and trips the
+        // "trouble connecting to server" cascade. The 'from' URN above
+        // already contains the resolved SMTP segment for typical received
+        // mail, so the headers blob is redundant on the hot path.
         private const string PropHasAttach   = "\"urn:schemas:httpmail:hasattachment\"";
         private const string PropRead        = "\"urn:schemas:httpmail:read\"";
         private const string PropReceivedAt  = "\"urn:schemas:httpmail:datereceived\"";
@@ -1426,8 +1427,7 @@ namespace OutlookAI.Services.Tools
                 var v = Escape(args.From);
                 clauses.Add("(" + PropFrom + " LIKE '%" + v + "%' OR " +
                             PropFromEmail + " LIKE '%" + v + "%' OR " +
-                            PropFromSmtp + " LIKE '%" + v + "%' OR " +
-                            PropTransportHeaders + " LIKE '%" + v + "%')");
+                            PropFromSmtp + " LIKE '%" + v + "%')");
             }
             if (!string.IsNullOrEmpty(args.SubjectContains))
             {
