@@ -1,0 +1,158 @@
+@page {
+  size: A4;
+  margin: 0.5in;
+}
+
+html {
+  color: #1f1f1f;
+  font-family: Calibri, "Segoe UI", Arial, sans-serif;
+  font-size: 11pt;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+body {
+  margin: 0;
+  background: #ffffff;
+}
+
+.doc-header {
+  margin: 0 0 20pt;
+  padding: 0 0 10pt;
+  border-bottom: 2pt solid #2f5597;
+}
+
+.doc-title {
+  margin: 0;
+  color: #1f4e79;
+  font-size: 22pt;
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.doc-subtitle {
+  margin: 5pt 0 0;
+  color: #404040;
+  font-size: 13pt;
+}
+
+.doc-meta {
+  margin: 7pt 0 0;
+  color: #666666;
+  font-size: 9pt;
+}
+
+main {
+  line-height: 1.42;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  page-break-after: avoid;
+  break-after: avoid-page;
+  color: #1f4e79;
+  line-height: 1.2;
+}
+
+h2 {
+  margin-top: 18pt;
+  padding-bottom: 3pt;
+  border-bottom: 1pt solid #d9e2f3;
+}
+
+p,
+ul,
+ol {
+  margin: 0 0 9pt;
+}
+
+table {
+  width: 100%;
+  margin: 0 0 12pt;
+  border-collapse: collapse;
+  page-break-inside: auto;
+}
+
+thead {
+  display: table-header-group;
+}
+
+tfoot {
+  display: table-footer-group;
+}
+
+tr {
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+th,
+td {
+  padding: 5pt 6pt;
+  border: 1pt solid #bfbfbf;
+  vertical-align: top;
+}
+
+th {
+  background: #f2f2f2;
+  color: #1f1f1f;
+  font-weight: 600;
+  text-align: left;
+}
+
+blockquote {
+  margin: 0 0 12pt;
+  padding: 6pt 10pt;
+  border-left: 3pt solid #9eafcf;
+  color: #404040;
+  background: #f8f9fc;
+}
+
+code,
+pre {
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 9.5pt;
+}
+
+code {
+  padding: 1pt 3pt;
+  background: #f3f3f3;
+  border: 1pt solid #e0e0e0;
+}
+
+pre {
+  margin: 0 0 12pt;
+  padding: 8pt;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+  background: #f7f7f7;
+  border: 1pt solid #d9d9d9;
+}
+
+pre code {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+a {
+  color: #0563c1;
+  text-decoration: underline;
+}
+
+hr {
+  height: 0;
+  margin: 14pt 0;
+  border: 0;
+  border-top: 1pt solid #d9d9d9;
+}
+
+@media print {
+  body {
+    margin: 0;
+  }
+}
