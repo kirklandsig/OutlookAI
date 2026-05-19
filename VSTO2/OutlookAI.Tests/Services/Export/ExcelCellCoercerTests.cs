@@ -112,10 +112,25 @@ namespace OutlookAI.Tests.Services.Export
         }
 
         [Fact]
-        public void Coerce_NullJToken_ReturnsNullForTextAndCurrency()
+        public void Coerce_BooleanUnparseable_ReturnsOriginalText()
+        {
+            var result = ExcelCellCoercer.Coerce(new JValue("maybe"), ExcelColumnType.Boolean);
+
+            Assert.Equal("maybe", result);
+        }
+
+        [Fact]
+        public void Coerce_NullReference_ReturnsNullForTextAndCurrency()
         {
             Assert.Null(ExcelCellCoercer.Coerce(null, ExcelColumnType.Text));
             Assert.Null(ExcelCellCoercer.Coerce(null, ExcelColumnType.Currency));
+        }
+
+        [Fact]
+        public void Coerce_NullJsonToken_ReturnsNullForTextAndCurrency()
+        {
+            Assert.Null(ExcelCellCoercer.Coerce(JValue.CreateNull(), ExcelColumnType.Text));
+            Assert.Null(ExcelCellCoercer.Coerce(JValue.CreateNull(), ExcelColumnType.Currency));
         }
     }
 }
