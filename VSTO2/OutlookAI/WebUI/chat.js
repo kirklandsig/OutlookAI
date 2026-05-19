@@ -20,7 +20,7 @@
    JS -> Host:
      window.chrome.webview.postMessage(JSON.stringify({type:..., payload:...}))
       Message types: 'send', 'stop', 'clear', 'copy', 'toolCardClicked',
-                     'open_file', 'reveal_in_explorer'
+                     'open_file', 'reveal_in_explorer', 'export_pdf'
    ============================================================ */
 
 (function() {
@@ -213,6 +213,76 @@
     $messages.scrollTop = $messages.scrollHeight;
   }
 
+  function deriveFilenameHint(markdown) {
+    var text = String(markdown || '');
+    var lines = text.split(/\r?\n/);
+    for (var i = 0; i < lines.length; i++) {
+      var m = /^#{1,3}\s+(.+?)\s*#*\s*$/.exec(lines[i]);
+      if (m && m[1]) {
+        var heading = m[1].trim();
+        if (heading) return heading.substring(0, 60);
+      }
+    }
+    return 'OutlookAI Report';
+  }
+
+  function createExportPdfButton(messageId) {
+    var btn = elt('button', 'msg-action msg-action-pdf', 'PDF');
+    btn.type = 'button';
+    btn.title = 'Save message as PDF';
+    btn.setAttribute('aria-label', 'Save message as PDF');
+    btn.disabled = true;
+    btn.dataset.defaultText = btn.textContent;
+    btn.addEventListener('click', function() {
+      handleExportPdf(messageId);
+    });
+    return btn;
+  }
+
+  function setExportButtonPending(messageId, pending) {
+    var entry = assistantMessages[messageId];
+    var btn = entry && entry.exportButton;
+    if (!btn) return;
+    btn.disabled = true;
+    btn.dataset.exportPending = pending ? '1' : '0';
+    if (pending) btn.textContent = 'Saving...';
+  }
+
+  function resetExportButton(messageId) {
+    var entry = assistantMessages[messageId];
+    var btn = entry && entry.exportButton;
+    if (!btn) return;
+    btn.dataset.exportPending = '0';
+    btn.textContent = btn.dataset.defaultText || 'PDF';
+    btn.disabled = !(entry && entry.complete);
+  }
+
+  function handleExportPdf(messageId) {
+    var entry = assistantMessages[messageId];
+    var msgEl = entry && entry.container;
+    if (!msgEl && messageId !== undefined && messageId !== null && messageId !== '') {
+      try { msgEl = document.querySelector('[data-message-id="' + cssEscape(messageId) + '"]'); } catch (e) { msgEl = null; }
+    }
+    if (!entry || !msgEl || !entry.complete) return;
+    if (entry.exportButton && entry.exportButton.dataset.exportPending === '1') return;
+
+    var markdown = entry.raw;
+    if (markdown === undefined || markdown === null || markdown === '') {
+      markdown = entry.content ? entry.content.innerText : '';
+    }
+    markdown = String(markdown || '');
+
+    setExportButtonPending(messageId, true);
+    postToHost({
+      type: 'export_pdf',
+      payload: {
+        message_id: messageId,
+        filename_hint: deriveFilenameHint(markdown),
+        content_markdown: markdown
+      }
+    });
+  }
+
   var assistantMessages = {}; // id -> { container, content, raw }
   var toolCards = {};         // callId -> element
 
@@ -230,6 +300,10 @@
     appendAssistantMessage: function(id, initialText) {
       var node = elt('div', 'msg msg-assistant');
       node.dataset.messageId = id;
+      node.dataset.state = 'streaming';
+      node.classList.add('is-streaming');
+      var exportButton = createExportPdfButton(id);
+      node.appendChild(exportButton);
       var content = elt('div', 'msg-content');
       content.innerHTML = renderMarkdown(initialText || '');
       node.appendChild(content);
@@ -237,7 +311,9 @@
       assistantMessages[id] = {
         container: node,
         content: content,
-        raw: initialText || ''
+        raw: initialText || '',
+        complete: false,
+        exportButton: exportButton
       };
       scrollToBottom();
     },
@@ -259,8 +335,12 @@
       var entry = assistantMessages[id];
       if (!entry) return;
       opts = opts || {};
+      entry.complete = true;
+      entry.container.dataset.state = 'complete';
+      entry.container.classList.remove('is-streaming');
       if (opts.stopped) entry.container.classList.add('msg-stopped');
       if (opts.error) entry.container.classList.add('msg-error');
+      resetExportButton(id);
       scrollToBottom();
     },
 
@@ -373,11 +453,15 @@
 
     onFileSaved: function(messageId, fileInfo) {
       appendFileCardToMessage(messageId, fileInfo);
+      resetExportButton(messageId);
     },
 
     onExportError: function(messageId, error) {
+      resetExportButton(messageId);
       api.showError(exportErrorMessage(error));
     },
+
+    handleExportPdf: handleExportPdf,
 
     showError: function(message) {
       var node = elt('div', 'msg msg-assistant msg-error');

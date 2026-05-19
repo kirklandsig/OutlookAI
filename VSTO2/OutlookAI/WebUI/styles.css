@@ -140,10 +140,55 @@ html, body {
 }
 
 .msg-assistant {
+  position: relative;
   background: var(--assistant-bg);
   border-color: var(--assistant-border);
   align-self: flex-start;
   max-width: 100%;
+}
+.msg-assistant .msg-content {
+  padding-right: 34px;
+}
+
+.msg-action {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  opacity: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  background: var(--panel);
+  color: var(--text-muted);
+  cursor: pointer;
+  font: 11px var(--font-stack);
+  line-height: 1.4;
+  transition: opacity 120ms ease-in-out;
+}
+.msg-action-pdf { min-width: 30px; }
+.msg-assistant:hover .msg-action,
+.msg-action:focus {
+  opacity: 1;
+}
+.msg-action:hover:not(:disabled) {
+  background: var(--tool-bg);
+  color: var(--text);
+}
+.msg-action:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+.msg-assistant.is-streaming .msg-action {
+  display: none;
+}
+.msg-action:disabled {
+  opacity: 0.7;
+  cursor: default;
+  color: var(--text-faint);
+}
+.msg-action[data-export-pending="1"] {
+  display: inline-block;
+  opacity: 1;
 }
 
 .msg-assistant.msg-stopped::after {
