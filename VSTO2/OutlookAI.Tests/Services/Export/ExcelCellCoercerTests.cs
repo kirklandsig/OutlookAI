@@ -43,6 +43,19 @@ namespace OutlookAI.Tests.Services.Export
             Assert.Equal(21, result.Minute);
         }
 
+        [Theory]
+        [InlineData(ExcelColumnType.Date)]
+        [InlineData(ExcelColumnType.DateTime)]
+        public void Coerce_DateToken_ReturnsDateTime(ExcelColumnType type)
+        {
+            var expected = new DateTime(2026, 5, 18, 14, 21, 0, DateTimeKind.Utc);
+
+            var result = Assert.IsType<DateTime>(ExcelCellCoercer.Coerce(new JValue(expected), type));
+
+            Assert.Equal(expected, result);
+            Assert.Equal(DateTimeKind.Utc, result.Kind);
+        }
+
         [Fact]
         public void Coerce_DateUnparseable_ReturnsOriginalText()
         {
