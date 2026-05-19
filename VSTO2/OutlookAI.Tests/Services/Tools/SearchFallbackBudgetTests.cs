@@ -94,6 +94,20 @@ namespace OutlookAI.Tests.Services.Tools
         }
 
         [Fact]
+        public void ShouldStopRecipientAllMailScan_AutoWithoutFolderAtMax_ReturnsTrue()
+        {
+            var args = new SearchMessagesArgs
+            {
+                Scope = "auto",
+                To = "Susan",
+                SortOrder = "newest",
+                MaxResults = 25,
+            };
+
+            Assert.True(SearchFallbackBudget.ShouldStopRecipientAllMailScan(args, "auto", candidateCount: 25));
+        }
+
+        [Fact]
         public void ShouldStopRecipientAllMailScan_BeforeMax_ReturnsFalse()
         {
             var args = new SearchMessagesArgs
@@ -105,6 +119,19 @@ namespace OutlookAI.Tests.Services.Tools
             };
 
             Assert.False(SearchFallbackBudget.ShouldStopRecipientAllMailScan(args, "all_mail", candidateCount: 24));
+        }
+
+        [Fact]
+        public void ShouldStopRecipientAllMailScan_NonPositiveMaxResults_ReturnsFalse()
+        {
+            Assert.False(SearchFallbackBudget.ShouldStopRecipientAllMailScan(
+                new SearchMessagesArgs { Scope = "all_mail", To = "Susan", SortOrder = "newest", MaxResults = 0 },
+                "all_mail",
+                candidateCount: 25));
+            Assert.False(SearchFallbackBudget.ShouldStopRecipientAllMailScan(
+                new SearchMessagesArgs { Scope = "all_mail", To = "Susan", SortOrder = "newest", MaxResults = -1 },
+                "all_mail",
+                candidateCount: 25));
         }
 
         [Fact]
