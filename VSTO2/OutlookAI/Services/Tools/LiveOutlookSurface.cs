@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
 using OutlookAI.Services;
@@ -766,7 +767,82 @@ namespace OutlookAI.Services.Tools
 
         public FileSavedResult ExportPdf(ExportPdfArgs args, CancellationToken ct = default(CancellationToken))
         {
-            throw new NotImplementedException("ExportPdf is wired in Task 16.");
+            if (args == null) throw new ArgumentNullException(nameof(args));
+
+            ct.ThrowIfCancellationRequested();
+            var pathResolver = Globals.ThisAddIn?.ExportPathResolver ?? new ExportPathResolver();
+            string baseDir;
+            try
+            {
+                baseDir = pathResolver.ResolveBaseDir();
+                pathResolver.EnsureExists();
+            }
+            catch (Exception ex) when (IsExpectedPathUnavailable(ex))
+            {
+                throw new ExportException("path_unavailable", ex.Message, ex);
+            }
+
+            var generatedAt = DateTimeOffset.Now;
+            var filename = ExportFilenameSanitizer.Build(args.FilenameHint, ".pdf", generatedAt, candidate => File.Exists(Path.Combine(baseDir, candidate)));
+            var fullPath = Path.Combine(baseDir, filename);
+            var tempPath = Path.Combine(baseDir, "." + Guid.NewGuid().ToString("N") + ".tmp.pdf");
+
+            try
+            {
+                ct.ThrowIfCancellationRequested();
+                var template = LoadPrintTemplateHtml();
+                var html = new PrintTemplateRenderer(template).Render(args.Title ?? args.FilenameHint, args.Subtitle, args.ContentMarkdown, generatedAt);
+
+                ct.ThrowIfCancellationRequested();
+                var pdfRenderer = Globals.ThisAddIn?.PdfRenderer;
+                if (pdfRenderer == null)
+                {
+                    throw new ExportException("pdf_render_failed", "PdfRenderer not initialized");
+                }
+
+                pdfRenderer.RenderAsync(html, tempPath, ct).GetAwaiter().GetResult();
+                ct.ThrowIfCancellationRequested();
+
+                try
+                {
+                    File.Move(tempPath, fullPath);
+                }
+                catch (IOException ex) when (IsSharingViolation(ex) || IsAlreadyExists(ex))
+                {
+                    filename = ExportFilenameSanitizer.Build(args.FilenameHint + "-2", ".pdf", DateTimeOffset.Now, candidate => File.Exists(Path.Combine(baseDir, candidate)));
+                    fullPath = Path.Combine(baseDir, filename);
+                    ct.ThrowIfCancellationRequested();
+                    File.Move(tempPath, fullPath);
+                }
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (ExportException) { throw; }
+            catch (IOException ex) when (IsDiskFull(ex))
+            {
+                throw new ExportException("disk_full", ex.Message, ex);
+            }
+            catch (IOException ex) when (IsSharingViolation(ex))
+            {
+                throw new ExportException("file_locked", ex.Message, ex);
+            }
+            catch (Exception ex)
+            {
+                throw new ExportException("pdf_render_failed", ex.Message, ex);
+            }
+            finally
+            {
+                TryDeleteTempFile(tempPath);
+            }
+
+            var info = new FileInfo(fullPath);
+            return new FileSavedResult
+            {
+                Path = fullPath,
+                FileUrl = new Uri(fullPath).AbsoluteUri,
+                Format = "pdf",
+                Bytes = info.Length,
+                Filename = filename,
+            };
         }
 
         public CreatedDraft CreateDraft(CreateDraftArgs args) =>
@@ -974,6 +1050,35 @@ namespace OutlookAI.Services.Tools
             {
                 source.CopyTo(file);
             }
+        }
+
+        private static string LoadPrintTemplateHtml()
+        {
+            var assembly = Assembly.GetExecutingAssembly();
+            using (var stream = assembly.GetManifestResourceStream("OutlookAI.WebUI.print-template.html"))
+            {
+                if (stream == null)
+                {
+                    throw new ExportException("pdf_render_failed", "print-template.html resource missing");
+                }
+
+                using (var reader = new StreamReader(stream))
+                {
+                    return reader.ReadToEnd();
+                }
+            }
+        }
+
+        private static void TryDeleteTempFile(string path)
+        {
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+            }
+            catch { }
         }
 
         private static bool IsExpectedPathUnavailable(Exception ex)
