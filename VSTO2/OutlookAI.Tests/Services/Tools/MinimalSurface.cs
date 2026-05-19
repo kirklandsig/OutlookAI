@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Threading;
+using OutlookAI.Services.Export;
 using OutlookAI.Services.Tools;
 
 namespace OutlookAI.Tests.Services.Tools
@@ -26,6 +27,10 @@ namespace OutlookAI.Tests.Services.Tools
         public virtual IReadOnlyList<AggregationBucket> AggregateMessages(AggregateMessagesArgs args, CancellationToken ct = default(CancellationToken))
             => throw new System.NotImplementedException();
         public virtual IReadOnlyList<ThreadSummary> ListRecentThreadsWith(string recipientEmail, int maxThreads)
+            => throw new System.NotImplementedException();
+        public virtual FileSavedResult ExportExcel(ExportExcelArgs args, CancellationToken ct = default(CancellationToken))
+            => throw new System.NotImplementedException();
+        public virtual FileSavedResult ExportPdf(ExportPdfArgs args, CancellationToken ct = default(CancellationToken))
             => throw new System.NotImplementedException();
         public virtual CreatedDraft CreateDraft(CreateDraftArgs args)
             => throw new System.NotImplementedException();

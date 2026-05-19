@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using OutlookAI.Services;
+using OutlookAI.Services.Export;
 using Outlook = Microsoft.Office.Interop.Outlook;
 
 namespace OutlookAI.Services.Tools
@@ -665,6 +667,88 @@ namespace OutlookAI.Services.Tools
                 return (IReadOnlyList<ThreadSummary>)results;
             }) ?? (IReadOnlyList<ThreadSummary>)new List<ThreadSummary>();
 
+        public FileSavedResult ExportExcel(ExportExcelArgs args, CancellationToken ct = default(CancellationToken))
+        {
+            if (args == null) throw new ArgumentNullException(nameof(args));
+
+            ct.ThrowIfCancellationRequested();
+            var pathResolver = new ExportPathResolver();
+            var baseDir = pathResolver.ResolveBaseDir();
+            try
+            {
+                pathResolver.EnsureExists();
+            }
+            catch (IOException ex)
+            {
+                throw new ExportException("path_unavailable", ex.Message, ex);
+            }
+
+            var filename = ExportFilenameSanitizer.Build(args.FilenameHint, ".xlsx", DateTimeOffset.Now, candidate => File.Exists(Path.Combine(baseDir, candidate)));
+            var fullPath = Path.Combine(baseDir, filename);
+
+            try
+            {
+                var typedRows = new List<object[]>();
+                for (var r = 0; r < args.Rows.Count; r++)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var row = new object[args.Columns.Count];
+                    for (var c = 0; c < args.Columns.Count; c++)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        row[c] = ExcelCellCoercer.Coerce(args.Rows[r][c], args.Columns[c].Type);
+                    }
+                    typedRows.Add(row);
+                }
+
+                using (var workbook = ExcelWorkbookBuilder.Build(args.SheetName, args.Columns, typedRows))
+                {
+                    try
+                    {
+                        workbook.SaveAs(fullPath);
+                    }
+                    catch (IOException ex) when (IsSharingViolation(ex))
+                    {
+                        filename = ExportFilenameSanitizer.Build(args.FilenameHint + "-2", ".xlsx", DateTimeOffset.Now, candidate => File.Exists(Path.Combine(baseDir, candidate)));
+                        fullPath = Path.Combine(baseDir, filename);
+                        try
+                        {
+                            workbook.SaveAs(fullPath);
+                        }
+                        catch (IOException retryEx)
+                        {
+                            throw new ExportException("file_locked", retryEx.Message, retryEx);
+                        }
+                    }
+                }
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (ExportException) { throw; }
+            catch (IOException ex) when (IsDiskFull(ex))
+            {
+                throw new ExportException("disk_full", ex.Message, ex);
+            }
+            catch (Exception ex)
+            {
+                throw new ExportException("excel_build_failed", ex.Message, ex);
+            }
+
+            var info = new FileInfo(fullPath);
+            return new FileSavedResult
+            {
+                Path = fullPath,
+                FileUrl = new Uri(fullPath).AbsoluteUri,
+                Format = "xlsx",
+                Bytes = info.Length,
+                Filename = filename,
+            };
+        }
+
+        public FileSavedResult ExportPdf(ExportPdfArgs args, CancellationToken ct = default(CancellationToken))
+        {
+            throw new NotImplementedException("ExportPdf is wired in Task 16.");
+        }
+
         public CreatedDraft CreateDraft(CreateDraftArgs args) =>
             Run(() =>
             {
@@ -863,6 +947,17 @@ namespace OutlookAI.Services.Tools
         private T Run<T>(Func<T> fn) => _marshaller.RunAsync(fn, CancellationToken.None).GetAwaiter().GetResult();
 
         private void Run(Action fn) => _marshaller.RunAsync(fn, CancellationToken.None).GetAwaiter().GetResult();
+
+        private static bool IsSharingViolation(IOException ex)
+        {
+            return ((uint)ex.HResult & 0xFFFF) == 32;
+        }
+
+        private static bool IsDiskFull(IOException ex)
+        {
+            var code = (uint)ex.HResult & 0xFFFF;
+            return code == 39 || code == 112;
+        }
 
         private static ComposeStateResult EmptyCompose() => new ComposeStateResult
         {

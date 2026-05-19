@@ -9,6 +9,7 @@ using NAudio.Wave;
 using OutlookAI.Diagnostics;
 using OutlookAI.Services;
 using OutlookAI.Services.Chat;
+using OutlookAI.Services.Export;
 using OutlookAI.Services.Tools;
 using OutlookAI.TaskPane.Chat;
 using OutlookAI.TaskPane.Variants;
@@ -607,6 +608,8 @@ namespace OutlookAI.TaskPane
             public int CountMessages(SearchMessagesArgs args, System.Threading.CancellationToken ct = default(System.Threading.CancellationToken)) => 0;
             public IReadOnlyList<AggregationBucket> AggregateMessages(AggregateMessagesArgs args, System.Threading.CancellationToken ct = default(System.Threading.CancellationToken)) => new AggregationBucket[0];
             public IReadOnlyList<ThreadSummary> ListRecentThreadsWith(string recipientEmail, int maxThreads) => new ThreadSummary[0];
+            public FileSavedResult ExportExcel(ExportExcelArgs args, System.Threading.CancellationToken ct = default(System.Threading.CancellationToken)) => null;
+            public FileSavedResult ExportPdf(ExportPdfArgs args, System.Threading.CancellationToken ct = default(System.Threading.CancellationToken)) => null;
             public CreatedDraft CreateDraft(CreateDraftArgs args) => null;
             public CurrentSelectionResult GetCurrentSelection(bool includeFullBodies, int maxItems)
                 => new CurrentSelectionResult { Folder = "", FolderId = "", Count = 0, Messages = new MessageDetail[0] };

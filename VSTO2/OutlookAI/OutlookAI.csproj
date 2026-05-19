@@ -326,9 +326,11 @@
     <Compile Include="Services\Export\ExcelColumnSpec.cs" />
     <Compile Include="Services\Export\ExcelColumnType.cs" />
     <Compile Include="Services\Export\ExcelWorkbookBuilder.cs" />
+    <Compile Include="Services\Export\ExportException.cs" />
     <Compile Include="Services\Export\ExportFilenameSanitizer.cs" />
     <Compile Include="Services\Export\ExportPathPolicy.cs" />
     <Compile Include="Services\Export\ExportPathResolver.cs" />
+    <Compile Include="Services\Export\FileSavedResult.cs" />
     <Compile Include="Services\Export\IExportPathPolicy.cs" />
     <Compile Include="Services\Export\UnauthorizedExportPathException.cs" />
     <Compile Include="Services\IdResolver.cs" />
@@ -343,6 +345,7 @@
     <Compile Include="Services\Tools\DateBucketFormatter.cs" />
     <Compile Include="Services\Tools\ExportExcelArgs.cs" />
     <Compile Include="Services\Tools\ExportExcelArgsParser.cs" />
+    <Compile Include="Services\Tools\ExportPdfArgs.cs" />
     <Compile Include="Services\Tools\IAdvancedSearchHost.cs" />
     <Compile Include="Services\Tools\IFolderClassifier.cs" />
     <Compile Include="Services\Tools\IOutlookSurface.cs" />
