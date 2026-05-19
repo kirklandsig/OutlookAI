@@ -151,34 +151,33 @@ namespace OutlookAI.TaskPane.Chat
                 {
                     return;
                 }
+
+                switch (type)
+                {
+                    case "ready":
+                        OnWebViewReady();
+                        break;
+                    case "send":
+                        _ = StartTurnAsync(
+                            (string)payload?["text"] ?? "",
+                            (string)payload?["reasoning"]);
+                        break;
+                    case "stop":
+                        try { _activeCts?.Cancel(); } catch { }
+                        break;
+                    case "clear":
+                        _store.Clear();
+                        _ = RunScript("outlookai.clear();");
+                        break;
+                    case "copy":
+                        var clip = _store.ExportForClipboard();
+                        try { Clipboard.SetText(clip ?? ""); } catch { /* clipboard occasionally throws on Outlook */ }
+                        break;
+                }
             }
             catch (Exception ex)
             {
-                TraceLog.Write("ExportBridge EXCEPTION: " + ex, "ChatController");
-                return;
-            }
-
-            switch (type)
-            {
-                case "ready":
-                    OnWebViewReady();
-                    break;
-                case "send":
-                    _ = StartTurnAsync(
-                        (string)payload?["text"] ?? "",
-                        (string)payload?["reasoning"]);
-                    break;
-                case "stop":
-                    try { _activeCts?.Cancel(); } catch { }
-                    break;
-                case "clear":
-                    _store.Clear();
-                    _ = RunScript("outlookai.clear();");
-                    break;
-                case "copy":
-                    var clip = _store.ExportForClipboard();
-                    try { Clipboard.SetText(clip ?? ""); } catch { /* clipboard occasionally throws on Outlook */ }
-                    break;
+                TraceLog.Write("HandleHostMessageAsync EXCEPTION: " + ex, "ChatController");
             }
         }
 

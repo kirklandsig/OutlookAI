@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
@@ -119,6 +120,26 @@ namespace OutlookAI.Tests.TaskPane.Chat
             Assert.Throws<ArgumentNullException>(() => new ExportBridge(new Surface(), new Policy(), null));
         }
 
+        [Theory]
+        [InlineData("Chat", "ChatController.cs")]
+        [InlineData("InboxCopilot", "InboxCopilotController.cs")]
+        [InlineData("InboxReports", "InboxReportsController.cs")]
+        public void Controllers_ObserveEntireAsyncHostMessageHandler(string folder, string fileName)
+        {
+            var source = File.ReadAllText(FindSourceFile("OutlookAI", "TaskPane", folder, fileName));
+            var methodStart = source.IndexOf("private async Task HandleHostMessageAsync", StringComparison.Ordinal);
+            var methodEnd = source.IndexOf("private static IExportPathPolicy CreateExportPathPolicy", methodStart, StringComparison.Ordinal);
+            var method = source.Substring(methodStart, methodEnd - methodStart);
+
+            var exportBridgeIndex = method.IndexOf("_exportBridge.HandleAsync", StringComparison.Ordinal);
+            var switchIndex = method.IndexOf("switch (type)", StringComparison.Ordinal);
+            var catchIndex = method.IndexOf("catch (Exception ex)", StringComparison.Ordinal);
+
+            Assert.True(exportBridgeIndex >= 0, fileName + " should call ExportBridge.");
+            Assert.True(switchIndex > exportBridgeIndex, fileName + " should preserve existing switch after bridge.");
+            Assert.True(catchIndex > switchIndex, fileName + " should catch exceptions after the switch body.");
+        }
+
         private static FileSavedResult SavedResult()
         {
             return new FileSavedResult
@@ -129,6 +150,20 @@ namespace OutlookAI.Tests.TaskPane.Chat
                 Bytes = 12345,
                 Filename = "Quotes.pdf",
             };
+        }
+
+        private static string FindSourceFile(params string[] relativeParts)
+        {
+            var current = new DirectoryInfo(Directory.GetCurrentDirectory());
+            while (current != null)
+            {
+                var candidate = Path.Combine(current.FullName, Path.Combine(relativeParts));
+                if (File.Exists(candidate)) return candidate;
+
+                current = current.Parent;
+            }
+
+            throw new FileNotFoundException("Could not find source file.", Path.Combine(relativeParts));
         }
 
         private sealed class Surface : MinimalSurface
