@@ -29,6 +29,7 @@ namespace OutlookAI.Services
                 new OutlookCountMessagesTool(),
                 new OutlookAggregateMessagesTool(),      // Phase 4: group + count
                 new OutlookListRecentThreadsWithTool(),
+                new OutlookExportExcelTool(),            // Phase 5: Excel export
             };
             if (includeWriteTools)
             {
