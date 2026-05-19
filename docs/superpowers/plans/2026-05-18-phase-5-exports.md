@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-05-18-phase-5-exports-design.md`
 
+**Current status (Task 25):** Tasks 1-24 are implemented and reviewed. Debug verification before this docs pass was `499/499` tests passing. Tasks 26-27 (publish/install and live smoke) and Task 28 (push) remain pending.
+
 ---
 
 ## File Structure
@@ -4883,34 +4885,36 @@ Skip this step if the audit showed no fix was needed.
 
 ---
 
-## Task 25: Mark Phase 5 complete in docs + final full test run
+## Task 25: Mark Phase 5 implemented in docs + final full Debug test run
 
 **Files:**
 - Modify: `docs/superpowers/specs/2026-05-18-phase-5-exports-design.md`
 - Modify: `docs/superpowers/plans/2026-05-18-phase-5-exports.md` (this file)
 
-- [ ] **Step 1: Update spec status**
+- [x] **Step 1: Update spec status**
 
-Change the spec header's `Status:` line from `Proposed (pending user review)` to `Done (implemented and smoke-validated)`.
+Changed the spec header's `Status:` line from `Proposed (pending user review)` to `Implemented (Debug tests pass; install/smoke pending)`.
 
-- [ ] **Step 2: Tick all plan tasks**
+- [x] **Step 2: Record current plan progress without marking pending release/smoke work complete**
 
-Every `- [ ]` becomes `- [x]` (or simply leave as-is for the historical record; mark only milestone headers as "Done").
+Tasks 1-24 are implemented and reviewed. This plan intentionally leaves Tasks 26-28 unchecked because publish/install, live smoke, and push are still pending.
 
-- [ ] **Step 3: Final full test run**
+- [x] **Step 3: Final full test run**
 
 ```powershell
 & "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe" "VSTO2\OutlookAI.sln" /p:Configuration=Debug /p:Platform="Any CPU" /v:minimal /nologo
 & "C:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe" "VSTO2\OutlookAI.Tests\bin\Debug\net472\OutlookAI.Tests.dll"
 ```
 
-Expected: `Passed: 425` (target met).
+Expected: `Passed: 499` (actual count before Task 25 docs update was 499/499; rerun after docs changes and record below).
 
-- [ ] **Step 4: Commit docs**
+Result: Debug build succeeded; vstest reported `Total tests: 499`, `Passed: 499`.
+
+- [x] **Step 4: Commit docs**
 
 ```powershell
 git add docs/superpowers/specs/2026-05-18-phase-5-exports-design.md docs/superpowers/plans/2026-05-18-phase-5-exports.md
-git commit -m "docs(superpowers): mark Phase 5 exports complete"
+git commit -m "docs(superpowers): mark Phase 5 exports implemented"
 ```
 
 ---
@@ -5061,7 +5065,7 @@ Expected: push succeeds; remote updates with all Phase 5 commits.
 ## Final State After Phase 5
 
 - 24 new commits on `feature/codex-oauth-migration`.
-- Test count: **317 → ~425** (108 new tests).
+- Test count: **317 → 499** (182 new tests before Task 25 docs-only verification).
 - Two new model tools: `outlook_export_excel`, `outlook_export_pdf`.
 - One new UI affordance: per-message "Save as PDF" button.
 - One new shared infra: `markdown.js` (used by chat AND PDF).
@@ -5072,4 +5076,4 @@ Expected: push succeeds; remote updates with all Phase 5 commits.
 - Reports saved to `~\Documents\OutlookAI\Reports\` with auto-generated timestamped filenames.
 - Path-policy security gate on all file-action bridge methods.
 
-Phase 5 is **shippable independently**. No dependencies on Phase 6+ items (settings UI, multi-sheet Excel, PDF page numbers, etc.).
+Phase 5 implementation is ready for publish/install and live smoke. No dependencies on Phase 6+ items (settings UI, multi-sheet Excel, PDF page numbers, etc.).
