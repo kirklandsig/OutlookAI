@@ -37,6 +37,7 @@ namespace OutlookAI.Services.Tools
                     + "Examples: "
                     + "User says 'what was my first email ever' -> {scope:'all_mail', sort_order:'oldest', max_results:1}. "
                     + "User says 'emails from Alice last week' -> {from:'Alice', date_from:<7d ago ISO>, date_to:<today ISO>}. "
+                    + "User says 'messages I sent to Susan about servers' -> first use outlook_list_folders to find Sent Items/Outbound, then {to:'Susan', query:'servers', folder_id:<sent folder id>, max_results:25}; do not put recipient in query or from. For multiple recipients, make separate precise searches. "
                     + "User says 'quotes from IT Creations' (vendor lookup) -> {from:'IT Creations', scope:'all_mail'}. Put the vendor name in 'from', not 'query'; 'from' matches both display name and email address case-insensitively. "
                     + "User says 'email from before 2020 with the EIN' -> {query:'EIN', date_to:'2020-01-01T00:00:00Z'}. "
                     + "User says 'find an email with EIN' -> {query:'EIN', scope:'auto'}; if zero, try {query:'Employer Identification Number', scope:'auto'}. "
@@ -48,15 +49,19 @@ namespace OutlookAI.Services.Tools
                     + "(3) try a compact spelling without spaces only AFTER the user's exact spelling fails (e.g. 'IT Creations' first, then 'itcreations'); "
                     + "(4) broaden scope to all_mail if you started with auto. "
                     + "Never send default false filters such as has_attachment:false or is_unread:false; use attachment_filter/read_status/flag_status/importance_filter and use 'any' when not requested. "
+                    + "For 'I sent' / sent / outgoing report requests, prefer outlook_list_folders to discover Sent Items or Outbound and pass folder_id rather than scope:'all_mail' when possible. "
+                    + "Do not use max_results:100 on broad all_mail targeted lookups; use 25 unless the user explicitly asks for a large row count or a specific folder is selected. "
                     + "If you pass NO filters, the tool returns the newest 25 messages in the current folder - almost never what the user asked for. "
                     + "Prefer one precise call over many. After search, use outlook_read_message on the most-relevant id for full body.",
                     new JObject(
                         new JProperty("type", "object"),
                         new JProperty("properties", new JObject(
                             new JProperty("query",            new JObject(new JProperty("type","string"),
-                                                              new JProperty("description","Free-form keyword(s) matched against subject + body (e.g. 'EIN', 'invoice', 'contract'). Do NOT put dates, sender names, or other structured info here - use the dedicated fields."))),
+                                                              new JProperty("description","Free-form keyword(s) matched against subject + body (e.g. 'EIN', 'invoice', 'contract'). Do NOT put dates, sender names, recipient names, or other structured info here - use the dedicated fields."))),
                             new JProperty("from",             new JObject(new JProperty("type","string"),
                                                               new JProperty("description","Sender substring; matches display name OR email (case-insensitive). Example: 'Alice' or 'alice@example.com'."))),
+                            new JProperty("to",               new JObject(new JProperty("type","string"),
+                                                              new JProperty("description","Recipient substring; for multiple recipients, make separate precise searches rather than concatenating names."))),
                             new JProperty("subject_contains", new JObject(new JProperty("type","string"),
                                                               new JProperty("description","Substring match on subject only."))),
                             new JProperty("body_contains",    new JObject(new JProperty("type","string"),

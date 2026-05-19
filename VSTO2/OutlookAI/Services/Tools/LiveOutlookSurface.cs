@@ -1638,6 +1638,7 @@ namespace OutlookAI.Services.Tools
         // always-SMTP form of the sender, when set. Not populated for many
         // Exchange-routed messages. Backstop only.
         private const string PropFromSmtp    = "\"http://schemas.microsoft.com/mapi/proptag/0x5D01001F\"";
+        private const string PropDisplayTo   = "\"urn:schemas:httpmail:displayto\"";
         // NOTE: we deliberately do NOT include PR_TRANSPORT_MESSAGE_HEADERS
         // (proptag 0x007D001F) in any routine filter. It is a multi-KB raw
         // RFC 822 header blob, server-NOT-indexed, and LIKE'ing against it
@@ -1669,6 +1670,10 @@ namespace OutlookAI.Services.Tools
                 clauses.Add("(" + PropFrom + " LIKE '%" + v + "%' OR " +
                             PropFromEmail + " LIKE '%" + v + "%' OR " +
                             PropFromSmtp + " LIKE '%" + v + "%')");
+            }
+            if (!string.IsNullOrEmpty(args.To))
+            {
+                clauses.Add(PropDisplayTo + " LIKE '%" + Escape(args.To) + "%'");
             }
             if (!string.IsNullOrEmpty(args.SubjectContains))
             {

@@ -80,6 +80,7 @@ namespace OutlookAI.Services.Tools
     {
         public string Query { get; set; }
         public string From { get; set; }
+        public string To { get; set; }
         public string SubjectContains { get; set; }
         public string BodyContains { get; set; }
         // Hidden backward-compat fields. These are accepted by the parser for
