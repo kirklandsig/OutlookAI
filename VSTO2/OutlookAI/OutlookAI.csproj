@@ -395,6 +395,7 @@
       <DependentUpon>AITaskPane.cs</DependentUpon>
     </Compile>
     <Compile Include="TaskPane\Chat\ChatController.cs" />
+    <Compile Include="TaskPane\Chat\ExportBridge.cs" />
     <Compile Include="TaskPane\Chat\WebView2Bootstrap.cs" />
     <Compile Include="TaskPane\Variants\VariantsController.cs" />
     <Compile Include="TaskPane\InboxCopilot\QuickActionChip.cs" />

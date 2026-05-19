@@ -9,6 +9,7 @@ using Microsoft.Web.WebView2.WinForms;
 using Newtonsoft.Json.Linq;
 using OutlookAI.Diagnostics;
 using OutlookAI.Services;
+using OutlookAI.Services.Export;
 using OutlookAI.Services.Chat;
 using OutlookAI.Services.Tools;
 
@@ -28,6 +29,7 @@ namespace OutlookAI.TaskPane.Chat
         private readonly LiveOutlookSurface _surface;
         private readonly ConversationStore _store;
         private readonly Func<string> _composerSystemPrompt;
+        private readonly ExportBridge _exportBridge;
 
         private WebView2 _webView;
         private CancellationTokenSource _activeCts;
@@ -49,6 +51,10 @@ namespace OutlookAI.TaskPane.Chat
             _toolHost = toolHost ?? throw new ArgumentNullException(nameof(toolHost));
             _surface = surface;
             _store = store ?? new ConversationStore();
+            if (_surface != null)
+            {
+                _exportBridge = new ExportBridge(_surface, CreateExportPathPolicy(), RunScript);
+            }
             _composerSystemPrompt = () =>
                 "You are an AI assistant embedded in Microsoft Outlook's compose window. "
                 + "Help the user understand, draft, and revise the email in front of them. "
@@ -127,7 +133,7 @@ namespace OutlookAI.TaskPane.Chat
                 var obj = JObject.Parse(json);
                 var type = (string)obj["type"] ?? "";
                 var payload = obj["payload"] as JObject;
-                HandleHostMessage(type, payload);
+                _ = HandleHostMessageAsync(type, payload);
             }
             catch (Exception ex)
             {
@@ -136,8 +142,22 @@ namespace OutlookAI.TaskPane.Chat
             }
         }
 
-        private void HandleHostMessage(string type, JObject payload)
+        private async Task HandleHostMessageAsync(string type, JObject payload)
         {
+            try
+            {
+                if (_exportBridge != null && await _exportBridge.HandleAsync(
+                    type, payload, _activeCts?.Token ?? CancellationToken.None).ConfigureAwait(false))
+                {
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                TraceLog.Write("ExportBridge EXCEPTION: " + ex, "ChatController");
+                return;
+            }
+
             switch (type)
             {
                 case "ready":
@@ -161,6 +181,9 @@ namespace OutlookAI.TaskPane.Chat
                     break;
             }
         }
+
+        private static IExportPathPolicy CreateExportPathPolicy()
+            => Globals.ThisAddIn?.ExportPathPolicy ?? new ExportPathPolicy(new ExportPathResolver());
 
         private void OnWebViewReady()
         {

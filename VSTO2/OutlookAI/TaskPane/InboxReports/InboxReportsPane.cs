@@ -77,7 +77,7 @@ namespace OutlookAI.TaskPane.InboxReports
                     {
                         _conversationStore = new ConversationStore();
                         _controller = new InboxReportsController(
-                            chatHost, ChatService, _toolHost, _conversationStore);
+                            chatHost, ChatService, _toolHost, _surface, _conversationStore);
                         TraceLog.Write("Controller constructed; firing InitializeAsync", "InboxReportsPane");
                         var initTask = _controller.InitializeAsync();
                         initTask.ContinueWith(t =>

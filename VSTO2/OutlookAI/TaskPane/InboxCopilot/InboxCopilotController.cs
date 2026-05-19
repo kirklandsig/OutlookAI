@@ -8,6 +8,7 @@ using Microsoft.Web.WebView2.WinForms;
 using Newtonsoft.Json.Linq;
 using OutlookAI.Diagnostics;
 using OutlookAI.Services;
+using OutlookAI.Services.Export;
 using OutlookAI.Services.Chat;
 using OutlookAI.Services.Tools;
 using OutlookAI.TaskPane.Chat;
@@ -29,6 +30,7 @@ namespace OutlookAI.TaskPane.InboxCopilot
         private readonly LiveOutlookSurface _surface;
         private readonly ConversationStore _store;
         private readonly Outlook.Explorer _explorer;
+        private readonly ExportBridge _exportBridge;
 
         private WebView2 _webView;
         private CancellationTokenSource _activeCts;
@@ -52,6 +54,10 @@ namespace OutlookAI.TaskPane.InboxCopilot
             _surface = surface;
             _store = store ?? new ConversationStore();
             _explorer = explorer;
+            if (_surface != null)
+            {
+                _exportBridge = new ExportBridge(_surface, CreateExportPathPolicy(), RunScript);
+            }
         }
 
         public async Task InitializeAsync()
@@ -123,7 +129,7 @@ namespace OutlookAI.TaskPane.InboxCopilot
                 var obj = JObject.Parse(json);
                 var type = (string)obj["type"] ?? "";
                 var payload = obj["payload"] as JObject;
-                HandleHostMessage(type, payload);
+                _ = HandleHostMessageAsync(type, payload);
             }
             catch (Exception ex)
             {
@@ -131,8 +137,22 @@ namespace OutlookAI.TaskPane.InboxCopilot
             }
         }
 
-        private void HandleHostMessage(string type, JObject payload)
+        private async Task HandleHostMessageAsync(string type, JObject payload)
         {
+            try
+            {
+                if (_exportBridge != null && await _exportBridge.HandleAsync(
+                    type, payload, _activeCts?.Token ?? CancellationToken.None).ConfigureAwait(false))
+                {
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                TraceLog.Write("ExportBridge EXCEPTION: " + ex, "InboxCopilot");
+                return;
+            }
+
             switch (type)
             {
                 case "ready":
@@ -156,6 +176,9 @@ namespace OutlookAI.TaskPane.InboxCopilot
                     break;
             }
         }
+
+        private static IExportPathPolicy CreateExportPathPolicy()
+            => Globals.ThisAddIn?.ExportPathPolicy ?? new ExportPathPolicy(new ExportPathResolver());
 
         private void OnWebViewReady()
         {
