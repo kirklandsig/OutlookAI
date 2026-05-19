@@ -93,6 +93,29 @@ namespace OutlookAI.Tests.Services.Tools
             var desc = (string)query["description"];
 
             Assert.Contains("Do NOT put dates, sender names", desc);
+            Assert.Contains("recipient", desc, System.StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void SearchMessages_Schema_AdvertisesRecipientFilterAndSentGuidance()
+        {
+            var tools = ToolCatalogSchema.BuildResponsesToolsArray(includeWriteTools: false);
+            var search = FindTool(tools, "outlook_search_messages");
+            var props = (JObject)search["parameters"]["properties"];
+            var desc = (string)search["description"];
+
+            Assert.NotNull(props["to"]);
+            Assert.Equal("string", (string)props["to"]["type"]);
+            Assert.Contains("recipient substring", (string)props["to"]["description"], System.StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("separate precise searches", (string)props["to"]["description"], System.StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("messages I sent to Susan about servers", desc);
+            Assert.Contains("to:'Susan'", desc);
+            Assert.Contains("do not put recipient in query or from", desc, System.StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("outlook_list_folders", desc);
+            Assert.Contains("Sent Items", desc);
+            Assert.Contains("folder_id", desc);
+            Assert.Contains("max_results:100", desc);
+            Assert.Contains("use 25", desc);
         }
 
         [Fact]

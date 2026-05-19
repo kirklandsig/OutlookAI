@@ -83,6 +83,14 @@ namespace OutlookAI.Tests.Services.Tools
         }
 
         [Fact]
+        public void To_MatchesDisplayToAndEscapesSingleQuotes()
+        {
+            var f = LiveOutlookSurface.BuildRestrictFilter(new SearchMessagesArgs { To = "Susan O'Neil" });
+
+            Assert.Contains("\"urn:schemas:httpmail:displayto\" LIKE '%Susan O''Neil%'", f);
+        }
+
+        [Fact]
         public void SubjectContains_AddsSubjectLikeClause()
         {
             var f = LiveOutlookSurface.BuildRestrictFilter(new SearchMessagesArgs { SubjectContains = "plan" });
@@ -145,16 +153,17 @@ namespace OutlookAI.Tests.Services.Tools
             {
                 Query = "Q4",
                 From = "jane",
+                To = "susan",
                 IsUnread = true,
                 HasAttachment = true,
                 Importance = "high",
                 DateFrom = new DateTimeOffset(2026, 5, 10, 0, 0, 0, TimeSpan.Zero),
             });
             Assert.StartsWith("@SQL=", f);
-            // 6 clauses (query, from, unread, attachment, importance, datefrom)
-            // joined by AND -> 5 separators.
+            // 7 clauses (query, from, to, unread, attachment, importance, datefrom)
+            // joined by AND -> 6 separators.
             var ands = System.Text.RegularExpressions.Regex.Matches(f, " AND ").Count;
-            Assert.Equal(5, ands);
+            Assert.Equal(6, ands);
         }
 
         [Fact]

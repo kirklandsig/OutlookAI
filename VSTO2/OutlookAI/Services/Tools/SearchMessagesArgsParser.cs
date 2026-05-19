@@ -27,6 +27,7 @@ namespace OutlookAI.Services.Tools
             {
                 Query = Clean(args["query"]),
                 From = Clean(args["from"]),
+                To = Clean(args["to"]) ?? Clean(args["recipient"]),
                 SubjectContains = Clean(args["subject_contains"]),
                 BodyContains = Clean(args["body_contains"]),
                 FolderId = Clean(args["folder_id"]),

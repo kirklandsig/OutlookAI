@@ -40,6 +40,7 @@ namespace OutlookAI.Tests.Services.Tools
         {
             var args = SearchMessagesArgsParser.ParseSearch("{"
                 + "\"query\":\" EIN \","
+                + "\"to\":\" Susan \","
                 + "\"scope\":\"ALL_MAIL\","
                 + "\"sort_order\":\"OLDEST\","
                 + "\"attachment_filter\":\"WITH\","
@@ -50,6 +51,7 @@ namespace OutlookAI.Tests.Services.Tools
                 + "\"max_results\":999}");
 
             Assert.Equal("EIN", args.Query);
+            Assert.Equal("Susan", args.To);
             Assert.Equal("all_mail", args.Scope);
             Assert.Equal("oldest", args.SortOrder);
             Assert.Equal("with", args.AttachmentFilter);
@@ -58,6 +60,14 @@ namespace OutlookAI.Tests.Services.Tools
             Assert.Equal("high", args.ImportanceFilter);
             Assert.Equal(new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero), args.DateTo);
             Assert.Equal(100, args.MaxResults);
+        }
+
+        [Fact]
+        public void ParseSearch_RecipientAlias_PopulatesToWhenToIsMissing()
+        {
+            var args = SearchMessagesArgsParser.ParseSearch("{\"recipient\":\"Rich\"}");
+
+            Assert.Equal("Rich", args.To);
         }
 
         [Fact]
