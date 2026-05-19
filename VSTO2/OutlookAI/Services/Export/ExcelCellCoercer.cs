@@ -29,6 +29,8 @@ namespace OutlookAI.Services.Export
 
         private static object CoerceDateTime(JToken value)
         {
+            if (value.Type == JTokenType.Date) return value.Value<DateTime>();
+
             var text = ToText(value);
             DateTime parsed;
             return DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind | DateTimeStyles.AllowWhiteSpaces, out parsed)
