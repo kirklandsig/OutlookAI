@@ -323,7 +323,9 @@
     <Compile Include="Services\CodexAuthService.cs" />
     <Compile Include="Services\CodexChatService.cs" />
     <Compile Include="Services\Export\ExcelCellCoercer.cs" />
+    <Compile Include="Services\Export\ExcelColumnSpec.cs" />
     <Compile Include="Services\Export\ExcelColumnType.cs" />
+    <Compile Include="Services\Export\ExcelWorkbookBuilder.cs" />
     <Compile Include="Services\Export\ExportFilenameSanitizer.cs" />
     <Compile Include="Services\Export\ExportPathPolicy.cs" />
     <Compile Include="Services\Export\ExportPathResolver.cs" />
