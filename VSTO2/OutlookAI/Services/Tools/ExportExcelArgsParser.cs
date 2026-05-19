@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -9,6 +10,7 @@ namespace OutlookAI.Services.Tools
     {
         private const int MaxRows = 10000;
         private const string DefaultFilenameHint = "OutlookAI-Report";
+        private static readonly char[] InvalidSheetNameChars = { ':', '\\', '/', '?', '*', '[', ']' };
 
         public static ExportExcelArgs Parse(string argsJson)
         {
@@ -22,8 +24,9 @@ namespace OutlookAI.Services.Tools
                 throw InvalidArgs("Invalid JSON args: " + ex.Message);
             }
 
-            var filenameHint = Clean(args["filename_hint"]) ?? DefaultFilenameHint;
-            var sheetName = Clean(args["sheet_name"]) ?? filenameHint;
+            var filenameHint = CleanOptionalString(args["filename_hint"], "filename_hint") ?? DefaultFilenameHint;
+            var sheetName = CleanOptionalString(args["sheet_name"], "sheet_name") ?? filenameHint;
+            ValidateSheetName(sheetName);
             var columns = ParseColumns(args["columns"]);
 
             return new ExportExcelArgs
@@ -62,13 +65,8 @@ namespace OutlookAI.Services.Tools
                     throw InvalidArgs("columns[" + i + "] must be an object");
                 }
 
-                var name = Clean(column["name"]);
-                if (name == null)
-                {
-                    throw InvalidArgs("columns[" + i + "] name is required");
-                }
-
-                var rawType = Clean(column["type"]);
+                var name = CleanRequiredString(column["name"], "columns[" + i + "] name");
+                var rawType = CleanRequiredString(column["type"], "columns[" + i + "] type");
                 ExcelColumnType type;
                 if (!ExcelColumnTypeParser.TryParse(rawType, out type))
                 {
@@ -124,12 +122,39 @@ namespace OutlookAI.Services.Tools
             return rows;
         }
 
-        private static string Clean(JToken token)
+        private static string CleanOptionalString(JToken token, string fieldName)
         {
             if (token == null || token.Type == JTokenType.Null) return null;
-            if (token.Type != JTokenType.String) return null;
+            if (token.Type != JTokenType.String) throw InvalidArgs(fieldName + " must be a string");
             var value = token.Value<string>()?.Trim();
             return string.IsNullOrEmpty(value) ? null : value;
+        }
+
+        private static string CleanRequiredString(JToken token, string fieldName)
+        {
+            if (token == null || token.Type == JTokenType.Null) throw InvalidArgs(fieldName + " is required");
+            if (token.Type != JTokenType.String) throw InvalidArgs(fieldName + " must be a string");
+            var value = token.Value<string>()?.Trim();
+            if (string.IsNullOrEmpty(value)) throw InvalidArgs(fieldName + " is required");
+            return value;
+        }
+
+        private static void ValidateSheetName(string sheetName)
+        {
+            if (sheetName.Length > 31)
+            {
+                throw InvalidArgs("sheet_name must be 31 characters or fewer");
+            }
+
+            if (sheetName.IndexOfAny(InvalidSheetNameChars) >= 0)
+            {
+                throw InvalidArgs("sheet_name contains an invalid Excel worksheet character");
+            }
+
+            if (string.Equals(sheetName, "History", StringComparison.OrdinalIgnoreCase))
+            {
+                throw InvalidArgs("sheet_name 'History' is reserved by Excel");
+            }
         }
 
         private static ToolArgValidationException InvalidArgs(string message)

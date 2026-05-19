@@ -49,6 +49,51 @@ namespace OutlookAI.Tests.Services.Tools
         }
 
         [Fact]
+        public void Parse_SheetNameWithInvalidCharacter_ThrowsInvalidArgsWithSheetName()
+        {
+            var ex = Assert.Throws<ToolArgValidationException>(() => ExportExcelArgsParser.Parse("{\"sheet_name\":\"A/B\",\"columns\":[{\"name\":\"Subject\",\"type\":\"text\"}]}"));
+
+            Assert.Equal("invalid_args", ex.Code);
+            Assert.Contains("sheet_name", ex.Message);
+        }
+
+        [Fact]
+        public void Parse_SheetNameLongerThan31Characters_ThrowsInvalidArgsWithSheetName()
+        {
+            var ex = Assert.Throws<ToolArgValidationException>(() => ExportExcelArgsParser.Parse("{\"sheet_name\":\"12345678901234567890123456789012\",\"columns\":[{\"name\":\"Subject\",\"type\":\"text\"}]}"));
+
+            Assert.Equal("invalid_args", ex.Code);
+            Assert.Contains("sheet_name", ex.Message);
+        }
+
+        [Fact]
+        public void Parse_SheetNameHistory_ThrowsInvalidArgsWithSheetName()
+        {
+            var ex = Assert.Throws<ToolArgValidationException>(() => ExportExcelArgsParser.Parse("{\"sheet_name\":\"history\",\"columns\":[{\"name\":\"Subject\",\"type\":\"text\"}]}"));
+
+            Assert.Equal("invalid_args", ex.Code);
+            Assert.Contains("sheet_name", ex.Message);
+        }
+
+        [Fact]
+        public void Parse_FilenameHintNonString_ThrowsInvalidArgsWithFilenameHint()
+        {
+            var ex = Assert.Throws<ToolArgValidationException>(() => ExportExcelArgsParser.Parse("{\"filename_hint\":{},\"columns\":[{\"name\":\"Subject\",\"type\":\"text\"}]}"));
+
+            Assert.Equal("invalid_args", ex.Code);
+            Assert.Contains("filename_hint", ex.Message);
+        }
+
+        [Fact]
+        public void Parse_SheetNameNonString_ThrowsInvalidArgsWithSheetName()
+        {
+            var ex = Assert.Throws<ToolArgValidationException>(() => ExportExcelArgsParser.Parse("{\"sheet_name\":123,\"columns\":[{\"name\":\"Subject\",\"type\":\"text\"}]}"));
+
+            Assert.Equal("invalid_args", ex.Code);
+            Assert.Contains("sheet_name", ex.Message);
+        }
+
+        [Fact]
         public void Parse_MissingColumns_ThrowsInvalidArgs()
         {
             var ex = Assert.Throws<ToolArgValidationException>(() => ExportExcelArgsParser.Parse("{}"));
@@ -82,6 +127,24 @@ namespace OutlookAI.Tests.Services.Tools
 
             Assert.Equal("invalid_args", ex.Code);
             Assert.Contains("name", ex.Message);
+        }
+
+        [Fact]
+        public void Parse_ColumnNameNonString_ThrowsInvalidArgsWithName()
+        {
+            var ex = Assert.Throws<ToolArgValidationException>(() => ExportExcelArgsParser.Parse("{\"columns\":[{\"name\":123,\"type\":\"text\"}]}"));
+
+            Assert.Equal("invalid_args", ex.Code);
+            Assert.Contains("name", ex.Message);
+        }
+
+        [Fact]
+        public void Parse_ColumnTypeNonString_ThrowsInvalidArgsWithType()
+        {
+            var ex = Assert.Throws<ToolArgValidationException>(() => ExportExcelArgsParser.Parse("{\"columns\":[{\"name\":\"Subject\",\"type\":{}}]}"));
+
+            Assert.Equal("invalid_args", ex.Code);
+            Assert.Contains("type", ex.Message);
         }
 
         [Fact]
