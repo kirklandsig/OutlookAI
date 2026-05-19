@@ -10,8 +10,11 @@ namespace OutlookAI.Tests.Services.Export
         {
             var source = File.ReadAllText(FindSourceFile("OutlookAI", "Services", "Export", "PdfRenderer.cs"));
 
-            Assert.Contains("WebView2Bootstrap.PdfWebView2DataFolder", source);
+            Assert.Contains("var pdfDataFolder = WebView2Bootstrap.PdfWebView2DataFolder", source);
+            Assert.Contains("Directory.CreateDirectory(pdfDataFolder)", source);
+            Assert.Contains("CoreWebView2Environment.CreateAsync(null, pdfDataFolder, null)", source);
             Assert.DoesNotContain("CoreWebView2Environment.CreateAsync(null, WebView2Bootstrap.WebView2DataFolder, null)", source);
+            Assert.DoesNotContain("Directory.CreateDirectory(WebView2Bootstrap.WebView2DataFolder)", source);
         }
 
         [Fact]

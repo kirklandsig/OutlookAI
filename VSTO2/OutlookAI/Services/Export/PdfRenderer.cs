@@ -370,7 +370,6 @@ namespace OutlookAI.Services.Export
         private static void EnsureWebUiResources()
         {
             Directory.CreateDirectory(WebView2Bootstrap.WebUiFolder);
-            Directory.CreateDirectory(WebView2Bootstrap.WebView2DataFolder);
 
             var assembly = Assembly.GetExecutingAssembly();
             const string prefix = "OutlookAI.WebUI.";
