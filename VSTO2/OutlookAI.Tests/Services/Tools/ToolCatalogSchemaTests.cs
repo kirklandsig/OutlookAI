@@ -303,5 +303,74 @@ namespace OutlookAI.Tests.Services.Tools
             Assert.Contains("columns", required);
             Assert.Contains("rows", required);
         }
+
+        [Fact]
+        public void OutlookExportPdf_IsRegistered()
+        {
+            var tools = ToolCatalogSchema.BuildResponsesToolsArray(includeWriteTools: false);
+
+            Assert.NotNull(FindTool(tools, "outlook_export_pdf"));
+        }
+
+        [Fact]
+        public void OutlookExportPdf_Description_TeachesPolishedReportUseCaseAndExcelTradeoff()
+        {
+            var tools = ToolCatalogSchema.BuildResponsesToolsArray(includeWriteTools: false);
+            var tool = FindTool(tools, "outlook_export_pdf");
+            Assert.NotNull(tool);
+            var desc = (string)tool["description"] ?? "";
+
+            Assert.Contains("PDF", desc);
+            Assert.Contains("polished", desc, System.StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("markdown", desc, System.StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("Excel", desc);
+            Assert.Contains("printable", desc, System.StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("shareable report", desc, System.StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("A4", desc);
+            Assert.Contains("no chat UI chrome", desc, System.StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("weekly", desc, System.StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("customer report", desc, System.StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("Open/Show-in-folder", desc);
+        }
+
+        [Fact]
+        public void OutlookExportPdf_Schema_HasReportProperties()
+        {
+            var tools = ToolCatalogSchema.BuildResponsesToolsArray(includeWriteTools: false);
+            var tool = FindTool(tools, "outlook_export_pdf");
+            Assert.NotNull(tool);
+            var props = (JObject)tool["parameters"]["properties"];
+
+            Assert.NotNull(props["filename_hint"]);
+            Assert.NotNull(props["content_markdown"]);
+            Assert.NotNull(props["title"]);
+            Assert.NotNull(props["subtitle"]);
+        }
+
+        [Fact]
+        public void OutlookExportPdf_Schema_RequiresContentMarkdownAndRejectsExtraProperties()
+        {
+            var tools = ToolCatalogSchema.BuildResponsesToolsArray(includeWriteTools: false);
+            var tool = FindTool(tools, "outlook_export_pdf");
+            Assert.NotNull(tool);
+            var parameters = (JObject)tool["parameters"];
+            var required = ((JArray)parameters["required"]).Select(t => (string)t).ToArray();
+
+            Assert.False((bool)parameters["additionalProperties"]);
+            Assert.Equal(new[] { "content_markdown" }, required);
+        }
+
+        [Fact]
+        public void OutlookExportPdf_ContentMarkdown_DescriptionMentionsLimitsAndImageStripping()
+        {
+            var tools = ToolCatalogSchema.BuildResponsesToolsArray(includeWriteTools: false);
+            var tool = FindTool(tools, "outlook_export_pdf");
+            Assert.NotNull(tool);
+            var desc = (string)tool["parameters"]["properties"]["content_markdown"]["description"] ?? "";
+
+            Assert.Contains("250000", desc);
+            Assert.Contains("images", desc, System.StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("stripped", desc, System.StringComparison.OrdinalIgnoreCase);
+        }
     }
 }
