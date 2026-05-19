@@ -157,6 +157,8 @@ namespace OutlookAI.Tests.TaskPane.Chat
             Assert.Contains("resetExportButton", chatJs);
             Assert.Contains("onFileSaved", chatJs);
             Assert.Contains("onExportError", chatJs);
+            Assert.Contains("heading.replace(/\\s+#+\\s*$/, '')", chatJs);
+            Assert.DoesNotContain("^#{1,3}\\s+(.+?)\\s*#*\\s*$", chatJs);
 
             Assert.Contains(".msg-action-pdf", stylesCss);
             Assert.Contains(".msg-assistant:hover .msg-action", stylesCss);
