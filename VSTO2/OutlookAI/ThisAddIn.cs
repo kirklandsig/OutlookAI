@@ -3,6 +3,7 @@ using Microsoft.Office.Tools;
 using Outlook = Microsoft.Office.Interop.Outlook;
 using OutlookAI.Diagnostics;
 using OutlookAI.Services;
+using OutlookAI.Services.Export;
 using OutlookAI.TaskPane;
 using OutlookAI.TaskPane.InboxCopilot;
 
@@ -17,6 +18,12 @@ namespace OutlookAI
         public IdResolver IdResolver { get; private set; }
         public OutlookAI.Services.Tools.IOutlookAdvancedSearchRunner AdvancedSearchRunner { get; private set; }
         public OutlookAI.Services.Tools.IFolderClassifier FolderClassifier { get; private set; }
+        private PdfRenderer _pdfRenderer;
+        public PdfRenderer PdfRenderer => _pdfRenderer ?? (_pdfRenderer = new PdfRenderer());
+        private ExportPathResolver _exportPathResolver;
+        public ExportPathResolver ExportPathResolver => _exportPathResolver ?? (_exportPathResolver = new ExportPathResolver());
+        private IExportPathPolicy _exportPathPolicy;
+        public IExportPathPolicy ExportPathPolicy => _exportPathPolicy ?? (_exportPathPolicy = new ExportPathPolicy(ExportPathResolver));
 
         private OutlookAI.Services.Tools.LiveAdvancedSearchHost _advancedSearchHost;
 
@@ -102,6 +109,8 @@ namespace OutlookAI
                 catch (Exception ex) { TraceLog.Write("Runner dispose: " + ex.Message, "ThisAddIn"); }
                 try { _advancedSearchHost?.Dispose(); }
                 catch (Exception ex) { TraceLog.Write("Host dispose: " + ex.Message, "ThisAddIn"); }
+                try { _pdfRenderer?.Dispose(); }
+                catch (Exception ex) { TraceLog.Write("PDF renderer dispose: " + ex.Message, "ThisAddIn"); }
 
                 VoiceService?.Dispose();
                 ChatService?.Dispose();
