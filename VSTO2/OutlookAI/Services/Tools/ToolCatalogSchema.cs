@@ -226,6 +226,29 @@ namespace OutlookAI.Services.Tools
                                     new JProperty("type", "array"))))))),
                         new JProperty("additionalProperties", false))),
 
+                BuildToolEntry("outlook_export_pdf",
+                    "Save a polished, printable PDF report. Use when the user asks for PDF, printable, document, or a shareable report. Pass polished markdown with a clear title, headings, tables, and lists; the tool renders a clean A4 document with a header bar and no chat UI chrome. Prefer outlook_export_excel for tabular structured data, real spreadsheets, Excel workbooks, and rows/columns users may sort or analyze; use PDF for narrative reports, summaries, action items, digest-style outputs, and client-ready documents. You may compose fresh markdown specifically for the PDF rather than reusing chat text. Example flow: search/read messages for a weekly or customer report, synthesize sections and action items as markdown, then export the PDF. File is saved to ~\\Documents\\OutlookAI\\Reports\\; the UI surfaces an Open/Show-in-folder card. Max content_markdown length: 250000 chars.",
+                    new JObject(
+                        new JProperty("type", "object"),
+                        new JProperty("required", new JArray("content_markdown")),
+                        new JProperty("properties", new JObject(
+                            new JProperty("filename_hint", new JObject(
+                                new JProperty("type", "string"),
+                                new JProperty("description", "Optional base filename; sanitized and timestamped. Defaults to title or OutlookAI-Report when omitted."))),
+                            new JProperty("title", new JObject(
+                                new JProperty("type", "string"),
+                                new JProperty("maxLength", 200),
+                                new JProperty("description", "Optional but recommended report title, max 200 chars."))),
+                            new JProperty("subtitle", new JObject(
+                                new JProperty("type", "string"),
+                                new JProperty("maxLength", 400),
+                                new JProperty("description", "Optional report subtitle, max 400 chars."))),
+                            new JProperty("content_markdown", new JObject(
+                                new JProperty("type", "string"),
+                                new JProperty("maxLength", 250000),
+                                new JProperty("description", "Required markdown body, max 250000 chars. Supports headings, GFM tables, lists, blockquotes, code blocks, bold/italic, and links; inline images are stripped."))))),
+                        new JProperty("additionalProperties", false))),
+
                 BuildToolEntry("outlook_get_current_selection",
                     "Read the messages currently selected in the user's active Explorer (e.g. messages they highlighted in the reading pane). Useful for 'reply to this', 'summarize this thread', etc. Returns empty when nothing is selected or when there is no active Explorer (e.g. the chat is anchored to a compose window).",
                     new JObject(
