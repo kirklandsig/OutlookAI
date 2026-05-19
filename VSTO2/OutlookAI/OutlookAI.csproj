@@ -358,6 +358,7 @@
     <Compile Include="Services\Tools\OutlookAggregateMessagesTool.cs" />
     <Compile Include="Services\Tools\OutlookCountMessagesTool.cs" />
     <Compile Include="Services\Tools\OutlookCreateDraftTool.cs" />
+    <Compile Include="Services\Tools\OutlookExportExcelTool.cs" />
     <Compile Include="Services\Tools\OutlookFlagMessageTool.cs" />
     <Compile Include="Services\Tools\OutlookGetCurrentComposeStateTool.cs" />
     <Compile Include="Services\Tools\OutlookListFoldersTool.cs" />
