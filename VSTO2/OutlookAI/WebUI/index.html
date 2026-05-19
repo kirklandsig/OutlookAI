@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OutlookAI Chat</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="theme-light">
+  <div id="app">
+    <div id="contextStrip" class="context-strip">
+      <div class="context-line context-subject" id="ctxSubject">No subject</div>
+      <div class="context-line context-recipients" id="ctxRecipients"></div>
+      <div class="context-line context-thread" id="ctxThread"></div>
+    </div>
+    <div id="messages" class="messages" role="log" aria-live="polite"></div>
+    <!-- Quick-action chip row (Phase 3a). Populated by C# via
+         outlookai.setQuickActions(); collapses to zero height when empty
+         (so the compose pane, which never calls setQuickActions, looks
+         unchanged from Phase 2). -->
+    <div id="quickActions" class="quick-actions"></div>
+    <div id="composer" class="composer">
+      <textarea id="composerInput"
+                class="composer-input"
+                rows="2"
+                placeholder="Ask about this email, or this thread..."
+                aria-label="Chat input"></textarea>
+      <div class="composer-controls">
+        <select id="reasoningSelect"
+                class="reasoning-select"
+                aria-label="Reasoning effort">
+          <!-- Populated by C# via outlookai.setReasoningOptions() once
+               the WebView is ready and Config.Model is known. -->
+          <option value="">(default)</option>
+        </select>
+        <button id="btnSend" class="btn btn-primary" type="button">Send</button>
+        <button id="btnStop" class="btn btn-secondary" type="button" hidden>Stop</button>
+        <button id="btnClear" class="btn btn-ghost" type="button" title="Clear conversation">Clear</button>
+        <button id="btnCopy" class="btn btn-ghost" type="button" title="Copy conversation to clipboard">Copy</button>
+      </div>
+    </div>
+  </div>
+  <script src="markdown.js"></script>
+  <script src="chat.js"></script>
+</body>
+</html>

@@ -60,6 +60,11 @@ Deploy/*.exe
 Deploy/*.vsto
 Deploy/Application Files/
 
+# Exception: vendored WebView2 bootstrapper is signed by Microsoft and
+# required for offline install on RDS images where the runtime is missing.
+# Refresh via Deploy\Fetch-WebView2Bootstrapper.ps1.
+!Deploy/MicrosoftEdgeWebView2Setup.exe
+
 # IDE
 .idea/
 *.swp

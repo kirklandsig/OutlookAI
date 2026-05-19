@@ -1,0 +1,618 @@
+/* ============================================================
+   OutlookAI Chat - WebView2 surface styles
+   Three themes: light (default), dark, high-contrast. The host
+   sets the theme by setting a class on <body>.
+   ============================================================ */
+
+:root {
+  --font-stack: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+  --font-mono: Consolas, "Courier New", monospace;
+}
+
+/* ---- Light theme (default) ---- */
+.theme-light {
+  --bg: #faf9f8;
+  --panel: #ffffff;
+  --border: #e1dfdd;
+  --text: #201f1e;
+  --text-muted: #605e5c;
+  --text-faint: #8a8886;
+  --user-bg: #e7f3ff;
+  --user-border: #cae2ff;
+  --assistant-bg: #ffffff;
+  --assistant-border: #e1dfdd;
+  --tool-bg: #f3f2f1;
+  --tool-border: #d2d0ce;
+  --tool-ok: #107c10;
+  --tool-err: #a4262c;
+  --audit-bg: #fff4ce;
+  --audit-border: #f4d35e;
+  --accent: #0078d4;
+  --accent-hover: #106ebe;
+  --stopped: #a19f9d;
+}
+
+/* ---- Dark theme ---- */
+.theme-dark {
+  --bg: #1f1f1f;
+  --panel: #2b2b2b;
+  --border: #3a3a3a;
+  --text: #f3f2f1;
+  --text-muted: #c8c6c4;
+  --text-faint: #8a8886;
+  --user-bg: #243b53;
+  --user-border: #2e4d6e;
+  --assistant-bg: #2b2b2b;
+  --assistant-border: #3a3a3a;
+  --tool-bg: #333333;
+  --tool-border: #4a4a4a;
+  --tool-ok: #6ccb5f;
+  --tool-err: #f1707b;
+  --audit-bg: #4a3f1c;
+  --audit-border: #aa8a3a;
+  --accent: #4cc2ff;
+  --accent-hover: #6cd0ff;
+  --stopped: #8a8886;
+}
+
+/* ---- High-contrast (system AT theme) ---- */
+.theme-high-contrast {
+  --bg: #000000;
+  --panel: #000000;
+  --border: #ffffff;
+  --text: #ffffff;
+  --text-muted: #ffffff;
+  --text-faint: #ffffff;
+  --user-bg: #000000;
+  --user-border: #ffff00;
+  --assistant-bg: #000000;
+  --assistant-border: #ffffff;
+  --tool-bg: #000000;
+  --tool-border: #ffffff;
+  --tool-ok: #00ff00;
+  --tool-err: #ff0000;
+  --audit-bg: #000000;
+  --audit-border: #ffff00;
+  --accent: #ffff00;
+  --accent-hover: #ffffff;
+  --stopped: #ffffff;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: var(--font-stack);
+  font-size: 13px;
+  line-height: 1.45;
+  background: var(--bg);
+  color: var(--text);
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ---- Context strip ---- */
+.context-strip {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.context-line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.context-subject { font-weight: 600; color: var(--text); }
+.context-recipients { color: var(--text-muted); }
+.context-thread { color: var(--text-faint); font-style: italic; }
+
+/* ---- Messages area ---- */
+.messages {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.msg {
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+
+.msg-user {
+  background: var(--user-bg);
+  border-color: var(--user-border);
+  align-self: flex-end;
+  max-width: 90%;
+}
+
+.msg-assistant {
+  position: relative;
+  background: var(--assistant-bg);
+  border-color: var(--assistant-border);
+  align-self: flex-start;
+  max-width: 100%;
+}
+.msg-assistant .msg-content {
+  padding-right: 34px;
+}
+
+.msg-action {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  opacity: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  background: var(--panel);
+  color: var(--text-muted);
+  cursor: pointer;
+  font: 11px var(--font-stack);
+  line-height: 1.4;
+  transition: opacity 120ms ease-in-out;
+}
+.msg-action-pdf { min-width: 30px; }
+.msg-assistant:hover .msg-action,
+.msg-action:focus {
+  opacity: 1;
+}
+.msg-action:hover:not(:disabled) {
+  background: var(--tool-bg);
+  color: var(--text);
+}
+.msg-action:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+.msg-assistant.is-streaming .msg-action {
+  display: none;
+}
+.msg-action:disabled {
+  opacity: 0.7;
+  cursor: default;
+  color: var(--text-faint);
+}
+.msg-action[data-export-pending="1"] {
+  display: inline-block;
+  opacity: 1;
+}
+
+.msg-assistant.msg-stopped::after {
+  content: " - stopped";
+  color: var(--stopped);
+  font-style: italic;
+  font-size: 11px;
+}
+
+.msg-assistant.msg-error {
+  background: var(--audit-bg);
+  border-color: var(--tool-err);
+}
+
+.msg-content p { margin: 0 0 6px 0; }
+.msg-content p:last-child { margin-bottom: 0; }
+.msg-content pre {
+  background: var(--tool-bg);
+  border: 1px solid var(--tool-border);
+  padding: 8px;
+  border-radius: 4px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.msg-content code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--tool-bg);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.msg-content pre code { background: transparent; padding: 0; }
+.msg-content ul, .msg-content ol { margin: 4px 0; padding-left: 24px; }
+.msg-content li { margin: 2px 0; }
+.msg-content a { color: var(--accent); }
+
+/* ---- Saved-file attachments (Phase 5 exports) ---- */
+.msg-attachments {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.file-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 8px;
+  background: var(--tool-bg);
+  border: 1px solid var(--tool-border);
+  border-radius: 6px;
+}
+.file-card-icon {
+  flex: 0 0 24px;
+  width: 24px;
+  font-size: 20px;
+  line-height: 1;
+  text-align: center;
+}
+.file-card-icon::before { content: "\1F4C4"; }
+.file-card[data-format="xlsx"] .file-card-icon::before { content: "\1F4CA"; }
+.file-card[data-format="pdf"] .file-card-icon::before { content: "\1F4C4"; }
+.file-card-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.file-card-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.file-card-sub {
+  margin-top: 1px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.file-card-actions {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.file-card-btn {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 8px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  font: 11px var(--font-stack);
+  white-space: nowrap;
+}
+.file-card-btn:hover { background: var(--bg); }
+.file-card-btn:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.error-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 8px;
+  background: var(--audit-bg);
+  border: 1px solid var(--tool-err);
+  border-radius: 6px;
+}
+.error-card-icon {
+  flex: 0 0 20px;
+  width: 20px;
+  color: var(--tool-err);
+  font-size: 16px;
+  line-height: 1.2;
+  text-align: center;
+}
+.error-card-icon::before { content: "\26A0"; }
+.error-card-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.error-card-title {
+  font-weight: 600;
+  color: var(--text);
+}
+.error-card-detail {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.error-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.error-card-btn,
+.error-card-link {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 8px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  font: 11px var(--font-stack);
+  line-height: 1.4;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.error-card-btn:hover,
+.error-card-link:hover {
+  background: var(--bg);
+}
+.error-card-btn:focus,
+.error-card-link:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+@media (max-width: 320px) {
+  .file-card {
+    align-items: flex-start;
+  }
+  .file-card-actions,
+  .error-card-actions {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+/* Headers from the Reports system prompt. Compact sizes since the
+   chat pane is narrow. */
+.msg-content h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 12px 0 4px 0;
+}
+.msg-content h4 {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 10px 0 4px 0;
+}
+.msg-content h5, .msg-content h6 {
+  font-size: 12px;
+  font-weight: 600;
+  margin: 8px 0 4px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+/* GFM tables (digest tables, stats reports). */
+.msg-content table.md-table {
+  border-collapse: collapse;
+  margin: 6px 0;
+  font-size: 12px;
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+}
+.msg-content table.md-table th,
+.msg-content table.md-table td {
+  border: 1px solid var(--tool-border);
+  padding: 4px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+.msg-content table.md-table th {
+  background: var(--tool-bg);
+  font-weight: 600;
+}
+
+/* Blockquote: light left rule, muted text. */
+.msg-content blockquote {
+  margin: 6px 0;
+  padding: 2px 8px;
+  border-left: 3px solid var(--tool-border);
+  color: var(--muted, #666);
+}
+
+/* Horizontal rule */
+.msg-content hr {
+  border: 0;
+  border-top: 1px solid var(--tool-border);
+  margin: 10px 0;
+}
+
+/* ---- Compact tool-status indicator (Phase 3a+) ---- */
+/* Single muted italic line shown while a tool is running. Removed
+   on success; on error mutates into a muted warning line. Replaces
+   the older expandable tool-card UI which cluttered the chat. */
+.tool-status {
+  font-style: italic;
+  color: var(--text-faint);
+  font-size: 12px;
+  padding: 2px 4px;
+  align-self: flex-start;
+  max-width: 100%;
+}
+.tool-status-err {
+  color: var(--tool-err);
+  font-style: normal;
+}
+
+/* ---- Tool-call cards (legacy; kept for backward-compat if any code
+   path still calls appendToolCallCard with the old shape) ---- */
+.tool-card {
+  background: var(--tool-bg);
+  border: 1px solid var(--tool-border);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 12px;
+  align-self: flex-start;
+  max-width: 100%;
+}
+.tool-card.tool-pending { border-left-color: var(--accent); }
+.tool-card.tool-ok { border-left-color: var(--tool-ok); }
+.tool-card.tool-err { border-left-color: var(--tool-err); }
+
+.tool-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+.tool-card-glyph { font-weight: 700; }
+.tool-card-ok    .tool-card-glyph { color: var(--tool-ok); }
+.tool-card-err   .tool-card-glyph { color: var(--tool-err); }
+.tool-card-name { font-weight: 600; }
+.tool-card-summary { color: var(--text-muted); flex: 1 1 auto; }
+.tool-card-toggle { color: var(--text-faint); font-size: 10px; }
+
+.tool-card-body {
+  display: none;
+  margin-top: 6px;
+  border-top: 1px dashed var(--tool-border);
+  padding-top: 6px;
+}
+.tool-card.expanded .tool-card-body { display: block; }
+.tool-card-args, .tool-card-result {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: var(--panel);
+  padding: 4px 6px;
+  border-radius: 3px;
+  margin: 2px 0;
+}
+.tool-card-label {
+  font-size: 10px;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ---- Audit rows (permanent log of write-tool side effects) ---- */
+.audit-row {
+  background: var(--audit-bg);
+  border: 1px solid var(--audit-border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--text);
+}
+.audit-row .audit-time {
+  color: var(--text-faint);
+  margin-right: 4px;
+}
+
+/* ---- Quick-action chips (Phase 3a) ---- */
+.quick-actions {
+  flex: 0 0 auto;
+  padding: 6px 10px 0 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+}
+.quick-actions:empty {
+  padding: 0;
+  border-top: none;
+}
+.qa-chip {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 4px 10px;
+  background: var(--tool-bg);
+  color: var(--text);
+  font: 12px var(--font-stack);
+  cursor: pointer;
+}
+.qa-chip:hover {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+.qa-chip:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* ---- Composer ---- */
+.composer {
+  flex: 0 0 auto;
+  padding: 8px 10px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.composer-input {
+  font-family: var(--font-stack);
+  font-size: 13px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  background: var(--panel);
+  color: var(--text);
+  /* Vertical-only resize so the user can drag the bottom edge to make
+     the input taller (helpful for editing long [placeholders] in the
+     Reports chip templates). Horizontal resize is disabled because the
+     pane is fixed-width. */
+  resize: vertical;
+  min-height: 60px;
+  max-height: 300px;
+}
+.composer-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+.composer-input:disabled {
+  background: var(--bg);
+  color: var(--text-muted);
+}
+
+.composer-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.reasoning-select {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 6px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.btn {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 12px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: var(--font-stack);
+}
+.btn:hover:not(:disabled) { background: var(--bg); }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.btn-primary { background: var(--accent); color: white; border-color: var(--accent); }
+.btn-primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn-secondary { background: var(--tool-err); color: white; border-color: var(--tool-err); }
+.btn-ghost { background: transparent; }
+.btn-ghost:hover:not(:disabled) { background: var(--tool-bg); }
+
+/* ---- Scrollbar styling (subtle) ---- */
+.messages::-webkit-scrollbar { width: 10px; }
+.messages::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 5px;
+}
+.messages::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }

@@ -36,3 +36,8 @@ using System.Security;
 [assembly: AssemblyVersion("1.0.0.0")]
 [assembly: AssemblyFileVersion("1.0.0.0")]
 
+// Phase 3a: BuildRestrictFilter and other internals are exposed to the
+// xUnit test assembly so we can unit-test DASL filter construction
+// without a real Outlook OOM.
+[assembly: InternalsVisibleTo("OutlookAI.Tests")]
+

@@ -17,7 +17,14 @@ namespace OutlookAI
 
         public string GetCustomUI(string ribbonID)
         {
-            if (ribbonID == "Microsoft.Outlook.Mail.Compose")
+            // Outlook calls GetCustomUI once per ribbon context. We serve
+            // the same customUI XML to both compose (Phase 2 button on
+            // TabNewMailMessage) and Explorer (Phase 3a button on TabMail).
+            // Tab definitions that don't match the current context are
+            // silently ignored by Office's ribbon-XML applier, so a single
+            // XML payload safely covers both cases.
+            if (ribbonID == "Microsoft.Outlook.Mail.Compose" ||
+                ribbonID == "Microsoft.Outlook.Explorer")
             {
                 return GetResourceText("OutlookAI.Ribbon.xml");
             }
@@ -32,6 +39,11 @@ namespace OutlookAI
         public void OnAIAssistantClick(Office.IRibbonControl control)
         {
             Globals.ThisAddIn.ShowTaskPane();
+        }
+
+        public void OnReportsClick(Office.IRibbonControl control)
+        {
+            Globals.ThisAddIn.ShowReportsTaskPane();
         }
 
         private static string GetResourceText(string resourceName)
