@@ -184,6 +184,85 @@
     scrollToBottom();
   }
 
+  var retryableExportErrorCodes = [
+    'file_locked',
+    'webview2_missing',
+    'path_timeout',
+    'pdf_render_timeout'
+  ];
+
+  function exportErrorCode(err) {
+    try {
+      if (!err || typeof err === 'string') return '';
+      return String(err.error || '');
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function isRetryableExportError(err) {
+    return retryableExportErrorCodes.indexOf(exportErrorCode(err)) >= 0;
+  }
+
+  function renderInlineErrorCard(messageId, err) {
+    var msgEl = findAssistantMessage(messageId);
+    if (!msgEl) return false;
+
+    var retryMessageId = messageId;
+    if ((retryMessageId === undefined || retryMessageId === null || retryMessageId === '') && msgEl.dataset) {
+      retryMessageId = msgEl.dataset.messageId;
+    }
+
+    var attach = msgEl.querySelector('.msg-attachments');
+    if (!attach) {
+      attach = elt('div', 'msg-attachments');
+      msgEl.appendChild(attach);
+    }
+
+    var card = elt('div', 'error-card');
+    card.appendChild(elt('div', 'error-card-icon'));
+
+    var body = elt('div', 'error-card-body');
+    body.appendChild(elt('div', 'error-card-title', 'Export failed'));
+    var detail = elt('div', 'error-card-detail');
+    detail.textContent = exportErrorMessage(err);
+    body.appendChild(detail);
+
+    var code = exportErrorCode(err);
+    var actions = elt('div', 'error-card-actions');
+    var hasActions = false;
+
+    if (isRetryableExportError(err) && retryMessageId !== undefined && retryMessageId !== null && retryMessageId !== '') {
+      var retryEntry = assistantMessages[retryMessageId];
+      if (retryEntry && retryEntry.exportButton) {
+        var retry = elt('button', 'error-card-btn', 'Retry');
+        retry.type = 'button';
+        retry.addEventListener('click', function() {
+          handleExportPdf(retryMessageId);
+        });
+        actions.appendChild(retry);
+        hasActions = true;
+      }
+    }
+
+    if (code === 'webview2_missing') {
+      var install = elt('a', 'error-card-link', 'Install WebView2 Runtime');
+      install.href = 'https://developer.microsoft.com/microsoft-edge/webview2/';
+      install.target = '_blank';
+      install.rel = 'noopener noreferrer';
+      actions.appendChild(install);
+      hasActions = true;
+    }
+
+    if (hasActions) body.appendChild(actions);
+    card.appendChild(body);
+    attach.appendChild(card);
+
+    resetExportButton(retryMessageId);
+    scrollToBottom();
+    return true;
+  }
+
   function renderToolResultIfHandled(messageId, resultJson) {
     if (!resultJson) return false;
     try {
@@ -197,7 +276,7 @@
   }
 
   function exportErrorMessage(error) {
-    var fallback = 'Export action failed.';
+    var fallback = 'Unknown export error.';
     try {
       if (!error) return fallback;
       if (typeof error === 'string') return error || fallback;
@@ -458,8 +537,10 @@
     },
 
     onExportError: function(messageId, error) {
-      resetExportButton(messageId);
-      api.showError(exportErrorMessage(error));
+      if (!renderInlineErrorCard(messageId, error)) {
+        resetExportButton(messageId);
+        api.showError(exportErrorMessage(error));
+      }
     },
 
     handleExportPdf: handleExportPdf,
