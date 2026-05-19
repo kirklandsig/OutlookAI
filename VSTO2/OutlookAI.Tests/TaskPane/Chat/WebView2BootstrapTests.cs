@@ -129,15 +129,46 @@ namespace OutlookAI.Tests.TaskPane.Chat
             Assert.Contains("appendFileCardToMessage", chatJs);
             Assert.Contains("onFileSaved", chatJs);
             Assert.Contains("onExportError", chatJs);
-            Assert.Contains("Export action failed.", chatJs);
+            Assert.Contains("Unknown export error.", chatJs);
             Assert.Contains("result_type === 'file_saved'", chatJs);
             Assert.Contains("open_file", chatJs);
             Assert.Contains("reveal_in_explorer", chatJs);
-            Assert.DoesNotContain("renderInlineErrorCard", chatJs);
+            Assert.Contains("renderInlineErrorCard", chatJs);
 
             Assert.Contains(".msg-attachments", stylesCss);
             Assert.Contains(".file-card", stylesCss);
             Assert.Contains(".file-card-btn", stylesCss);
+        }
+
+        [Fact]
+        public void WebUi_ChatRendersExportErrorsAsActionableInlineCard()
+        {
+            var chatJs = File.ReadAllText(FindSourceFile("OutlookAI", "WebUI", "chat.js"));
+            var stylesCss = File.ReadAllText(FindSourceFile("OutlookAI", "WebUI", "styles.css"));
+
+            Assert.Contains("var retryableExportErrorCodes", chatJs);
+            Assert.Contains("file_locked", chatJs);
+            Assert.Contains("webview2_missing", chatJs);
+            Assert.Contains("path_timeout", chatJs);
+            Assert.Contains("pdf_render_timeout", chatJs);
+            Assert.Contains("function renderInlineErrorCard(messageId, err)", chatJs);
+            Assert.Contains("'Export failed'", chatJs);
+            Assert.Contains("detail.textContent = exportErrorMessage(err);", chatJs);
+            Assert.Contains("body.appendChild(detail)", chatJs);
+            Assert.DoesNotContain("innerHTML = exportErrorMessage", chatJs);
+            Assert.Contains("handleExportPdf(retryMessageId);", chatJs);
+            Assert.Contains("https://developer.microsoft.com/microsoft-edge/webview2/", chatJs);
+            Assert.Contains("Install WebView2 Runtime", chatJs);
+            Assert.Contains("if (!renderInlineErrorCard(messageId, error))", chatJs);
+
+            Assert.Contains(".error-card", stylesCss);
+            Assert.Contains(".error-card-icon", stylesCss);
+            Assert.Contains(".error-card-body", stylesCss);
+            Assert.Contains(".error-card-title", stylesCss);
+            Assert.Contains(".error-card-detail", stylesCss);
+            Assert.Contains(".error-card-actions", stylesCss);
+            Assert.Contains(".error-card-btn", stylesCss);
+            Assert.Contains(".error-card-link", stylesCss);
         }
 
         [Fact]
