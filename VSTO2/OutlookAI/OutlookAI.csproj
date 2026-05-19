@@ -332,6 +332,7 @@
     <Compile Include="Services\Export\ExportPathResolver.cs" />
     <Compile Include="Services\Export\FileSavedResult.cs" />
     <Compile Include="Services\Export\IExportPathPolicy.cs" />
+    <Compile Include="Services\Export\PdfRenderer.cs" />
     <Compile Include="Services\Export\PrintTemplateRenderer.cs" />
     <Compile Include="Services\Export\UnauthorizedExportPathException.cs" />
     <Compile Include="Services\IdResolver.cs" />
