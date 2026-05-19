@@ -4902,13 +4902,19 @@ Tasks 1-24 are implemented and reviewed. This plan intentionally leaves Tasks 26
 - [x] **Step 3: Final full test run**
 
 ```powershell
+node --check VSTO2/OutlookAI/WebUI/chat.js
+node --check VSTO2/OutlookAI/WebUI/markdown.js
 & "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe" "VSTO2\OutlookAI.sln" /p:Configuration=Debug /p:Platform="Any CPU" /v:minimal /nologo
 & "C:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe" "VSTO2\OutlookAI.Tests\bin\Debug\net472\OutlookAI.Tests.dll"
 ```
 
 Expected: `Passed: 499` (actual count before Task 25 docs update was 499/499; rerun after docs changes and record below).
 
-Result: Debug build succeeded; vstest reported `Total tests: 499`, `Passed: 499`.
+Result:
+- `node --check VSTO2/OutlookAI/WebUI/chat.js` passed.
+- `node --check VSTO2/OutlookAI/WebUI/markdown.js` passed.
+- MSBuild Debug Any CPU succeeded with existing `MSB3277` warnings.
+- VSTest reported `499/499` passed (`Total tests: 499`, `Passed: 499`).
 
 - [x] **Step 4: Commit docs**
 
