@@ -348,6 +348,7 @@
     <Compile Include="Services\Tools\ExportExcelArgs.cs" />
     <Compile Include="Services\Tools\ExportExcelArgsParser.cs" />
     <Compile Include="Services\Tools\ExportPdfArgs.cs" />
+    <Compile Include="Services\Tools\ExportPdfArgsParser.cs" />
     <Compile Include="Services\Tools\IAdvancedSearchHost.cs" />
     <Compile Include="Services\Tools\IFolderClassifier.cs" />
     <Compile Include="Services\Tools\IOutlookSurface.cs" />
