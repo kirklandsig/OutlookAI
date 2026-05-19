@@ -140,6 +140,30 @@ namespace OutlookAI.Tests.TaskPane.Chat
             Assert.Contains(".file-card-btn", stylesCss);
         }
 
+        [Fact]
+        public void WebUi_ChatSupportsPerMessagePdfExport()
+        {
+            var chatJs = File.ReadAllText(FindSourceFile("OutlookAI", "WebUI", "chat.js"));
+            var stylesCss = File.ReadAllText(FindSourceFile("OutlookAI", "WebUI", "styles.css"));
+
+            Assert.Contains("handleExportPdf", chatJs);
+            Assert.Contains("deriveFilenameHint", chatJs);
+            Assert.Contains("export_pdf", chatJs);
+            Assert.Contains("content_markdown", chatJs);
+            Assert.Contains("filename_hint", chatJs);
+            Assert.Contains("Save message as PDF", chatJs);
+            Assert.Contains("entry.raw", chatJs);
+            Assert.Contains("setExportButtonPending", chatJs);
+            Assert.Contains("resetExportButton", chatJs);
+            Assert.Contains("onFileSaved", chatJs);
+            Assert.Contains("onExportError", chatJs);
+
+            Assert.Contains(".msg-action-pdf", stylesCss);
+            Assert.Contains(".msg-assistant:hover .msg-action", stylesCss);
+            Assert.Contains(".msg-assistant.is-streaming .msg-action", stylesCss);
+            Assert.Contains(".msg-action:disabled", stylesCss);
+        }
+
         private static string FindSourceFile(params string[] relativeParts)
         {
             var current = new DirectoryInfo(Directory.GetCurrentDirectory());
