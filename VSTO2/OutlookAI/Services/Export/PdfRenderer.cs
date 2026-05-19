@@ -17,6 +17,7 @@ namespace OutlookAI.Services.Export
         private const string LogSource = "PdfRenderer";
         private readonly SemaphoreSlim _renderLock = new SemaphoreSlim(1, 1);
         private readonly object _threadLock = new object();
+        private readonly object _lifetimeLock = new object();
         private Thread _uiThread;
         private TaskCompletionSource<bool> _threadReady;
         private ApplicationContext _applicationContext;
@@ -27,7 +28,11 @@ namespace OutlookAI.Services.Export
 
         public async Task<long> RenderAsync(string html, string outputPath, CancellationToken ct)
         {
-            if (_disposed) throw new ObjectDisposedException(nameof(PdfRenderer));
+            lock (_lifetimeLock)
+            {
+                if (_disposed) throw new ObjectDisposedException(nameof(PdfRenderer));
+            }
+
             if (string.IsNullOrWhiteSpace(html)) throw new ArgumentException("HTML is required.", nameof(html));
             if (string.IsNullOrWhiteSpace(outputPath)) throw new ArgumentException("Output path is required.", nameof(outputPath));
 
@@ -62,31 +67,46 @@ namespace OutlookAI.Services.Export
         {
             if (_webView.CoreWebView2 != null) return;
 
-            if (!WebView2Bootstrap.IsRuntimeInstalled())
+            try
             {
-                throw new ExportException("webview2_missing", "Microsoft Edge WebView2 Runtime is required to export PDF files.");
+                if (!WebView2Bootstrap.IsRuntimeInstalled())
+                {
+                    throw new ExportException("webview2_missing", "Microsoft Edge WebView2 Runtime is required to export PDF files.");
+                }
+
+                TraceLog.Write("Initializing WebView2", LogSource);
+                EnsureWebUiResources();
+                ct.ThrowIfCancellationRequested();
+
+                _environment = await CoreWebView2Environment.CreateAsync(null, WebView2Bootstrap.WebView2DataFolder, null).ConfigureAwait(true);
+                ct.ThrowIfCancellationRequested();
+                await _webView.EnsureCoreWebView2Async(_environment).ConfigureAwait(true);
+                ct.ThrowIfCancellationRequested();
+
+                _webView.CoreWebView2.Settings.AreDevToolsEnabled = false;
+                _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+                _webView.CoreWebView2.Settings.IsStatusBarEnabled = false;
+                _webView.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = false;
+                _webView.CoreWebView2.Settings.IsZoomControlEnabled = false;
+                _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                    WebView2Bootstrap.VirtualHost,
+                    WebView2Bootstrap.WebUiFolder,
+                    CoreWebView2HostResourceAccessKind.Allow);
+
+                TraceLog.Write("WebView2 initialized", LogSource);
             }
-
-            TraceLog.Write("Initializing WebView2", LogSource);
-            EnsureWebUiResources();
-            ct.ThrowIfCancellationRequested();
-
-            _environment = await WaitWithCancellation(
-                CoreWebView2Environment.CreateAsync(null, WebView2Bootstrap.WebView2DataFolder, null),
-                ct).ConfigureAwait(true);
-            await WaitWithCancellation(_webView.EnsureCoreWebView2Async(_environment), ct).ConfigureAwait(true);
-
-            _webView.CoreWebView2.Settings.AreDevToolsEnabled = false;
-            _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
-            _webView.CoreWebView2.Settings.IsStatusBarEnabled = false;
-            _webView.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = false;
-            _webView.CoreWebView2.Settings.IsZoomControlEnabled = false;
-            _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
-                WebView2Bootstrap.VirtualHost,
-                WebView2Bootstrap.WebUiFolder,
-                CoreWebView2HostResourceAccessKind.Allow);
-
-            TraceLog.Write("WebView2 initialized", LogSource);
+            catch (ExportException)
+            {
+                throw;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                throw new ExportException("webview2_init_failed", ex.Message, ex);
+            }
         }
 
         private async Task NavigateAsync(string html, CancellationToken ct)
@@ -101,6 +121,12 @@ namespace OutlookAI.Services.Export
                     return;
                 }
 
+                if (ct.IsCancellationRequested)
+                {
+                    completion.TrySetResult(true);
+                    return;
+                }
+
                 completion.TrySetException(new ExportException(
                     "pdf_render_failed",
                     "WebView2 navigation failed: " + args.WebErrorStatus));
@@ -109,8 +135,14 @@ namespace OutlookAI.Services.Export
             _webView.CoreWebView2.NavigationCompleted += handler;
             try
             {
-                _webView.CoreWebView2.NavigateToString(WithVirtualHostBase(html));
-                await WaitWithCancellation(completion.Task, ct).ConfigureAwait(true);
+                ct.ThrowIfCancellationRequested();
+                using (ct.Register(() => StopNavigation()))
+                {
+                    _webView.CoreWebView2.NavigateToString(WithVirtualHostBase(html));
+                    await completion.Task.ConfigureAwait(true);
+                }
+
+                ct.ThrowIfCancellationRequested();
             }
             catch (ExportException)
             {
@@ -149,9 +181,9 @@ namespace OutlookAI.Services.Export
             while (DateTime.UtcNow < deadline)
             {
                 ct.ThrowIfCancellationRequested();
-                var json = await WaitWithCancellation(
-                    _webView.CoreWebView2.ExecuteScriptAsync("document.body ? document.body.getAttribute('data-render-state') : null"),
-                    ct).ConfigureAwait(true);
+                var json = await _webView.CoreWebView2.ExecuteScriptAsync("document.body ? document.body.getAttribute('data-render-state') : null")
+                    .ConfigureAwait(true);
+                ct.ThrowIfCancellationRequested();
                 var state = JsonConvert.DeserializeObject<string>(json);
                 if (string.Equals(state, "ready", StringComparison.OrdinalIgnoreCase)) return;
                 if (string.Equals(state, "error", StringComparison.OrdinalIgnoreCase))
@@ -169,15 +201,20 @@ namespace OutlookAI.Services.Export
         {
             try
             {
+                ct.ThrowIfCancellationRequested();
                 var settings = _environment.CreatePrintSettings();
                 settings.ShouldPrintBackgrounds = true;
                 settings.ShouldPrintHeaderAndFooter = false;
                 settings.Orientation = CoreWebView2PrintOrientation.Portrait;
                 settings.ScaleFactor = 1.0;
 
-                var printed = await WaitWithCancellation(
-                    _webView.CoreWebView2.PrintToPdfAsync(outputPath, settings),
-                    ct).ConfigureAwait(true);
+                var printed = await _webView.CoreWebView2.PrintToPdfAsync(outputPath, settings).ConfigureAwait(true);
+                if (ct.IsCancellationRequested)
+                {
+                    DeleteOutputFile(outputPath);
+                    ct.ThrowIfCancellationRequested();
+                }
+
                 if (!printed)
                 {
                     throw new ExportException("pdf_print_failed", "WebView2 reported that PDF printing failed.");
@@ -189,6 +226,7 @@ namespace OutlookAI.Services.Export
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
+                DeleteOutputFile(outputPath);
                 throw;
             }
             catch (Exception ex)
@@ -204,11 +242,13 @@ namespace OutlookAI.Services.Export
 
         private async Task<T> RunOnRendererThreadCoreAsync<T>(Func<Task<T>> action, CancellationToken ct)
         {
+            ct.ThrowIfCancellationRequested();
             EnsureRendererThread();
-            await WaitWithCancellation(_threadReady.Task, ct).ConfigureAwait(false);
+            await _threadReady.Task.ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
 
             var completion = new TaskCompletionSource<T>();
-            using (ct.Register(() => completion.TrySetCanceled()))
+            try
             {
                 _hostForm.BeginInvoke(new MethodInvoker(async () =>
                 {
@@ -226,9 +266,13 @@ namespace OutlookAI.Services.Export
                         completion.TrySetException(ex);
                     }
                 }));
-
-                return await completion.Task.ConfigureAwait(false);
             }
+            catch (Exception ex)
+            {
+                completion.TrySetException(ex);
+            }
+
+            return await completion.Task.ConfigureAwait(false);
         }
 
         private void EnsureRendererThread()
@@ -265,9 +309,24 @@ namespace OutlookAI.Services.Export
             }
         }
 
+        private void StopNavigation()
+        {
+            try
+            {
+                if (_webView != null && _webView.CoreWebView2 != null)
+                {
+                    _webView.CoreWebView2.Stop();
+                }
+            }
+            catch (Exception ex)
+            {
+                TraceLog.Write("StopNavigation failed: " + ex.Message, LogSource);
+            }
+        }
+
         private static Form CreateHostForm()
         {
-            return new Form
+            return new HiddenHostForm
             {
                 FormBorderStyle = FormBorderStyle.None,
                 ShowInTaskbar = false,
@@ -301,65 +360,95 @@ namespace OutlookAI.Services.Export
             }
         }
 
-        private static async Task<T> WaitWithCancellation<T>(Task<T> task, CancellationToken ct)
+        private static void DeleteOutputFile(string outputPath)
         {
-            if (task.IsCompleted) return await task.ConfigureAwait(true);
-
-            var cancellation = new TaskCompletionSource<bool>();
-            using (ct.Register(() => cancellation.TrySetResult(true)))
-            {
-                if (task != await Task.WhenAny(task, cancellation.Task).ConfigureAwait(true))
-                {
-                    ct.ThrowIfCancellationRequested();
-                }
-            }
-
-            return await task.ConfigureAwait(true);
-        }
-
-        private static async Task WaitWithCancellation(Task task, CancellationToken ct)
-        {
-            if (task.IsCompleted)
-            {
-                await task.ConfigureAwait(true);
-                return;
-            }
-
-            var cancellation = new TaskCompletionSource<bool>();
-            using (ct.Register(() => cancellation.TrySetResult(true)))
-            {
-                if (task != await Task.WhenAny(task, cancellation.Task).ConfigureAwait(true))
-                {
-                    ct.ThrowIfCancellationRequested();
-                }
-            }
-
-            await task.ConfigureAwait(true);
-        }
-
-        public void Dispose()
-        {
-            if (_disposed) return;
-            _disposed = true;
-
             try
             {
-                if (_hostForm != null && !_hostForm.IsDisposed)
+                if (!string.IsNullOrWhiteSpace(outputPath) && File.Exists(outputPath))
                 {
-                    _hostForm.BeginInvoke(new MethodInvoker(() =>
-                    {
-                        try { _webView?.Dispose(); } catch { }
-                        try { _hostForm.Dispose(); } catch { }
-                        try { _applicationContext?.ExitThread(); } catch { }
-                    }));
+                    File.Delete(outputPath);
                 }
             }
             catch (Exception ex)
             {
-                TraceLog.Write("Dispose marshal failed: " + ex.Message, LogSource);
+                TraceLog.Write("Delete canceled PDF failed: " + ex.Message, LogSource);
+            }
+        }
+
+        public void Dispose()
+        {
+            lock (_lifetimeLock)
+            {
+                if (_disposed) return;
+                _disposed = true;
             }
 
-            _renderLock.Dispose();
+            var lockTaken = false;
+            try
+            {
+                lockTaken = _renderLock.Wait(TimeSpan.FromSeconds(10));
+                if (!lockTaken)
+                {
+                    TraceLog.Write("Dispose timed out waiting for active render", LogSource);
+                    return;
+                }
+
+                DisposeRendererThreadResources();
+            }
+            catch (Exception ex)
+            {
+                TraceLog.Write("Dispose failed: " + ex.Message, LogSource);
+            }
+            finally
+            {
+                if (lockTaken)
+                {
+                    _renderLock.Dispose();
+                }
+            }
+        }
+
+        private void DisposeRendererThreadResources()
+        {
+            if (_hostForm != null && !_hostForm.IsDisposed)
+            {
+                var cleanup = new MethodInvoker(() =>
+                {
+                    try { _webView?.Dispose(); } catch { }
+                    try { _hostForm.Dispose(); } catch { }
+                    try { _applicationContext?.ExitThread(); } catch { }
+                });
+
+                if (_hostForm.InvokeRequired)
+                {
+                    _hostForm.Invoke(cleanup);
+                }
+                else
+                {
+                    cleanup();
+                }
+            }
+
+            if (_uiThread != null && Thread.CurrentThread.ManagedThreadId != _uiThread.ManagedThreadId)
+            {
+                _uiThread.Join(TimeSpan.FromSeconds(5));
+            }
+        }
+
+        private sealed class HiddenHostForm : Form
+        {
+            protected override bool ShowWithoutActivation => true;
+
+            protected override CreateParams CreateParams
+            {
+                get
+                {
+                    const int wsExNoActivate = 0x08000000;
+                    var cp = base.CreateParams;
+                    cp.ExStyle |= wsExNoActivate;
+                    return cp;
+                }
+            }
         }
     }
 }
