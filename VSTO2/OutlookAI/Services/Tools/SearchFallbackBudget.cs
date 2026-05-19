@@ -57,6 +57,12 @@ namespace OutlookAI.Services.Tools
             return !string.Equals(sortOrder, "oldest", StringComparison.OrdinalIgnoreCase);
         }
 
+        public static int MaxFoldersForSearch(SearchMessagesArgs args, bool allMail)
+        {
+            if (!IsBroadFiniteNewestAllMail(args, allMail)) return MaxSearchFolders;
+            return MaxListFolders;
+        }
+
         public static bool ShouldStopRecipientAllMailScan(
             SearchMessagesArgs args, string scopeMode, int candidateCount)
         {
@@ -67,6 +73,34 @@ namespace OutlookAI.Services.Tools
             if (!DescendingForSortOrder(args.SortOrder)) return false;
             if (!string.IsNullOrWhiteSpace(args.FolderId)) return false;
 
+            return string.Equals(scopeMode, "all_mail", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(scopeMode, "auto", StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static bool ShouldStopBroadAllMailScan(
+            SearchMessagesArgs args, string scopeMode, int candidateCount)
+        {
+            if (candidateCount < args?.MaxResults) return false;
+            return IsBroadFiniteNewestAllMail(args, IsAllMailScope(scopeMode));
+        }
+
+        private static bool IsBroadFiniteNewestAllMail(SearchMessagesArgs args, bool allMail)
+        {
+            if (args == null) return false;
+            if (!allMail) return false;
+            if (args.MaxResults <= 0 || args.MaxResults == int.MaxValue) return false;
+            if (!DescendingForSortOrder(args.SortOrder)) return false;
+            if (!string.IsNullOrWhiteSpace(args.FolderId)) return false;
+
+            return string.IsNullOrWhiteSpace(args.Query)
+                && string.IsNullOrWhiteSpace(args.From)
+                && string.IsNullOrWhiteSpace(args.To)
+                && string.IsNullOrWhiteSpace(args.SubjectContains)
+                && string.IsNullOrWhiteSpace(args.BodyContains);
+        }
+
+        private static bool IsAllMailScope(string scopeMode)
+        {
             return string.Equals(scopeMode, "all_mail", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(scopeMode, "auto", StringComparison.OrdinalIgnoreCase);
         }
