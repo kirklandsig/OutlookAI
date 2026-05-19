@@ -74,13 +74,20 @@ namespace OutlookAI.Services.Export
                     throw new ExportException("webview2_missing", "Microsoft Edge WebView2 Runtime is required to export PDF files.");
                 }
 
-                TraceLog.Write("Initializing WebView2", LogSource);
+                var pdfDataFolder = WebView2Bootstrap.PdfWebView2DataFolder;
+                TraceLog.Write("Initializing WebView2 dataFolder=" + pdfDataFolder, LogSource);
                 EnsureWebUiResources();
+                Directory.CreateDirectory(pdfDataFolder);
                 ct.ThrowIfCancellationRequested();
 
-                _environment = await CoreWebView2Environment.CreateAsync(null, WebView2Bootstrap.WebView2DataFolder, null).ConfigureAwait(true);
+                TraceLog.Write(">> CoreWebView2Environment.CreateAsync", LogSource);
+                _environment = await CoreWebView2Environment.CreateAsync(null, pdfDataFolder, null).ConfigureAwait(true);
+                TraceLog.Write("<< CoreWebView2Environment.CreateAsync", LogSource);
                 ct.ThrowIfCancellationRequested();
+
+                TraceLog.Write(">> _webView.EnsureCoreWebView2Async", LogSource);
                 await _webView.EnsureCoreWebView2Async(_environment).ConfigureAwait(true);
+                TraceLog.Write("<< _webView.EnsureCoreWebView2Async", LogSource);
                 ct.ThrowIfCancellationRequested();
 
                 _webView.CoreWebView2.Settings.AreDevToolsEnabled = false;

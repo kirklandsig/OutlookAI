@@ -69,6 +69,13 @@ namespace OutlookAI.Tests.TaskPane.Chat
         }
 
         [Fact]
+        public void PdfWebView2DataFolder_IsSeparateFromMainWebView2DataFolder()
+        {
+            Assert.NotEqual(WebView2Bootstrap.WebView2DataFolder, WebView2Bootstrap.PdfWebView2DataFolder);
+            Assert.EndsWith(Path.Combine("OutlookAI", "WebView2PdfData"), WebView2Bootstrap.PdfWebView2DataFolder);
+        }
+
+        [Fact]
         public void WebUi_LoadsSharedMarkdownBeforeChat()
         {
             var indexHtml = File.ReadAllText(FindSourceFile("OutlookAI", "WebUI", "index.html"));
