@@ -36,6 +36,7 @@ namespace OutlookAI.TaskPane.Chat
 
         public static string WebUiFolder => Path.Combine(LocalAppDataRoot, "WebUI");
         public static string WebView2DataFolder => Path.Combine(LocalAppDataRoot, "WebView2Data");
+        public static string PdfWebView2DataFolder => Path.Combine(LocalAppDataRoot, "WebView2PdfData");
 
         /// <summary>
         /// Initialize a WebView2 control, extract embedded WebUI resources,
