@@ -92,6 +92,38 @@ namespace OutlookAI.Tests.Services.Tools
             Assert.Equal(200, SearchFallbackBudget.MaxFoldersForSearch(args, allMail: true));
         }
 
+        [Fact]
+        public void MaxFoldersForSearch_DateOnlyBroadNewestAllMailFinite_ReturnsInteractiveCap()
+        {
+            var args = new SearchMessagesArgs
+            {
+                Scope = "all_mail",
+                SortOrder = "newest",
+                DateFrom = System.DateTimeOffset.Parse("2026-05-12T00:00:00Z"),
+                DateTo = System.DateTimeOffset.Parse("2026-05-20T00:00:00Z"),
+                MaxResults = 100,
+            };
+
+            Assert.Equal(200, SearchFallbackBudget.MaxFoldersForSearch(args, allMail: true));
+            Assert.True(SearchFallbackBudget.ShouldStopBroadAllMailScan(args, "all_mail", candidateCount: 100));
+        }
+
+        [Theory]
+        [InlineData("attachment_filter")]
+        [InlineData("read_status")]
+        [InlineData("flag_status")]
+        [InlineData("importance_filter")]
+        [InlineData("legacy_has_attachment")]
+        [InlineData("legacy_is_unread")]
+        [InlineData("legacy_is_flagged")]
+        [InlineData("legacy_importance")]
+        public void MaxFoldersForSearch_MetadataFilteredAllMailSearches_ReturnFullCap(string filter)
+        {
+            var args = MetadataFilteredArgs(filter);
+
+            Assert.Equal(SearchFallbackBudget.MaxSearchFolders, SearchFallbackBudget.MaxFoldersForSearch(args, allMail: true));
+        }
+
         [Theory]
         [InlineData("query")]
         [InlineData("from")]
@@ -313,6 +345,46 @@ namespace OutlookAI.Tests.Services.Tools
             if (filter == "body") args.BodyContains = "tax id";
 
             Assert.False(SearchFallbackBudget.ShouldStopBroadAllMailScan(args, "all_mail", candidateCount: 100));
+        }
+
+        [Theory]
+        [InlineData("attachment_filter")]
+        [InlineData("read_status")]
+        [InlineData("flag_status")]
+        [InlineData("importance_filter")]
+        [InlineData("legacy_has_attachment")]
+        [InlineData("legacy_is_unread")]
+        [InlineData("legacy_is_flagged")]
+        [InlineData("legacy_importance")]
+        public void ShouldStopBroadAllMailScan_MetadataFilteredAllMailAtMax_ReturnsFalse(string filter)
+        {
+            var args = MetadataFilteredArgs(filter);
+
+            Assert.False(SearchFallbackBudget.ShouldStopBroadAllMailScan(args, "all_mail", candidateCount: 100));
+        }
+
+        private static SearchMessagesArgs MetadataFilteredArgs(string filter)
+        {
+            var args = new SearchMessagesArgs
+            {
+                Scope = "all_mail",
+                SortOrder = "newest",
+                MaxResults = 100,
+            };
+
+            switch (filter)
+            {
+                case "attachment_filter": args.AttachmentFilter = "with"; break;
+                case "read_status": args.ReadStatus = "unread"; break;
+                case "flag_status": args.FlagStatus = "flagged"; break;
+                case "importance_filter": args.ImportanceFilter = "high"; break;
+                case "legacy_has_attachment": args.HasAttachment = true; break;
+                case "legacy_is_unread": args.IsUnread = true; break;
+                case "legacy_is_flagged": args.IsFlagged = true; break;
+                case "legacy_importance": args.Importance = "high"; break;
+            }
+
+            return args;
         }
     }
 }
