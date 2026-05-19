@@ -185,6 +185,10 @@ namespace OutlookAI.Tests.Services.Tools
             var count = FindTool(tools, "outlook_count_messages");
             var props = (JObject)count["parameters"]["properties"];
 
+            Assert.NotNull(props["to"]);
+            Assert.Equal("string", (string)props["to"]["type"]);
+            Assert.Contains("recipient substring", (string)props["to"]["description"], System.StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("separate precise searches", (string)props["to"]["description"], System.StringComparison.OrdinalIgnoreCase);
             Assert.NotNull(props["scope"]);
             Assert.NotNull(props["read_status"]);
             Assert.Null(props["is_unread"]);

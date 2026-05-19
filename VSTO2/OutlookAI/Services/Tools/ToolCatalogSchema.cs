@@ -115,6 +115,8 @@ namespace OutlookAI.Services.Tools
                         new JProperty("properties", new JObject(
                             new JProperty("query",            new JObject(new JProperty("type","string"))),
                             new JProperty("from",             new JObject(new JProperty("type","string"))),
+                            new JProperty("to",               new JObject(new JProperty("type","string"),
+                                                              new JProperty("description","Recipient substring; for multiple recipients, make separate precise searches rather than concatenating names."))),
                             new JProperty("subject_contains", new JObject(new JProperty("type","string"))),
                             new JProperty("body_contains",    new JObject(new JProperty("type","string"))),
                             new JProperty("scope",            new JObject(new JProperty("type","string"),
