@@ -194,6 +194,7 @@
   function exportErrorCode(err) {
     try {
       if (!err || typeof err === 'string') return '';
+      if (err.error && typeof err.error === 'object') return String(err.error.code || '');
       return String(err.error || '');
     } catch (e) {
       return '';
@@ -209,7 +210,7 @@
     if (!msgEl) return false;
 
     var retryMessageId = messageId;
-    if ((retryMessageId === undefined || retryMessageId === null || retryMessageId === '') && msgEl.dataset) {
+    if (msgEl.dataset && msgEl.dataset.messageId) {
       retryMessageId = msgEl.dataset.messageId;
     }
 
@@ -275,11 +276,28 @@
     return false;
   }
 
+  function normalizePdfExportToolError(resultJson) {
+    if (!resultJson) return null;
+    try {
+      var obj = (typeof resultJson === 'string') ? JSON.parse(resultJson) : resultJson;
+      if (!obj || !obj.error || typeof obj.error !== 'object') return null;
+      return {
+        error: obj.error.code || 'pdf_render_failed',
+        detail: obj.error.message || obj.error.detail || 'Unknown export error.'
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
   function exportErrorMessage(error) {
     var fallback = 'Unknown export error.';
     try {
       if (!error) return fallback;
       if (typeof error === 'string') return error || fallback;
+      if (error.error && typeof error.error === 'object') {
+        return String(error.error.message || error.error.detail || error.error.code || fallback);
+      }
       var detail = error.detail || error.message || error.error;
       if (detail) return String(detail);
       return fallback;
@@ -453,6 +471,7 @@
 
       var row = elt('div', 'tool-status');
       row.dataset.callId = callId;
+      row.dataset.toolName = String(name || '');
       row.dataset.verb = verb;
       row.dataset.startedAt = String(Date.now());
       row.textContent = '\u2026 ' + verb;
@@ -515,8 +534,13 @@
         renderToolResultIfHandled(callId, resultJson);
         if (row.parentNode) row.parentNode.removeChild(row);
       } else {
-        row.classList.add('tool-status-err');
-        row.textContent = '\u26A0 ' + (summary || 'tool error');
+        var pdfExportError = row.dataset.toolName === 'outlook_export_pdf' ? normalizePdfExportToolError(resultJson) : null;
+        if (pdfExportError && renderInlineErrorCard(null, pdfExportError)) {
+          if (row.parentNode) row.parentNode.removeChild(row);
+        } else {
+          row.classList.add('tool-status-err');
+          row.textContent = '\u26A0 ' + (summary || 'tool error');
+        }
       }
       delete toolCards[callId];
       scrollToBottom();
