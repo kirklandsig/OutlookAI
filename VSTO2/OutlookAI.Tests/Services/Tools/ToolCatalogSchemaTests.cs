@@ -235,8 +235,25 @@ namespace OutlookAI.Tests.Services.Tools
 
             Assert.Contains("spreadsheet", desc);
             Assert.Contains("Excel", desc);
+            Assert.Contains("xlsx", desc);
+            Assert.Contains("tabular export", desc);
             Assert.Contains("columns", desc);
             Assert.Contains("rows", desc);
+            Assert.Contains("styled workbook", desc);
+            Assert.Contains("header", desc);
+            Assert.Contains("autofilter", desc);
+            Assert.Contains("per-column formatting", desc);
+            Assert.Contains("vendor lists", desc);
+            Assert.Contains("message tables", desc);
+            Assert.Contains("aggregations", desc);
+            Assert.Contains("structured search-result exports", desc);
+            Assert.Contains("outlook_export_pdf", desc);
+            Assert.Contains("10000 rows", desc);
+            Assert.Contains("search messages first", desc);
+            Assert.Contains("export projected rows", desc);
+            Assert.Contains("Documents", desc);
+            Assert.Contains("Reports", desc);
+            Assert.Contains("Open/Show-in-folder", desc);
         }
 
         [Fact]
@@ -247,6 +264,7 @@ namespace OutlookAI.Tests.Services.Tools
             var props = (JObject)tool["parameters"]["properties"];
 
             Assert.NotNull(props["filename_hint"]);
+            Assert.NotNull(props["sheet_name"]);
             Assert.NotNull(props["columns"]);
             Assert.NotNull(props["rows"]);
         }
