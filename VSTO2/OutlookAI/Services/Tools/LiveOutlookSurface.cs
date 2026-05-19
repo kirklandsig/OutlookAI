@@ -312,7 +312,7 @@ namespace OutlookAI.Services.Tools
             {
                 folders = _marshaller.RunAsync(
                     () => ResolveSearchFolders(
-                        new SearchMessagesArgs { FolderId = args.FolderId },
+                        SearchFallbackBudget.CountFolderResolutionArgs(args),
                         allMail: scopeMode != "current_folder",
                         ct),
                     ct).GetAwaiter().GetResult();
