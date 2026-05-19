@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using OutlookAI.Services.Export;
 
 namespace OutlookAI.Services.Tools
 {
@@ -20,6 +21,8 @@ namespace OutlookAI.Services.Tools
         int CountMessages(SearchMessagesArgs args, CancellationToken ct = default(CancellationToken));
         IReadOnlyList<AggregationBucket> AggregateMessages(AggregateMessagesArgs args, CancellationToken ct = default(CancellationToken));
         IReadOnlyList<ThreadSummary> ListRecentThreadsWith(string recipientEmail, int maxThreads);
+        FileSavedResult ExportExcel(ExportExcelArgs args, CancellationToken ct = default(CancellationToken));
+        FileSavedResult ExportPdf(ExportPdfArgs args, CancellationToken ct = default(CancellationToken));
         CreatedDraft CreateDraft(CreateDraftArgs args);
         void MarkAsRead(string messageId, bool read);
         void FlagMessage(string messageId, string flag);
