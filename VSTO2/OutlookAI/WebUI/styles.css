@@ -181,6 +181,82 @@ html, body {
 .msg-content li { margin: 2px 0; }
 .msg-content a { color: var(--accent); }
 
+/* ---- Saved-file attachments (Phase 5 exports) ---- */
+.msg-attachments {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.file-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 8px;
+  background: var(--tool-bg);
+  border: 1px solid var(--tool-border);
+  border-radius: 6px;
+}
+.file-card-icon {
+  flex: 0 0 24px;
+  width: 24px;
+  font-size: 20px;
+  line-height: 1;
+  text-align: center;
+}
+.file-card-icon::before { content: "\1F4C4"; }
+.file-card[data-format="xlsx"] .file-card-icon::before { content: "\1F4CA"; }
+.file-card[data-format="pdf"] .file-card-icon::before { content: "\1F4C4"; }
+.file-card-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.file-card-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.file-card-sub {
+  margin-top: 1px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.file-card-actions {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.file-card-btn {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 8px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  font: 11px var(--font-stack);
+  white-space: nowrap;
+}
+.file-card-btn:hover { background: var(--bg); }
+.file-card-btn:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+@media (max-width: 320px) {
+  .file-card {
+    align-items: flex-start;
+  }
+  .file-card-actions {
+    flex-direction: column;
+  }
+}
+
 /* Headers from the Reports system prompt. Compact sizes since the
    chat pane is narrow. */
 .msg-content h3 {
