@@ -15,6 +15,9 @@ namespace OutlookAI.Services.Tools
     /// </summary>
     public static class SearchFallbackBudget
     {
+        public const int MaxListFolders = 200;
+        public const int MaxSearchFolders = 5000;
+
         // Tight floor. For oldest/newest queries with MaxResults=1, taking
         // exactly ONE item per folder is correct: the global sort across
         // all folders picks the absolute oldest/newest. Each additional

@@ -70,5 +70,13 @@ namespace OutlookAI.Tests.Services.Tools
             Assert.False(SearchFallbackBudget.DescendingForSortOrder("OLDEST"));
             Assert.False(SearchFallbackBudget.DescendingForSortOrder("Oldest"));
         }
+
+        [Fact]
+        public void MaxSearchFolders_IsNotCappedByListFoldersLimit()
+        {
+            Assert.Equal(200, SearchFallbackBudget.MaxListFolders);
+            Assert.True(SearchFallbackBudget.MaxSearchFolders > SearchFallbackBudget.MaxListFolders);
+            Assert.True(SearchFallbackBudget.MaxSearchFolders >= 5000);
+        }
     }
 }
