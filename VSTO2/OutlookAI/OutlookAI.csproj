@@ -322,6 +322,7 @@
     <Compile Include="Services\Chat\TurnResult.cs" />
     <Compile Include="Services\CodexAuthService.cs" />
     <Compile Include="Services\CodexChatService.cs" />
+    <Compile Include="Services\Export\ExportFilenameSanitizer.cs" />
     <Compile Include="Services\IdResolver.cs" />
     <Compile Include="Services\IToolHost.cs" />
     <Compile Include="Services\OutlookThreadMarshaller.cs" />
