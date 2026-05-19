@@ -217,9 +217,10 @@
     var text = String(markdown || '');
     var lines = text.split(/\r?\n/);
     for (var i = 0; i < lines.length; i++) {
-      var m = /^#{1,3}\s+(.+?)\s*#*\s*$/.exec(lines[i]);
+      var m = /^#{1,3}\s+(.+?)\s*$/.exec(lines[i]);
       if (m && m[1]) {
         var heading = m[1].trim();
+        heading = heading.replace(/\s+#+\s*$/, '').trim();
         if (heading) return heading.substring(0, 60);
       }
     }
