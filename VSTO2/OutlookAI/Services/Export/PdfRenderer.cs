@@ -109,13 +109,38 @@ namespace OutlookAI.Services.Export
             _webView.CoreWebView2.NavigationCompleted += handler;
             try
             {
-                _webView.CoreWebView2.NavigateToString(html);
+                _webView.CoreWebView2.NavigateToString(WithVirtualHostBase(html));
                 await WaitWithCancellation(completion.Task, ct).ConfigureAwait(true);
+            }
+            catch (ExportException)
+            {
+                throw;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                throw new ExportException("pdf_render_failed", ex.Message, ex);
             }
             finally
             {
                 _webView.CoreWebView2.NavigationCompleted -= handler;
             }
+        }
+
+        private static string WithVirtualHostBase(string html)
+        {
+            if (html.IndexOf("<base", StringComparison.OrdinalIgnoreCase) >= 0) return html;
+
+            var headStart = html.IndexOf("<head", StringComparison.OrdinalIgnoreCase);
+            if (headStart < 0) return "<base href=\"https://" + WebView2Bootstrap.VirtualHost + "/\">" + html;
+
+            var headEnd = html.IndexOf('>', headStart);
+            if (headEnd < 0) return "<base href=\"https://" + WebView2Bootstrap.VirtualHost + "/\">" + html;
+
+            return html.Insert(headEnd + 1, "<base href=\"https://" + WebView2Bootstrap.VirtualHost + "/\">");
         }
 
         private async Task WaitForRenderReadyAsync(CancellationToken ct)
@@ -142,14 +167,14 @@ namespace OutlookAI.Services.Export
 
         private async Task PrintAsync(string outputPath, CancellationToken ct)
         {
-            var settings = _environment.CreatePrintSettings();
-            settings.ShouldPrintBackgrounds = true;
-            settings.ShouldPrintHeaderAndFooter = false;
-            settings.Orientation = CoreWebView2PrintOrientation.Portrait;
-            settings.ScaleFactor = 1.0;
-
             try
             {
+                var settings = _environment.CreatePrintSettings();
+                settings.ShouldPrintBackgrounds = true;
+                settings.ShouldPrintHeaderAndFooter = false;
+                settings.Orientation = CoreWebView2PrintOrientation.Portrait;
+                settings.ScaleFactor = 1.0;
+
                 var printed = await WaitWithCancellation(
                     _webView.CoreWebView2.PrintToPdfAsync(outputPath, settings),
                     ct).ConfigureAwait(true);
