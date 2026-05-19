@@ -192,6 +192,40 @@ namespace OutlookAI.Services.Tools
                                 new JProperty("description", "Default 10, hard cap 100."))))),
                         new JProperty("additionalProperties", false))),
 
+                BuildToolEntry("outlook_export_excel",
+                    "Create a spreadsheet Excel .xlsx tabular export. Use when the user asks for spreadsheet, Excel, xlsx, or tabular export; pass typed columns and rows. Produces a styled workbook with bold/frozen header, autofilter, and per-column formatting. Best for vendor lists, message tables, aggregations by sender/day, and structured search-result exports. Do NOT use for prose, narrative reports, or arbitrary text; choose outlook_export_pdf for those. Maximum 10000 rows; aggregate or filter first if more. Example flow: search messages first, then export projected rows. File is saved to ~\\Documents\\OutlookAI\\Reports\\; the UI surfaces Open/Show-in-folder later.",
+                    new JObject(
+                        new JProperty("type", "object"),
+                        new JProperty("required", new JArray("columns", "rows")),
+                        new JProperty("properties", new JObject(
+                            new JProperty("filename_hint", new JObject(
+                                new JProperty("type", "string"),
+                                new JProperty("description", "Optional base filename; sanitized and timestamped, with a safe default when omitted."))),
+                            new JProperty("sheet_name", new JObject(
+                                new JProperty("type", "string"),
+                                new JProperty("description", "Optional worksheet name; defaults to filename_hint."))),
+                            new JProperty("columns", new JObject(
+                                new JProperty("type", "array"),
+                                new JProperty("description", "Column definitions in display order. Type controls Excel formatting: date/datetime for ISO dates, number/currency for numeric cells, boolean for true/false, text otherwise."),
+                                new JProperty("items", new JObject(
+                                    new JProperty("type", "object"),
+                                    new JProperty("required", new JArray("name", "type")),
+                                    new JProperty("properties", new JObject(
+                                        new JProperty("name", new JObject(
+                                            new JProperty("type", "string"),
+                                            new JProperty("description", "Column header text."))),
+                                        new JProperty("type", new JObject(
+                                            new JProperty("type", "string"),
+                                            new JProperty("enum", new JArray("text", "date", "datetime", "number", "currency", "boolean")),
+                                            new JProperty("description", "Cell type used for validation and per-column Excel formatting."))))),
+                                    new JProperty("additionalProperties", false))))),
+                            new JProperty("rows", new JObject(
+                                new JProperty("type", "array"),
+                                new JProperty("description", "Row arrays; each row length must equal columns.length. Cells may be strings, numbers, ISO dates, or booleans matching the column type."),
+                                new JProperty("items", new JObject(
+                                    new JProperty("type", "array"))))))),
+                        new JProperty("additionalProperties", false))),
+
                 BuildToolEntry("outlook_get_current_selection",
                     "Read the messages currently selected in the user's active Explorer (e.g. messages they highlighted in the reading pane). Useful for 'reply to this', 'summarize this thread', etc. Returns empty when nothing is selected or when there is no active Explorer (e.g. the chat is anchored to a compose window).",
                     new JObject(

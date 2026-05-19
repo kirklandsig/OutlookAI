@@ -217,5 +217,73 @@ namespace OutlookAI.Tests.Services.Tools
             var desc = (string)tool["description"] ?? "";
             Assert.Contains("count", desc, System.StringComparison.OrdinalIgnoreCase);
         }
+
+        [Fact]
+        public void OutlookExportExcel_IsRegistered()
+        {
+            var tools = ToolCatalogSchema.BuildResponsesToolsArray(includeWriteTools: false);
+
+            Assert.NotNull(FindTool(tools, "outlook_export_excel"));
+        }
+
+        [Fact]
+        public void OutlookExportExcel_Description_TeachesWhenToUseExcelVsPdf()
+        {
+            var tools = ToolCatalogSchema.BuildResponsesToolsArray(includeWriteTools: false);
+            var tool = FindTool(tools, "outlook_export_excel");
+            var desc = (string)tool["description"] ?? "";
+
+            Assert.Contains("spreadsheet", desc);
+            Assert.Contains("Excel", desc);
+            Assert.Contains("columns", desc);
+            Assert.Contains("rows", desc);
+        }
+
+        [Fact]
+        public void OutlookExportExcel_Schema_HasColumnsAndRows()
+        {
+            var tools = ToolCatalogSchema.BuildResponsesToolsArray(includeWriteTools: false);
+            var tool = FindTool(tools, "outlook_export_excel");
+            var props = (JObject)tool["parameters"]["properties"];
+
+            Assert.NotNull(props["filename_hint"]);
+            Assert.NotNull(props["columns"]);
+            Assert.NotNull(props["rows"]);
+        }
+
+        [Fact]
+        public void OutlookExportExcel_TeachesWhenNotToUse()
+        {
+            var tools = ToolCatalogSchema.BuildResponsesToolsArray(includeWriteTools: false);
+            var tool = FindTool(tools, "outlook_export_excel");
+            var desc = (string)tool["description"] ?? "";
+
+            Assert.Contains("prose", desc, System.StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void OutlookExportExcel_ColumnType_HasSupportedEnumValues()
+        {
+            var tools = ToolCatalogSchema.BuildResponsesToolsArray(includeWriteTools: false);
+            var tool = FindTool(tools, "outlook_export_excel");
+            var columnProps = (JObject)tool["parameters"]["properties"]["columns"]["items"]["properties"];
+            var typeEnum = (JArray)columnProps["type"]["enum"];
+            var enumValues = typeEnum.Select(t => (string)t).ToArray();
+
+            Assert.Equal(new[] { "text", "date", "datetime", "number", "currency", "boolean" }, enumValues);
+        }
+
+        [Fact]
+        public void OutlookExportExcel_Schema_RequiresColumnsAndRowsAndRejectsExtraProperties()
+        {
+            var tools = ToolCatalogSchema.BuildResponsesToolsArray(includeWriteTools: false);
+            var tool = FindTool(tools, "outlook_export_excel");
+            var parameters = (JObject)tool["parameters"];
+            var required = ((JArray)parameters["required"]).Select(t => (string)t).ToArray();
+
+            Assert.False((bool)parameters["additionalProperties"]);
+            Assert.Contains("columns", required);
+            Assert.Contains("rows", required);
+        }
     }
 }
