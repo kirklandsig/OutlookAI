@@ -160,6 +160,7 @@ namespace OutlookAI.Tests.TaskPane.Chat
             Assert.Contains("https://developer.microsoft.com/microsoft-edge/webview2/", chatJs);
             Assert.Contains("Install WebView2 Runtime", chatJs);
             Assert.Contains("if (!renderInlineErrorCard(messageId, error))", chatJs);
+            Assert.Contains("retryMessageId = msgEl.dataset.messageId;", chatJs);
 
             Assert.Contains(".error-card", stylesCss);
             Assert.Contains(".error-card-icon", stylesCss);
@@ -169,6 +170,22 @@ namespace OutlookAI.Tests.TaskPane.Chat
             Assert.Contains(".error-card-actions", stylesCss);
             Assert.Contains(".error-card-btn", stylesCss);
             Assert.Contains(".error-card-link", stylesCss);
+        }
+
+        [Fact]
+        public void WebUi_ChatRoutesPdfExportToolErrorsToInlineErrorCards()
+        {
+            var chatJs = File.ReadAllText(FindSourceFile("OutlookAI", "WebUI", "chat.js"));
+
+            Assert.Contains("row.dataset.toolName = String(name || '');", chatJs);
+            Assert.Contains("function normalizePdfExportToolError(resultJson)", chatJs);
+            Assert.Contains("obj.error.code", chatJs);
+            Assert.Contains("obj.error.message", chatJs);
+            Assert.Contains("row.dataset.toolName === 'outlook_export_pdf'", chatJs);
+            Assert.Contains("renderInlineErrorCard(null, pdfExportError)", chatJs);
+            Assert.Contains("if (row.parentNode) row.parentNode.removeChild(row);", chatJs);
+            Assert.Contains("row.classList.add('tool-status-err');", chatJs);
+            Assert.Contains("row.textContent = '\\u26A0 ' + (summary || 'tool error');", chatJs);
         }
 
         [Fact]
