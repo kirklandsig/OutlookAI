@@ -313,9 +313,31 @@ namespace OutlookAI.Services.Export
         {
             try
             {
-                if (_webView != null && _webView.CoreWebView2 != null)
+                var form = _hostForm;
+                if (form == null || form.IsDisposed) return;
+
+                var stop = new MethodInvoker(() =>
                 {
-                    _webView.CoreWebView2.Stop();
+                    try
+                    {
+                        if (_webView != null && _webView.CoreWebView2 != null)
+                        {
+                            _webView.CoreWebView2.Stop();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        TraceLog.Write("StopNavigation invoke failed: " + ex.Message, LogSource);
+                    }
+                });
+
+                if (form.InvokeRequired)
+                {
+                    form.BeginInvoke(stop);
+                }
+                else
+                {
+                    stop();
                 }
             }
             catch (Exception ex)
@@ -403,7 +425,7 @@ namespace OutlookAI.Services.Export
             {
                 if (lockTaken)
                 {
-                    _renderLock.Dispose();
+                    _renderLock.Release();
                 }
             }
         }
