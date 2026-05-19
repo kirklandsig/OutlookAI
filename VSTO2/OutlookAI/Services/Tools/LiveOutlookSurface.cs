@@ -30,7 +30,6 @@ namespace OutlookAI.Services.Tools
         private static readonly TimeSpan _searchTimeout = TimeSpan.FromSeconds(30);
         // 32 KB hard cap on body bytes (in characters; close enough for ASCII).
         private const int MaxBodyChars = 32 * 1024;
-        private const int MaxFolders = 200;
         private const int MaxFolderDepth = 6;
         private const int SnippetChars = 160;
 
@@ -151,7 +150,7 @@ namespace OutlookAI.Services.Tools
                     foreach (Outlook.Store store in _application.Session.Stores)
                     {
                         WalkFolders(store.GetRootFolder(), null, results, depth: 0);
-                        if (results.Count >= MaxFolders) break;
+                        if (results.Count >= SearchFallbackBudget.MaxListFolders) break;
                     }
                 }
                 catch (COMException) { }
@@ -499,13 +498,11 @@ namespace OutlookAI.Services.Tools
             }
             if (args.DateFrom.HasValue)
             {
-                // Same DASL date-literal fix as BuildRestrictFilter; see
-                // detailed comment there.
-                clauses.Add(PropReceivedAt + " >= '" + args.DateFrom.Value.ToString("yyyy-MM-ddTHH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) + "'");
+                clauses.Add(PropReceivedAt + " >= '" + args.DateFrom.Value.ToString("M/d/yyyy h:mm:ss tt", System.Globalization.CultureInfo.InvariantCulture) + "'");
             }
             if (args.DateTo.HasValue)
             {
-                clauses.Add(PropReceivedAt + " <= '" + args.DateTo.Value.ToString("yyyy-MM-ddTHH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) + "'");
+                clauses.Add(PropReceivedAt + " <= '" + args.DateTo.Value.ToString("M/d/yyyy h:mm:ss tt", System.Globalization.CultureInfo.InvariantCulture) + "'");
             }
             if (clauses.Count == 0) return null;
             return "@SQL=" + string.Join(" AND ", clauses);
@@ -1286,7 +1283,7 @@ namespace OutlookAI.Services.Tools
                     // tree walk does not freeze Outlook for many seconds
                     // when the user has many stores.
                     YieldUi(ct);
-                    if (folders.Count >= MaxFolders) break;
+                    if (folders.Count >= SearchFallbackBudget.MaxSearchFolders) break;
                 }
             }
             catch (COMException) { }
@@ -1308,7 +1305,7 @@ namespace OutlookAI.Services.Tools
                 if (isMailFolder) results.Add(folder);
             }
 
-            if (results.Count >= MaxFolders) return;
+            if (results.Count >= SearchFallbackBudget.MaxSearchFolders) return;
 
             try
             {
@@ -1319,7 +1316,7 @@ namespace OutlookAI.Services.Tools
                     // Yield every few children to keep the UI responsive
                     // during deep folder trees.
                     if ((++childIndex % 5) == 0) YieldUi(ct);
-                    if (results.Count >= MaxFolders) break;
+                    if (results.Count >= SearchFallbackBudget.MaxSearchFolders) break;
                 }
             }
             catch (COMException) { }
@@ -1351,7 +1348,7 @@ namespace OutlookAI.Services.Tools
         {
             if (folder == null) return;
             if (depth > MaxFolderDepth) return;
-            if (results.Count >= MaxFolders) return;
+            if (results.Count >= SearchFallbackBudget.MaxListFolders) return;
 
             string id;
             try { id = _ids.Shorten(folder.EntryID); }
@@ -1373,7 +1370,7 @@ namespace OutlookAI.Services.Tools
                 foreach (Outlook.MAPIFolder child in folder.Folders)
                 {
                     WalkFolders(child, id, results, depth + 1);
-                    if (results.Count >= MaxFolders) break;
+                    if (results.Count >= SearchFallbackBudget.MaxListFolders) break;
                 }
             }
             catch (COMException) { }
@@ -1482,19 +1479,15 @@ namespace OutlookAI.Services.Tools
             }
             if (args.DateFrom.HasValue)
             {
-                // ISO 8601 WITH T separator + seconds. Outlook DASL's strict
-                // parser silently rejects 'yyyy-MM-dd HH:mm' (space, no T,
-                // no seconds) and treats the whole comparison as FALSE,
-                // killing the entire AND-combined filter and returning 0
-                // rows for every folder. Reproduces in tests
-                // DateFrom_UsesIso8601WithTSeparator and DateRange_*.
+                // Outlook Table DASL ignores ISO-8601 T literals; US date
+                // literals are live-verified with folder.GetTable.
                 clauses.Add(PropReceivedAt + " >= '" +
-                    args.DateFrom.Value.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture) + "'");
+                    args.DateFrom.Value.ToString("M/d/yyyy h:mm:ss tt", CultureInfo.InvariantCulture) + "'");
             }
             if (args.DateTo.HasValue)
             {
                 clauses.Add(PropReceivedAt + " <= '" +
-                    args.DateTo.Value.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture) + "'");
+                    args.DateTo.Value.ToString("M/d/yyyy h:mm:ss tt", CultureInfo.InvariantCulture) + "'");
             }
 
             if (clauses.Count == 0) return null;
