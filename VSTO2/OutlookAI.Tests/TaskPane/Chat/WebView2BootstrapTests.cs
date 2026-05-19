@@ -128,6 +128,8 @@ namespace OutlookAI.Tests.TaskPane.Chat
 
             Assert.Contains("appendFileCardToMessage", chatJs);
             Assert.Contains("onFileSaved", chatJs);
+            Assert.Contains("onExportError", chatJs);
+            Assert.Contains("Export action failed.", chatJs);
             Assert.Contains("result_type === 'file_saved'", chatJs);
             Assert.Contains("open_file", chatJs);
             Assert.Contains("reveal_in_explorer", chatJs);

@@ -8,6 +8,7 @@
       appendToolCallCard(callId, name, argsJson)
       updateToolCallCard(callId, ok, summary, resultJson)
       onFileSaved(messageId, fileInfo)
+      onExportError(messageId, error)
       appendAuditRow(text)
      showError(message)
      setComposerEnabled(enabled, isStopVisible)
@@ -195,6 +196,19 @@
     return false;
   }
 
+  function exportErrorMessage(error) {
+    var fallback = 'Export action failed.';
+    try {
+      if (!error) return fallback;
+      if (typeof error === 'string') return error || fallback;
+      var detail = error.detail || error.message || error.error;
+      if (detail) return String(detail);
+      return fallback;
+    } catch (e) {
+      return fallback;
+    }
+  }
+
   function scrollToBottom() {
     $messages.scrollTop = $messages.scrollHeight;
   }
@@ -359,6 +373,10 @@
 
     onFileSaved: function(messageId, fileInfo) {
       appendFileCardToMessage(messageId, fileInfo);
+    },
+
+    onExportError: function(messageId, error) {
+      api.showError(exportErrorMessage(error));
     },
 
     showError: function(message) {
