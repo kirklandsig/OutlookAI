@@ -120,6 +120,24 @@ namespace OutlookAI.Tests.TaskPane.Chat
             Assert.Contains("error", templateHtml);
         }
 
+        [Fact]
+        public void WebUi_ChatRendersFileSavedToolResultsAsFileCard()
+        {
+            var chatJs = File.ReadAllText(FindSourceFile("OutlookAI", "WebUI", "chat.js"));
+            var stylesCss = File.ReadAllText(FindSourceFile("OutlookAI", "WebUI", "styles.css"));
+
+            Assert.Contains("appendFileCardToMessage", chatJs);
+            Assert.Contains("onFileSaved", chatJs);
+            Assert.Contains("result_type === 'file_saved'", chatJs);
+            Assert.Contains("open_file", chatJs);
+            Assert.Contains("reveal_in_explorer", chatJs);
+            Assert.DoesNotContain("renderInlineErrorCard", chatJs);
+
+            Assert.Contains(".msg-attachments", stylesCss);
+            Assert.Contains(".file-card", stylesCss);
+            Assert.Contains(".file-card-btn", stylesCss);
+        }
+
         private static string FindSourceFile(params string[] relativeParts)
         {
             var current = new DirectoryInfo(Directory.GetCurrentDirectory());

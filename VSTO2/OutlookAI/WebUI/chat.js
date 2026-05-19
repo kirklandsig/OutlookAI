@@ -5,9 +5,10 @@
      appendAssistantMessage(messageId, initialText)
      appendTextDelta(messageId, delta)
      finalizeAssistantMessage(messageId, opts)
-     appendToolCallCard(callId, name, argsJson)
-     updateToolCallCard(callId, ok, summary, resultJson)
-     appendAuditRow(text)
+      appendToolCallCard(callId, name, argsJson)
+      updateToolCallCard(callId, ok, summary, resultJson)
+      onFileSaved(messageId, fileInfo)
+      appendAuditRow(text)
      showError(message)
      setComposerEnabled(enabled, isStopVisible)
      clear()
@@ -17,7 +18,8 @@
      C# calls these via WebView2.ExecuteScriptAsync("outlookai.X(...)").
    JS -> Host:
      window.chrome.webview.postMessage(JSON.stringify({type:..., payload:...}))
-     Message types: 'send', 'stop', 'clear', 'copy', 'toolCardClicked'
+      Message types: 'send', 'stop', 'clear', 'copy', 'toolCardClicked',
+                     'open_file', 'reveal_in_explorer'
    ============================================================ */
 
 (function() {
@@ -59,6 +61,17 @@
       .replace(/'/g, '&#39;');
   }
 
+  function escapeAttr(s) {
+    return fallbackEscapeHtml(s);
+  }
+
+  function cssEscape(s) {
+    if (window.CSS && typeof window.CSS.escape === 'function') {
+      return window.CSS.escape(String(s));
+    }
+    return String(s).replace(/(["\\\]\[])/g, '\\$1');
+  }
+
   function renderMarkdown(src) {
     if (window.markdown && typeof window.markdown.render === 'function') {
       return window.markdown.render(src);
@@ -73,6 +86,113 @@
     if (cls) e.className = cls;
     if (text !== undefined && text !== null) e.textContent = text;
     return e;
+  }
+
+  function formatBytes(bytes) {
+    var n = Number(bytes);
+    if (!isFinite(n) || n < 0) return '';
+    if (n < 1024) return Math.round(n) + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    if (n < 1024 * 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + ' MB';
+    return (n / 1024 / 1024 / 1024).toFixed(1) + ' GB';
+  }
+
+  function formatLabel(format) {
+    switch (String(format || '').toLowerCase()) {
+      case 'xlsx': return 'Excel Workbook';
+      case 'pdf': return 'PDF Document';
+      default: return format ? String(format).toUpperCase() : 'File';
+    }
+  }
+
+  function filenameFromPath(path) {
+    var value = String(path || '');
+    var slash = Math.max(value.lastIndexOf('\\'), value.lastIndexOf('/'));
+    return slash >= 0 ? value.substring(slash + 1) : value;
+  }
+
+  function postFileAction(type, path) {
+    if (!path) return;
+    postToHost({
+      type: type,
+      payload: { path: path }
+    });
+  }
+
+  function findAssistantMessage(messageId) {
+    if (messageId !== undefined && messageId !== null && messageId !== '') {
+      var selector = '[data-message-id="' + cssEscape(messageId) + '"]';
+      var matched = null;
+      try { matched = document.querySelector(selector); } catch (e) { matched = null; }
+      if (matched) return matched;
+    }
+
+    var messages = document.querySelectorAll('.msg-assistant');
+    return messages.length ? messages[messages.length - 1] : null;
+  }
+
+  function appendFileCardToMessage(messageId, fileInfo) {
+    if (!fileInfo || !fileInfo.path) return;
+
+    var msgEl = findAssistantMessage(messageId);
+    if (!msgEl) return;
+
+    var attach = msgEl.querySelector('.msg-attachments');
+    if (!attach) {
+      attach = elt('div', 'msg-attachments');
+      msgEl.appendChild(attach);
+    }
+
+    var filePath = String(fileInfo.path);
+    var filename = fileInfo.filename || filenameFromPath(filePath) || 'Saved file';
+    var format = String(fileInfo.format || '').toLowerCase();
+    var bytes = formatBytes(fileInfo.bytes);
+    var label = formatLabel(fileInfo.format);
+    var sub = bytes ? (bytes + ' \u00B7 ' + label) : label;
+
+    var card = elt('div', 'file-card');
+    card.setAttribute('data-format', escapeAttr(format));
+
+    card.appendChild(elt('div', 'file-card-icon'));
+
+    var meta = elt('div', 'file-card-meta');
+    var name = elt('div', 'file-card-name', filename);
+    name.title = filename;
+    meta.appendChild(name);
+    meta.appendChild(elt('div', 'file-card-sub', sub));
+    card.appendChild(meta);
+
+    var actions = elt('div', 'file-card-actions');
+    var open = elt('button', 'file-card-btn', 'Open');
+    open.type = 'button';
+    open.addEventListener('click', function() {
+      postFileAction('open_file', filePath);
+    });
+
+    var reveal = elt('button', 'file-card-btn', 'Show in folder');
+    reveal.type = 'button';
+    reveal.addEventListener('click', function() {
+      postFileAction('reveal_in_explorer', filePath);
+    });
+
+    actions.appendChild(open);
+    actions.appendChild(reveal);
+    card.appendChild(actions);
+
+    attach.appendChild(card);
+    scrollToBottom();
+  }
+
+  function renderToolResultIfHandled(messageId, resultJson) {
+    if (!resultJson) return false;
+    try {
+      var obj = (typeof resultJson === 'string') ? JSON.parse(resultJson) : resultJson;
+      if (obj && obj.result_type === 'file_saved') {
+        appendFileCardToMessage(obj.message_id || obj.messageId || messageId, obj);
+        return true;
+      }
+    } catch (e) { /* fall through to existing path */ }
+    return false;
   }
 
   function scrollToBottom() {
@@ -218,6 +338,7 @@
       // muted single-line error so the user sees that something failed
       // without the full JSON dump.
       if (ok) {
+        renderToolResultIfHandled(callId, resultJson);
         if (row.parentNode) row.parentNode.removeChild(row);
       } else {
         row.classList.add('tool-status-err');
@@ -234,6 +355,10 @@
       row.appendChild(document.createTextNode(text));
       $messages.appendChild(row);
       scrollToBottom();
+    },
+
+    onFileSaved: function(messageId, fileInfo) {
+      appendFileCardToMessage(messageId, fileInfo);
     },
 
     showError: function(message) {
@@ -392,7 +517,12 @@
     ping: function() { return 'pong'; }
   };
 
-  window.outlookai = api;
+  window.outlookai = window.outlookai || {};
+  for (var apiName in api) {
+    if (Object.prototype.hasOwnProperty.call(api, apiName)) {
+      window.outlookai[apiName] = api[apiName];
+    }
+  }
 
   // -- Composer event wiring --------------------------------------
   function sendInput() {
