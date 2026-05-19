@@ -5070,8 +5070,8 @@ Expected: push succeeds; remote updates with all Phase 5 commits.
 
 ## Final State After Phase 5
 
-- 24 new commits on `feature/codex-oauth-migration`.
-- Test count: **317 → 499** (182 new tests before Task 25 docs-only verification).
+- Phase 5 implementation plus live-smoke hotfixes landed on `feature/codex-oauth-migration`.
+- Test count: **317 → 546**.
 - Two new model tools: `outlook_export_excel`, `outlook_export_pdf`.
 - One new UI affordance: per-message "Save as PDF" button.
 - One new shared infra: `markdown.js` (used by chat AND PDF).
@@ -5082,4 +5082,4 @@ Expected: push succeeds; remote updates with all Phase 5 commits.
 - Reports saved to `~\Documents\OutlookAI\Reports\` with auto-generated timestamped filenames.
 - Path-policy security gate on all file-action bridge methods.
 
-Phase 5 implementation is ready for publish/install and live smoke. No dependencies on Phase 6+ items (settings UI, multi-sheet Excel, PDF page numbers, etc.).
+Phase 5 is installed and smoke-validated for Excel export, per-message PDF export, file-card open/reveal, Action Items runtime, and PDF rendering. Path traversal remains covered by automated `ExportBridge` / `ExportPathPolicy` tests rather than a live DevTools smoke. No dependencies on Phase 6+ items (settings UI, multi-sheet Excel, PDF page numbers, etc.).

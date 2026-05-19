@@ -2,7 +2,7 @@
 
 Branch: `feature/codex-oauth-migration`
 Author session: 2026-05-18
-Status: Implemented (Debug tests pass; install/smoke pending)
+Status: Done (implemented; Excel/PDF smoke validated)
 
 ## Why
 
