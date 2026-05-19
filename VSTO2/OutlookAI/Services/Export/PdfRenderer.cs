@@ -187,6 +187,10 @@ namespace OutlookAI.Services.Export
             {
                 throw;
             }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
                 throw new ExportException("pdf_print_failed", ex.Message, ex);
