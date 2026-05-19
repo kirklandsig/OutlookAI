@@ -101,12 +101,26 @@ namespace OutlookAI.Services.Tools
             if (args.MaxResults <= 0 || args.MaxResults == int.MaxValue) return false;
             if (!DescendingForSortOrder(args.SortOrder)) return false;
             if (!string.IsNullOrWhiteSpace(args.FolderId)) return false;
+            if (!IsAnyFilter(args.AttachmentFilter)) return false;
+            if (!IsAnyFilter(args.ReadStatus)) return false;
+            if (!IsAnyFilter(args.FlagStatus)) return false;
+            if (!IsAnyFilter(args.ImportanceFilter)) return false;
+            if (args.HasAttachment == true) return false;
+            if (args.IsUnread == true) return false;
+            if (args.IsFlagged == true) return false;
+            if (!string.IsNullOrWhiteSpace(args.Importance)) return false;
 
             return string.IsNullOrWhiteSpace(args.Query)
                 && string.IsNullOrWhiteSpace(args.From)
                 && string.IsNullOrWhiteSpace(args.To)
                 && string.IsNullOrWhiteSpace(args.SubjectContains)
                 && string.IsNullOrWhiteSpace(args.BodyContains);
+        }
+
+        private static bool IsAnyFilter(string value)
+        {
+            return string.IsNullOrWhiteSpace(value)
+                || string.Equals(value, "any", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool IsAllMailScope(string scopeMode)
