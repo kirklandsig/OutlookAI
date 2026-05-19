@@ -92,7 +92,8 @@ The new `README.md` is a top-to-bottom landing page. Section order:
      items).
    - Excel and PDF exports, with file cards offering Open / Show in folder.
    - Per-message Save as PDF in chat and reports.
-   - 12 model-callable Outlook tools, with per-tool admin write permissions.
+   - 15 model-callable Outlook tools: 11 read/utility tools always on, plus
+     4 admin-gated safe-write tools.
    - Voice input via the OpenAI Realtime WebSocket.
    - Settings UI: model picker, reasoning effort, write-tool gates.
 4. **How it compares.** Refreshed comparison table vs GPT for Outlook,
@@ -190,9 +191,15 @@ The new docs must keep claims factual.
   folder).
 - Security section explicitly calls out the RDS shared-credential risk and
   links to the rotation steps.
-- Tool count is `12`: ten Phase 2/4 tools plus `outlook_export_excel` and
-  `outlook_export_pdf` from Phase 5. The README lists every tool name so the
-  count is verifiable.
+- Tool count is `15`: 11 read/utility tools always on
+  (`outlook_get_current_compose_state`, `outlook_get_current_selection`,
+  `outlook_list_folders`, `outlook_search_messages`, `outlook_read_message`,
+  `outlook_read_messages`, `outlook_count_messages`,
+  `outlook_aggregate_messages`, `outlook_list_recent_threads_with`,
+  `outlook_export_excel`, `outlook_export_pdf`) plus 4 admin-gated safe-write
+  tools (`outlook_create_draft`, `outlook_mark_as_read`,
+  `outlook_flag_message`, `outlook_set_category`). The README lists every
+  tool name so the count is verifiable.
 - Reports surface is described as "templated chips that drive markdown
   reports back to chat," matching `InboxReportsController` behavior rather
   than over-claiming.
@@ -213,9 +220,10 @@ The new docs must keep claims factual.
   IT-managed image installs without losing any current OAuth or shared
   credential warnings.
 - All counts, version numbers, and "what is shipped" claims match the
-  feature branch state at merge time (`546/546` tests, 12 tools, exports
-  shipped, Inbox Copilot + Inbox Reports shipped, multi-sheet Excel and PDF
-  page numbers explicitly listed as not yet shipped).
+  feature branch state at merge time (`546/546` tests, 15 tools (11 always
+  on + 4 admin-gated), exports shipped, Inbox Copilot + Inbox Reports
+  shipped, multi-sheet Excel and PDF page numbers explicitly listed as not
+  yet shipped).
 - The merge banner at the top of `README.md` links to the open PR. After
   the merge to `master`, that banner is updated to a "v2 shipped" callout in
   a follow-up commit on `master`.
