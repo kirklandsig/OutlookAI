@@ -80,6 +80,79 @@ namespace OutlookAI.Tests.Services.Tools
         }
 
         [Fact]
+        public void MaxFoldersForSearch_BroadNewestAllMailFinite_ReturnsInteractiveCap()
+        {
+            var args = new SearchMessagesArgs
+            {
+                Scope = "all_mail",
+                SortOrder = "newest",
+                MaxResults = 100,
+            };
+
+            Assert.Equal(200, SearchFallbackBudget.MaxFoldersForSearch(args, allMail: true));
+        }
+
+        [Theory]
+        [InlineData("query")]
+        [InlineData("from")]
+        [InlineData("to")]
+        [InlineData("subject")]
+        [InlineData("body")]
+        public void MaxFoldersForSearch_TargetedAllMailSearches_ReturnFullCap(string filter)
+        {
+            var args = new SearchMessagesArgs
+            {
+                Scope = "all_mail",
+                SortOrder = "newest",
+                MaxResults = 100,
+            };
+            if (filter == "query") args.Query = "ein";
+            if (filter == "from") args.From = "vendor@example.com";
+            if (filter == "to") args.To = "Susan";
+            if (filter == "subject") args.SubjectContains = "invoice";
+            if (filter == "body") args.BodyContains = "tax id";
+
+            Assert.Equal(SearchFallbackBudget.MaxSearchFolders, SearchFallbackBudget.MaxFoldersForSearch(args, allMail: true));
+        }
+
+        [Fact]
+        public void MaxFoldersForSearch_CountMode_ReturnsFullCap()
+        {
+            var args = new SearchMessagesArgs
+            {
+                Scope = "all_mail",
+                SortOrder = "newest",
+                MaxResults = int.MaxValue,
+            };
+
+            Assert.Equal(SearchFallbackBudget.MaxSearchFolders, SearchFallbackBudget.MaxFoldersForSearch(args, allMail: true));
+        }
+
+        [Fact]
+        public void MaxFoldersForSearch_Oldest_ReturnsFullCap()
+        {
+            var args = new SearchMessagesArgs
+            {
+                Scope = "all_mail",
+                SortOrder = "oldest",
+                MaxResults = 100,
+            };
+
+            Assert.Equal(SearchFallbackBudget.MaxSearchFolders, SearchFallbackBudget.MaxFoldersForSearch(args, allMail: true));
+        }
+
+        [Fact]
+        public void MaxFoldersForSearch_ExplicitOrCurrentFolder_ReturnsFullCap()
+        {
+            Assert.Equal(SearchFallbackBudget.MaxSearchFolders, SearchFallbackBudget.MaxFoldersForSearch(
+                new SearchMessagesArgs { Scope = "all_mail", FolderId = "folder-1", SortOrder = "newest", MaxResults = 100 },
+                allMail: true));
+            Assert.Equal(SearchFallbackBudget.MaxSearchFolders, SearchFallbackBudget.MaxFoldersForSearch(
+                new SearchMessagesArgs { Scope = "current_folder", SortOrder = "newest", MaxResults = 100 },
+                allMail: false));
+        }
+
+        [Fact]
         public void ShouldStopRecipientAllMailScan_RecipientAllMailNewestAtMax_ReturnsTrue()
         {
             var args = new SearchMessagesArgs
@@ -193,6 +266,42 @@ namespace OutlookAI.Tests.Services.Tools
             };
 
             Assert.False(SearchFallbackBudget.ShouldStopRecipientAllMailScan(args, "all_mail", candidateCount: int.MaxValue));
+        }
+
+        [Fact]
+        public void ShouldStopBroadAllMailScan_BroadNewestAllMailAtMax_ReturnsTrue()
+        {
+            var args = new SearchMessagesArgs
+            {
+                Scope = "all_mail",
+                SortOrder = "newest",
+                MaxResults = 100,
+            };
+
+            Assert.True(SearchFallbackBudget.ShouldStopBroadAllMailScan(args, "all_mail", candidateCount: 100));
+        }
+
+        [Theory]
+        [InlineData("query")]
+        [InlineData("from")]
+        [InlineData("to")]
+        [InlineData("subject")]
+        [InlineData("body")]
+        public void ShouldStopBroadAllMailScan_TargetedAllMailAtMax_ReturnsFalse(string filter)
+        {
+            var args = new SearchMessagesArgs
+            {
+                Scope = "all_mail",
+                SortOrder = "newest",
+                MaxResults = 100,
+            };
+            if (filter == "query") args.Query = "ein";
+            if (filter == "from") args.From = "vendor@example.com";
+            if (filter == "to") args.To = "Susan";
+            if (filter == "subject") args.SubjectContains = "invoice";
+            if (filter == "body") args.BodyContains = "tax id";
+
+            Assert.False(SearchFallbackBudget.ShouldStopBroadAllMailScan(args, "all_mail", candidateCount: 100));
         }
     }
 }

@@ -1289,6 +1289,21 @@ namespace OutlookAI.Services.Tools
                     catch { }
                     break;
                 }
+
+                if (SearchFallbackBudget.ShouldStopBroadAllMailScan(args, scopeMode, allInputs.Count))
+                {
+                    try
+                    {
+                        OutlookAI.Diagnostics.TraceLog.Write(
+                            "SearchMessages fallback broad_all_mail_early_stop cap=" + args.MaxResults
+                            + " candidates=" + allInputs.Count
+                            + " searched=" + searched
+                            + " max_results=" + args.MaxResults,
+                            "LiveOutlookSurface");
+                    }
+                    catch { }
+                    break;
+                }
             }
 
             return _marshaller.RunAsync(
@@ -1517,6 +1532,7 @@ namespace OutlookAI.Services.Tools
         {
             var started = DateTimeOffset.UtcNow;
             var folders = new List<Outlook.MAPIFolder>();
+            var folderLimit = SearchFallbackBudget.MaxFoldersForSearch(args, allMail);
             if (!string.IsNullOrEmpty(args?.FolderId))
             {
                 var folder = ResolveFolder(args.FolderId);
@@ -1531,25 +1547,37 @@ namespace OutlookAI.Services.Tools
                 return folders;
             }
 
+            if (folderLimit < SearchFallbackBudget.MaxSearchFolders)
+            {
+                try
+                {
+                    OutlookAI.Diagnostics.TraceLog.Write(
+                        "ResolveSearchFolders broad_all_mail_folder_cap cap=" + folderLimit
+                        + " max_results=" + args.MaxResults,
+                        "LiveOutlookSurface");
+                }
+                catch { }
+            }
+
             try
             {
                 foreach (Outlook.Store store in _application.Session.Stores)
                 {
-                    WalkMailFolders(store.GetRootFolder(), folders, depth: 0, ct);
+                    WalkMailFolders(store.GetRootFolder(), folders, depth: 0, folderLimit, ct);
                     // Pump Outlook UI between each store so the mailbox
                     // tree walk does not freeze Outlook for many seconds
                     // when the user has many stores.
                     YieldUi(ct);
-                    if (folders.Count >= SearchFallbackBudget.MaxSearchFolders) break;
+                    if (folders.Count >= folderLimit) break;
                 }
             }
             catch (COMException) { }
             var elapsedMs = (long)(DateTimeOffset.UtcNow - started).TotalMilliseconds;
-            try { OutlookAI.Diagnostics.TraceLog.Write("ResolveSearchFolders elapsed_ms=" + elapsedMs + " folders=" + folders.Count, "LiveOutlookSurface"); } catch { }
+            try { OutlookAI.Diagnostics.TraceLog.Write("ResolveSearchFolders elapsed_ms=" + elapsedMs + " folders=" + folders.Count + " cap=" + folderLimit, "LiveOutlookSurface"); } catch { }
             return folders;
         }
 
-        private void WalkMailFolders(Outlook.MAPIFolder folder, List<Outlook.MAPIFolder> results, int depth, CancellationToken ct)
+        private void WalkMailFolders(Outlook.MAPIFolder folder, List<Outlook.MAPIFolder> results, int depth, int folderLimit, CancellationToken ct)
         {
             if (folder == null || depth > MaxFolderDepth) return;
             ct.ThrowIfCancellationRequested();
@@ -1562,18 +1590,18 @@ namespace OutlookAI.Services.Tools
                 if (isMailFolder) results.Add(folder);
             }
 
-            if (results.Count >= SearchFallbackBudget.MaxSearchFolders) return;
+            if (results.Count >= folderLimit) return;
 
             try
             {
                 int childIndex = 0;
                 foreach (Outlook.MAPIFolder child in folder.Folders)
                 {
-                    WalkMailFolders(child, results, depth + 1, ct);
+                    WalkMailFolders(child, results, depth + 1, folderLimit, ct);
                     // Yield every few children to keep the UI responsive
                     // during deep folder trees.
                     if ((++childIndex % 5) == 0) YieldUi(ct);
-                    if (results.Count >= SearchFallbackBudget.MaxSearchFolders) break;
+                    if (results.Count >= folderLimit) break;
                 }
             }
             catch (COMException) { }
