@@ -56,5 +56,19 @@ namespace OutlookAI.Services.Tools
         {
             return !string.Equals(sortOrder, "oldest", StringComparison.OrdinalIgnoreCase);
         }
+
+        public static bool ShouldStopRecipientAllMailScan(
+            SearchMessagesArgs args, string scopeMode, int candidateCount)
+        {
+            if (args == null) return false;
+            if (candidateCount < args.MaxResults) return false;
+            if (args.MaxResults <= 0 || args.MaxResults == int.MaxValue) return false;
+            if (string.IsNullOrWhiteSpace(args.To)) return false;
+            if (!DescendingForSortOrder(args.SortOrder)) return false;
+            if (!string.IsNullOrWhiteSpace(args.FolderId)) return false;
+
+            return string.Equals(scopeMode, "all_mail", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(scopeMode, "auto", StringComparison.OrdinalIgnoreCase);
+        }
     }
 }

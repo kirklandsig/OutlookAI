@@ -78,5 +78,94 @@ namespace OutlookAI.Tests.Services.Tools
             Assert.True(SearchFallbackBudget.MaxSearchFolders > SearchFallbackBudget.MaxListFolders);
             Assert.True(SearchFallbackBudget.MaxSearchFolders >= 5000);
         }
+
+        [Fact]
+        public void ShouldStopRecipientAllMailScan_RecipientAllMailNewestAtMax_ReturnsTrue()
+        {
+            var args = new SearchMessagesArgs
+            {
+                Scope = "all_mail",
+                To = "Susan",
+                SortOrder = "newest",
+                MaxResults = 25,
+            };
+
+            Assert.True(SearchFallbackBudget.ShouldStopRecipientAllMailScan(args, "all_mail", candidateCount: 25));
+        }
+
+        [Fact]
+        public void ShouldStopRecipientAllMailScan_BeforeMax_ReturnsFalse()
+        {
+            var args = new SearchMessagesArgs
+            {
+                Scope = "all_mail",
+                To = "Susan",
+                SortOrder = "newest",
+                MaxResults = 25,
+            };
+
+            Assert.False(SearchFallbackBudget.ShouldStopRecipientAllMailScan(args, "all_mail", candidateCount: 24));
+        }
+
+        [Fact]
+        public void ShouldStopRecipientAllMailScan_NonRecipientAllMail_ReturnsFalse()
+        {
+            var args = new SearchMessagesArgs
+            {
+                Scope = "all_mail",
+                To = "",
+                SortOrder = "newest",
+                MaxResults = 25,
+            };
+
+            Assert.False(SearchFallbackBudget.ShouldStopRecipientAllMailScan(args, "all_mail", candidateCount: 25));
+        }
+
+        [Fact]
+        public void ShouldStopRecipientAllMailScan_ExplicitFolder_ReturnsFalse()
+        {
+            var args = new SearchMessagesArgs
+            {
+                Scope = "auto",
+                FolderId = "folder-1",
+                To = "Susan",
+                SortOrder = "newest",
+                MaxResults = 25,
+            };
+
+            Assert.False(SearchFallbackBudget.ShouldStopRecipientAllMailScan(args, "auto", candidateCount: 25));
+            Assert.False(SearchFallbackBudget.ShouldStopRecipientAllMailScan(
+                new SearchMessagesArgs { Scope = "current_folder", To = "Susan", SortOrder = "newest", MaxResults = 25 },
+                "current_folder",
+                candidateCount: 25));
+        }
+
+        [Fact]
+        public void ShouldStopRecipientAllMailScan_OldestSort_ReturnsFalse()
+        {
+            var args = new SearchMessagesArgs
+            {
+                Scope = "all_mail",
+                To = "Susan",
+                SortOrder = "oldest",
+                MaxResults = 25,
+            };
+
+            Assert.False(SearchFallbackBudget.ShouldStopRecipientAllMailScan(args, "all_mail", candidateCount: 25));
+        }
+
+        [Fact]
+        public void ShouldStopRecipientAllMailScan_CountMode_ReturnsFalse()
+        {
+            var args = new SearchMessagesArgs
+            {
+                Scope = "all_mail",
+                To = "Susan",
+                SortOrder = "newest",
+                MaxResults = int.MaxValue,
+            };
+
+            Assert.False(SearchFallbackBudget.ShouldStopRecipientAllMailScan(args, "all_mail", candidateCount: int.MaxValue));
+        }
     }
 }

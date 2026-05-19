@@ -1274,6 +1274,21 @@ namespace OutlookAI.Services.Tools
                         "LiveOutlookSurface");
                 }
                 catch { }
+
+                if (SearchFallbackBudget.ShouldStopRecipientAllMailScan(args, scopeMode, allInputs.Count))
+                {
+                    try
+                    {
+                        OutlookAI.Diagnostics.TraceLog.Write(
+                            "SearchMessages fallback recipient_all_mail_early_stop candidates=" + allInputs.Count
+                            + " searched=" + searched
+                            + " max_results=" + args.MaxResults
+                            + " recipient=" + args.To,
+                            "LiveOutlookSurface");
+                    }
+                    catch { }
+                    break;
+                }
             }
 
             return _marshaller.RunAsync(
