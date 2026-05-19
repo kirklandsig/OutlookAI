@@ -4,8 +4,8 @@ namespace OutlookAI.Services.Tools
 {
     public sealed class ToolArgValidationException : Exception
     {
-        public ToolArgValidationException(string code, string message)
-            : base(message)
+        public ToolArgValidationException(string code, string detail)
+            : base(detail)
         {
             Code = code;
         }
