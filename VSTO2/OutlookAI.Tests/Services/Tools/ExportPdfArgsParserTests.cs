@@ -30,6 +30,18 @@ namespace OutlookAI.Tests.Services.Tools
         }
 
         [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("   ")]
+        public void Parse_BlankArgs_ThrowsInvalidArgsWithContentMarkdown(string argsJson)
+        {
+            var ex = Assert.Throws<ToolArgValidationException>(() => ExportPdfArgsParser.Parse(argsJson));
+
+            Assert.Equal("invalid_args", ex.Code);
+            Assert.Contains("content_markdown", ex.Message);
+        }
+
+        [Theory]
         [InlineData("")]
         [InlineData("   ")]
         public void Parse_EmptyContentMarkdown_ThrowsInvalidArgs(string content)

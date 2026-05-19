@@ -15,7 +15,7 @@ namespace OutlookAI.Services.Tools
             JObject args;
             try
             {
-                args = JObject.Parse(argsJson);
+                args = JObject.Parse(string.IsNullOrWhiteSpace(argsJson) ? "{}" : argsJson);
             }
             catch (JsonException ex)
             {
