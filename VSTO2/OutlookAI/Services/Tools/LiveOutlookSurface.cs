@@ -678,7 +678,7 @@ namespace OutlookAI.Services.Tools
             {
                 pathResolver.EnsureExists();
             }
-            catch (IOException ex)
+            catch (Exception ex) when (IsExpectedPathUnavailable(ex))
             {
                 throw new ExportException("path_unavailable", ex.Message, ex);
             }
@@ -703,21 +703,37 @@ namespace OutlookAI.Services.Tools
 
                 using (var workbook = ExcelWorkbookBuilder.Build(args.SheetName, args.Columns, typedRows))
                 {
-                    try
+                    using (var stream = new MemoryStream())
                     {
-                        workbook.SaveAs(fullPath);
-                    }
-                    catch (IOException ex) when (IsSharingViolation(ex))
-                    {
-                        filename = ExportFilenameSanitizer.Build(args.FilenameHint + "-2", ".xlsx", DateTimeOffset.Now, candidate => File.Exists(Path.Combine(baseDir, candidate)));
-                        fullPath = Path.Combine(baseDir, filename);
+                        workbook.SaveAs(stream);
+                        ct.ThrowIfCancellationRequested();
+                        stream.Position = 0;
                         try
                         {
-                            workbook.SaveAs(fullPath);
+                            SaveNewFile(stream, fullPath);
                         }
-                        catch (IOException retryEx)
+                        catch (IOException ex) when (IsSharingViolation(ex) || IsAlreadyExists(ex))
                         {
-                            throw new ExportException("file_locked", retryEx.Message, retryEx);
+                            filename = ExportFilenameSanitizer.Build(args.FilenameHint + "-2", ".xlsx", DateTimeOffset.Now, candidate => File.Exists(Path.Combine(baseDir, candidate)));
+                            fullPath = Path.Combine(baseDir, filename);
+                            ct.ThrowIfCancellationRequested();
+                            stream.Position = 0;
+                            try
+                            {
+                                SaveNewFile(stream, fullPath);
+                            }
+                            catch (IOException retryEx) when (IsSharingViolation(retryEx))
+                            {
+                                throw new ExportException("file_locked", retryEx.Message, retryEx);
+                            }
+                            catch (IOException retryEx) when (IsDiskFull(retryEx))
+                            {
+                                throw new ExportException("disk_full", retryEx.Message, retryEx);
+                            }
+                            catch (IOException retryEx)
+                            {
+                                throw new ExportException("excel_build_failed", retryEx.Message, retryEx);
+                            }
                         }
                     }
                 }
@@ -727,6 +743,10 @@ namespace OutlookAI.Services.Tools
             catch (IOException ex) when (IsDiskFull(ex))
             {
                 throw new ExportException("disk_full", ex.Message, ex);
+            }
+            catch (IOException ex) when (IsSharingViolation(ex))
+            {
+                throw new ExportException("file_locked", ex.Message, ex);
             }
             catch (Exception ex)
             {
@@ -948,9 +968,31 @@ namespace OutlookAI.Services.Tools
 
         private void Run(Action fn) => _marshaller.RunAsync(fn, CancellationToken.None).GetAwaiter().GetResult();
 
+        private static void SaveNewFile(Stream source, string fullPath)
+        {
+            using (var file = new FileStream(fullPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                source.CopyTo(file);
+            }
+        }
+
+        private static bool IsExpectedPathUnavailable(Exception ex)
+        {
+            return ex is IOException
+                || ex is UnauthorizedAccessException
+                || ex is NotSupportedException
+                || ex is ArgumentException;
+        }
+
         private static bool IsSharingViolation(IOException ex)
         {
             return ((uint)ex.HResult & 0xFFFF) == 32;
+        }
+
+        private static bool IsAlreadyExists(IOException ex)
+        {
+            var code = (uint)ex.HResult & 0xFFFF;
+            return code == 80 || code == 183;
         }
 
         private static bool IsDiskFull(IOException ex)
