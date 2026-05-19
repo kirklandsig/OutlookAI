@@ -63,6 +63,15 @@ namespace OutlookAI.Services.Tools
             return MaxListFolders;
         }
 
+        public static SearchMessagesArgs CountFolderResolutionArgs(SearchMessagesArgs args)
+        {
+            return new SearchMessagesArgs
+            {
+                FolderId = args?.FolderId,
+                MaxResults = int.MaxValue,
+            };
+        }
+
         public static bool ShouldStopRecipientAllMailScan(
             SearchMessagesArgs args, string scopeMode, int candidateCount)
         {
@@ -80,7 +89,8 @@ namespace OutlookAI.Services.Tools
         public static bool ShouldStopBroadAllMailScan(
             SearchMessagesArgs args, string scopeMode, int candidateCount)
         {
-            if (candidateCount < args?.MaxResults) return false;
+            if (args == null) return false;
+            if (candidateCount < args.MaxResults) return false;
             return IsBroadFiniteNewestAllMail(args, IsAllMailScope(scopeMode));
         }
 

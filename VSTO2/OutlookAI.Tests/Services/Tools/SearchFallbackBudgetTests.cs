@@ -153,6 +153,17 @@ namespace OutlookAI.Tests.Services.Tools
         }
 
         [Fact]
+        public void CountFolderResolutionArgs_PreservesCountModeMaxResults()
+        {
+            var args = SearchFallbackBudget.CountFolderResolutionArgs(
+                new SearchMessagesArgs { Scope = "all_mail", SortOrder = "newest", FolderId = "folder-1" });
+
+            Assert.Equal("folder-1", args.FolderId);
+            Assert.Equal(int.MaxValue, args.MaxResults);
+            Assert.Equal(SearchFallbackBudget.MaxSearchFolders, SearchFallbackBudget.MaxFoldersForSearch(args, allMail: true));
+        }
+
+        [Fact]
         public void ShouldStopRecipientAllMailScan_RecipientAllMailNewestAtMax_ReturnsTrue()
         {
             var args = new SearchMessagesArgs
