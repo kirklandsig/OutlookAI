@@ -430,6 +430,9 @@
     <EmbeddedResource Include="WebUI\styles.css">
       <LogicalName>OutlookAI.WebUI.styles.css</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="WebUI\markdown.js">
+      <LogicalName>OutlookAI.WebUI.markdown.js</LogicalName>
+    </EmbeddedResource>
     <EmbeddedResource Include="WebUI\chat.js">
       <LogicalName>OutlookAI.WebUI.chat.js</LogicalName>
     </EmbeddedResource>

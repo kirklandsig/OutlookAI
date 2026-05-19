@@ -58,5 +58,41 @@ namespace OutlookAI.Tests.TaskPane.Chat
             // chat HTML/JS will resolve resources via this URL.
             Assert.Equal("outlookai.local", WebView2Bootstrap.VirtualHost);
         }
+
+        [Fact]
+        public void WebUi_LoadsSharedMarkdownBeforeChat()
+        {
+            var indexHtml = File.ReadAllText(FindSourceFile("OutlookAI", "WebUI", "index.html"));
+
+            var markdownIndex = indexHtml.IndexOf("<script src=\"markdown.js\"></script>");
+            var chatIndex = indexHtml.IndexOf("<script src=\"chat.js\"></script>");
+
+            Assert.True(markdownIndex >= 0, "index.html should load markdown.js.");
+            Assert.True(chatIndex >= 0, "index.html should load chat.js.");
+            Assert.True(markdownIndex < chatIndex, "markdown.js should load before chat.js.");
+        }
+
+        [Fact]
+        public void Project_EmbedsSharedMarkdownResource()
+        {
+            var projectXml = File.ReadAllText(FindSourceFile("OutlookAI", "OutlookAI.csproj"));
+
+            Assert.Contains("<EmbeddedResource Include=\"WebUI\\markdown.js\">", projectXml);
+            Assert.Contains("<LogicalName>OutlookAI.WebUI.markdown.js</LogicalName>", projectXml);
+        }
+
+        private static string FindSourceFile(params string[] relativeParts)
+        {
+            var current = new DirectoryInfo(Directory.GetCurrentDirectory());
+            while (current != null)
+            {
+                var candidate = Path.Combine(current.FullName, Path.Combine(relativeParts));
+                if (File.Exists(candidate)) return candidate;
+
+                current = current.Parent;
+            }
+
+            throw new FileNotFoundException("Could not find source file.", Path.Combine(relativeParts));
+        }
     }
 }
