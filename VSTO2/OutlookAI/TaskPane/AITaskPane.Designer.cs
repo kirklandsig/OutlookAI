@@ -20,6 +20,12 @@ namespace OutlookAI.TaskPane
 
         private void InitializeComponent()
         {
+            this.tabControl = new System.Windows.Forms.TabControl();
+            this.tabActions = new System.Windows.Forms.TabPage();
+            this.tabChat = new System.Windows.Forms.TabPage();
+            this.tabVariants = new System.Windows.Forms.TabPage();
+            this.lblChatPlaceholder = new System.Windows.Forms.Label();
+            this.lblVariantsPlaceholder = new System.Windows.Forms.Label();
             this.lblTitle = new System.Windows.Forms.Label();
             this.btnSettings = new System.Windows.Forms.Button();
             this.grpQuickActions = new System.Windows.Forms.GroupBox();
@@ -40,10 +46,56 @@ namespace OutlookAI.TaskPane
             this.btnInsert = new System.Windows.Forms.Button();
             this.btnReplace = new System.Windows.Forms.Button();
             this.btnDiscard = new System.Windows.Forms.Button();
+            this.tabControl.SuspendLayout();
+            this.tabActions.SuspendLayout();
+            this.tabChat.SuspendLayout();
+            this.tabVariants.SuspendLayout();
             this.grpQuickActions.SuspendLayout();
             this.grpDraft.SuspendLayout();
             this.panelResult.SuspendLayout();
             this.SuspendLayout();
+
+            // tabControl
+            this.tabControl.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.tabControl.Controls.Add(this.tabActions);
+            this.tabControl.Controls.Add(this.tabChat);
+            this.tabControl.Controls.Add(this.tabVariants);
+            this.tabControl.SelectedIndex = 0;
+            this.tabControl.Font = new System.Drawing.Font("Segoe UI", 9F);
+
+            // tabActions
+            this.tabActions.Text = "\u2728 Actions";
+            this.tabActions.BackColor = System.Drawing.Color.FromArgb(250, 249, 248);
+            this.tabActions.UseVisualStyleBackColor = true;
+            this.tabActions.AutoScroll = true;
+
+            // tabChat
+            this.tabChat.Text = "\uD83D\uDCAC Chat";
+            this.tabChat.BackColor = System.Drawing.Color.FromArgb(250, 249, 248);
+            this.tabChat.UseVisualStyleBackColor = true;
+
+            // tabVariants
+            this.tabVariants.Text = "\uD83C\uDFAD Variants";
+            this.tabVariants.BackColor = System.Drawing.Color.FromArgb(250, 249, 248);
+            this.tabVariants.UseVisualStyleBackColor = true;
+
+            // lblChatPlaceholder - briefly visible while WebView2 initializes;
+            // ChatController.InitializeAsync replaces this with the WebView2
+            // control (or with a friendly fallback if the runtime is missing).
+            this.lblChatPlaceholder.Text = "Loading chat...";
+            this.lblChatPlaceholder.Font = new System.Drawing.Font("Segoe UI", 9F);
+            this.lblChatPlaceholder.ForeColor = System.Drawing.Color.DarkSlateGray;
+            this.lblChatPlaceholder.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.lblChatPlaceholder.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            this.tabChat.Controls.Add(this.lblChatPlaceholder);
+
+            // lblVariantsPlaceholder (filled by VariantsController in Tasks 35-36)
+            this.lblVariantsPlaceholder.Text = "Drafting variants are generated here.\r\n\r\nUse the Actions tab to draft an email\r\nfirst, then come back to generate alternatives.";
+            this.lblVariantsPlaceholder.Font = new System.Drawing.Font("Segoe UI", 9F);
+            this.lblVariantsPlaceholder.ForeColor = System.Drawing.Color.DarkSlateGray;
+            this.lblVariantsPlaceholder.Location = new System.Drawing.Point(12, 12);
+            this.lblVariantsPlaceholder.AutoSize = true;
+            this.tabVariants.Controls.Add(this.lblVariantsPlaceholder);
 
             // lblTitle
             this.lblTitle.AutoSize = true;
@@ -243,19 +295,29 @@ namespace OutlookAI.TaskPane
             this.btnDiscard.UseVisualStyleBackColor = false;
             this.btnDiscard.Click += new System.EventHandler(this.btnDiscard_Click);
 
+            // tabActions - host the legacy Phase 1 controls.
+            this.tabActions.Controls.Add(this.lblTitle);
+            this.tabActions.Controls.Add(this.btnSettings);
+            this.tabActions.Controls.Add(this.grpQuickActions);
+            this.tabActions.Controls.Add(this.grpDraft);
+            this.tabActions.Controls.Add(this.lblStatus);
+            this.tabActions.Controls.Add(this.panelResult);
+
             // AITaskPane
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.AutoScroll = true;
+            this.AutoScroll = false; // TabControl handles its own scrolling.
             this.BackColor = System.Drawing.Color.FromArgb(250, 249, 248);
-            this.Controls.Add(this.lblTitle);
-            this.Controls.Add(this.btnSettings);
-            this.Controls.Add(this.grpQuickActions);
-            this.Controls.Add(this.grpDraft);
-            this.Controls.Add(this.lblStatus);
-            this.Controls.Add(this.panelResult);
+            this.Controls.Add(this.tabControl);
             this.Name = "AITaskPane";
-            this.Size = new System.Drawing.Size(260, 470);
+            this.Size = new System.Drawing.Size(320, 560);
+            this.tabControl.ResumeLayout(false);
+            this.tabActions.ResumeLayout(false);
+            this.tabActions.PerformLayout();
+            this.tabChat.ResumeLayout(false);
+            this.tabChat.PerformLayout();
+            this.tabVariants.ResumeLayout(false);
+            this.tabVariants.PerformLayout();
             this.grpQuickActions.ResumeLayout(false);
             this.grpDraft.ResumeLayout(false);
             this.grpDraft.PerformLayout();
@@ -267,6 +329,12 @@ namespace OutlookAI.TaskPane
 
         #endregion
 
+        private System.Windows.Forms.TabControl tabControl;
+        private System.Windows.Forms.TabPage tabActions;
+        private System.Windows.Forms.TabPage tabChat;
+        private System.Windows.Forms.TabPage tabVariants;
+        private System.Windows.Forms.Label lblChatPlaceholder;
+        private System.Windows.Forms.Label lblVariantsPlaceholder;
         private System.Windows.Forms.Label lblTitle;
         private System.Windows.Forms.Button btnSettings;
         private System.Windows.Forms.GroupBox grpQuickActions;

@@ -2,6 +2,7 @@
 <customUI xmlns="http://schemas.microsoft.com/office/2009/07/customui" onLoad="Ribbon_Load">
 	<ribbon>
 		<tabs>
+			<!-- Phase 2: compose-window ribbon button. -->
 			<tab idMso="TabNewMailMessage">
 				<group id="AIAssistantGroup" label="AI Assistant" insertAfterMso="GroupClipboard">
 					<button id="btnAIAssistant"
@@ -10,6 +11,25 @@
 							onAction="OnAIAssistantClick"
 							supertip="Open the AI Writing Assistant to help proofread, revise, and write emails."
 							imageMso="SmartArtChangeColorsGallery" />
+				</group>
+			</tab>
+			<!-- Phase 3a: Explorer ribbon button (Inbox view). Same onAction
+			     handler; ThisAddIn.ShowTaskPane context-routes based on
+			     Application.ActiveWindow(). -->
+			<tab idMso="TabMail">
+				<group id="AIAssistantExplorerGroup" label="AI Assistant" insertAfterMso="GroupMailMove">
+					<button id="btnAIAssistantExplorer"
+							label="AI Assistant"
+							size="large"
+							onAction="OnAIAssistantClick"
+							supertip="Open the AI Assistant to chat with your mailbox - summarize, search, and act on messages."
+							imageMso="SmartArtChangeColorsGallery" />
+					<button id="btnReports"
+							label="Reports"
+							size="large"
+							onAction="OnReportsClick"
+							supertip="Open the Inbox Reports pane to generate digests, action items, conversation summaries, and stats."
+							imageMso="PivotTableInsert" />
 				</group>
 			</tab>
 		</tabs>

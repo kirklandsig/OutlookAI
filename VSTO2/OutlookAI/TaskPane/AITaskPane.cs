@@ -1,36 +1,201 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
-using System.Windows.Forms;
-using System.Threading.Tasks;
 using System.IO;
-using System.Net;
-using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows.Forms;
 using NAudio.Wave;
+using OutlookAI.Diagnostics;
 using OutlookAI.Services;
+using OutlookAI.Services.Chat;
+using OutlookAI.Services.Export;
+using OutlookAI.Services.Tools;
+using OutlookAI.TaskPane.Chat;
+using OutlookAI.TaskPane.Variants;
 using Outlook = Microsoft.Office.Interop.Outlook;
 
 namespace OutlookAI.TaskPane
 {
     public partial class AITaskPane : UserControl
     {
-        private readonly ClaudeService _claudeService;
         private string _lastResult;
         private WaveInEvent _waveIn;
-        private WaveFileWriter _waveWriter;
-        private string _tempAudioFile;
+        private MemoryStream _pcmBuffer;
         private TextBox _activeTextBox;
         private Button _activeMicButton;
-        private bool _isRecording = false;
+        private bool _isRecording;
         private readonly object _recordLock = new object();
+
+        // Phase 2 (Task 30) additions
+        private Outlook.Inspector _inspector;
+        private LiveOutlookSurface _surface;
+        private OutlookToolHost _toolHost;
+        private CancellationTokenSource _activeCts;
+        private Button _btnCancel;
+        private Label _lblToolStrip;
+        private readonly List<string> _toolStripLines = new List<string>();
+
+        // Phase 2 (Task 34) additions
+        private ConversationStore _conversationStore;
+        private ChatController _chatController;
+
+        // Phase 2 (Tasks 35-36) additions
+        private VariantsController _variantsController;
 
         public AITaskPane()
         {
-            InitializeComponent();
-            _claudeService = new ClaudeService();
+            using (TraceLog.Scope("ctor", "AITaskPane"))
+            {
+                InitializeComponent();
+                TraceLog.Write("InitializeComponent done", "AITaskPane");
+                BuildPhase2Controls();
+                TraceLog.Write("BuildPhase2Controls done", "AITaskPane");
+                tabControl.Selected += (s, e) =>
+                    TraceLog.Write("TabControl Selected: " + (e.TabPage?.Text ?? "<null>"), "AITaskPane");
+                tabControl.Deselected += (s, e) =>
+                    TraceLog.Write("TabControl Deselected: " + (e.TabPage?.Text ?? "<null>"), "AITaskPane");
+                this.HandleCreated += (s, e) => TraceLog.Write("HandleCreated", "AITaskPane");
+                this.VisibleChanged += (s, e) => TraceLog.Write("VisibleChanged Visible=" + this.Visible, "AITaskPane");
+            }
         }
 
         /// <summary>
-        /// Call this when the task pane becomes visible for a new email
+        /// Bind this task pane to its owning Outlook Inspector. Called by
+        /// <see cref="ThisAddIn.ShowTaskPane"/> immediately after construction.
+        /// Builds the per-pane tool host so the chat service can call mailbox
+        /// tools scoped to this specific compose window.
+        /// </summary>
+        public void Bind(Outlook.Inspector inspector)
+        {
+            using (TraceLog.Scope("Bind", "AITaskPane"))
+            {
+                _inspector = inspector;
+                try
+                {
+                    var marshaller = Globals.ThisAddIn?.OutlookMarshaller;
+                    var ids = Globals.ThisAddIn?.IdResolver;
+                    var app = Globals.ThisAddIn?.Application;
+                    var runner = Globals.ThisAddIn?.AdvancedSearchRunner;
+                    var classifier = Globals.ThisAddIn?.FolderClassifier;
+                    TraceLog.Write("Services: marshaller=" + (marshaller != null) + " ids=" + (ids != null)
+                        + " app=" + (app != null) + " runner=" + (runner != null), "AITaskPane");
+                    if (marshaller != null && ids != null && app != null && runner != null)
+                    {
+                        _surface = new LiveOutlookSurface(app, marshaller, ids,
+                            composeInspector: inspector, explorer: null,
+                            runner: runner, classifier: classifier);
+                        _toolHost = new OutlookToolHost(_surface, Config.WriteToolsEnabled);
+                        TraceLog.Write("surface + toolHost constructed", "AITaskPane");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    TraceLog.Write("surface/toolHost error: " + ex, "AITaskPane");
+                }
+
+                // Bring up the Chat tab's WebView2 surface. Fire-and-forget; the
+                // controller swaps in a fallback Label if WebView2 fails to init.
+                try
+                {
+                    if (ChatService != null && _toolHost != null && _surface != null)
+                    {
+                        _conversationStore = new ConversationStore();
+                        _chatController = new ChatController(
+                            tabChat, ChatService, _toolHost, _surface, _conversationStore);
+                        TraceLog.Write("ChatController constructed; firing InitializeAsync (fire-and-forget)", "AITaskPane");
+                        var initTask = _chatController.InitializeAsync();
+                        // Observe the fire-and-forget so exceptions don't get
+                        // silently swallowed during this investigation.
+                        initTask.ContinueWith(t =>
+                        {
+                            if (t.IsFaulted)
+                                TraceLog.Write("ChatController.InitializeAsync FAULTED: " + t.Exception, "AITaskPane");
+                            else if (t.IsCanceled)
+                                TraceLog.Write("ChatController.InitializeAsync CANCELLED", "AITaskPane");
+                            else
+                                TraceLog.Write("ChatController.InitializeAsync completed", "AITaskPane");
+                        }, TaskScheduler.Default);
+                        TraceLog.Write("InitializeAsync returned (async still in flight)", "AITaskPane");
+                    }
+                    else
+                    {
+                        TraceLog.Write("ChatController NOT created (ChatService/toolHost/surface null)", "AITaskPane");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    TraceLog.Write("ChatController construction error: " + ex, "AITaskPane");
+                }
+
+                try
+                {
+                    if (ChatService != null && _toolHost != null && _surface != null)
+                    {
+                        tabVariants.Controls.Clear();
+                        _variantsController = new VariantsController(
+                            tabVariants, ChatService, _toolHost, _surface,
+                            insertCallback: body => InsertEmailBody(body),
+                            replaceCallback: body => SetEmailBody(body));
+                        TraceLog.Write("VariantsController constructed; calling BuildUi", "AITaskPane");
+                        _variantsController.BuildUi();
+                        TraceLog.Write("VariantsController.BuildUi returned", "AITaskPane");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    TraceLog.Write("VariantsController error: " + ex, "AITaskPane");
+                }
+            }
+        }
+
+        private void BuildPhase2Controls()
+        {
+            // Cancel button: lives next to lblStatus on the Actions tab; only
+            // visible while a turn is in flight.
+            _btnCancel = new Button
+            {
+                Text = "Cancel",
+                Visible = false,
+                Width = 70,
+                Height = 22,
+                Font = new Font("Segoe UI", 8F),
+                Location = new Point(lblStatus.Location.X + 165, lblStatus.Location.Y - 3)
+            };
+            _btnCancel.Click += BtnCancel_Click;
+            tabActions.Controls.Add(_btnCancel);
+
+            // Tool-call strip: a single multi-line label that records each
+            // tool invocation as the chat loop emits OnToolCallStart /
+            // OnToolCallResult events. Sits between the status line and the
+            // existing result panel.
+            _lblToolStrip = new Label
+            {
+                Location = new Point(10, lblStatus.Location.Y + 22),
+                Size = new Size(290, 60),
+                AutoSize = false,
+                Font = new Font("Segoe UI", 8F),
+                ForeColor = Color.DarkSlateGray,
+                Visible = false,
+                Text = ""
+            };
+            tabActions.Controls.Add(_lblToolStrip);
+
+            // Reposition panelResult down 60 px to make room for the strip.
+            panelResult.Location = new Point(panelResult.Location.X, panelResult.Location.Y + 60);
+        }
+
+        private CodexChatService ChatService
+            => Globals.ThisAddIn != null ? Globals.ThisAddIn.ChatService : null;
+
+        private RealtimeVoiceService VoiceService
+            => Globals.ThisAddIn != null ? Globals.ThisAddIn.VoiceService : null;
+
+        private CodexAuthService AuthService
+            => Globals.ThisAddIn != null ? Globals.ThisAddIn.AuthService : null;
+
+        /// <summary>
+        /// Call this when the task pane becomes visible for a new email.
         /// </summary>
         public void ResetForNewEmail()
         {
@@ -40,6 +205,12 @@ namespace OutlookAI.TaskPane
             lblStatus.Visible = false;
             _lastResult = null;
         }
+
+        // -------------------------------------------------------------------
+        // Voice capture (mic) — streams raw 16-kHz / 16-bit / mono PCM into
+        // a MemoryStream, then hands that stream to RealtimeVoiceService.
+        // No more on-disk WAV; no more REST POST to /v1/audio/transcriptions.
+        // -------------------------------------------------------------------
 
         private void StartRecording(TextBox targetTextBox, Button micButton)
         {
@@ -51,35 +222,35 @@ namespace OutlookAI.TaskPane
 
             try
             {
+                if (!RequireSignedIn("Sign in to OutlookAI before using voice input."))
+                {
+                    return;
+                }
+
                 _activeTextBox = targetTextBox;
                 _activeMicButton = micButton;
+                _pcmBuffer = new MemoryStream();
 
-                // Create temp file for audio
-                _tempAudioFile = Path.Combine(Path.GetTempPath(), $"outlook_ai_{Guid.NewGuid()}.wav");
-
-                // Setup audio recording
-                _waveIn = new WaveInEvent();
-                _waveIn.WaveFormat = new WaveFormat(16000, 16, 1); // 16kHz, 16-bit, mono (optimal for Whisper)
+                _waveIn = new WaveInEvent
+                {
+                    WaveFormat = new WaveFormat(16000, 16, 1) // matches Realtime input_audio_format=pcm16
+                };
                 _waveIn.DataAvailable += WaveIn_DataAvailable;
                 _waveIn.RecordingStopped += WaveIn_RecordingStopped;
 
-                _waveWriter = new WaveFileWriter(_tempAudioFile, _waveIn.WaveFormat);
-
                 _isRecording = true;
 
-                // Visual feedback
                 micButton.BackColor = Color.LightCoral;
                 micButton.ForeColor = Color.White;
                 micButton.Text = "...";
                 ShowStatus("Recording... Click again to stop and transcribe.", false);
 
                 _waveIn.StartRecording();
-                System.Diagnostics.Debug.WriteLine("Recording started: " + _tempAudioFile);
             }
             catch (Exception ex)
             {
                 ShowStatus("Mic error: " + ex.Message, true);
-                System.Diagnostics.Debug.WriteLine("Recording error: " + ex.Message);
+                System.Diagnostics.Debug.WriteLine("Recording error: " + ex);
                 CleanupRecording();
             }
         }
@@ -88,9 +259,9 @@ namespace OutlookAI.TaskPane
         {
             lock (_recordLock)
             {
-                if (_waveWriter != null && _isRecording)
+                if (_pcmBuffer != null && _isRecording)
                 {
-                    _waveWriter.Write(e.Buffer, 0, e.BytesRecorded);
+                    _pcmBuffer.Write(e.Buffer, 0, e.BytesRecorded);
                 }
             }
         }
@@ -102,28 +273,29 @@ namespace OutlookAI.TaskPane
 
         private async void StopRecordingAndTranscribe()
         {
-            if (!_isRecording) return;
+            if (!_isRecording)
+            {
+                return;
+            }
 
             _isRecording = false;
             var textBox = _activeTextBox;
             var micButton = _activeMicButton;
-            var audioFile = _tempAudioFile;
+            byte[] pcmBytes;
 
             try
             {
-                // Stop recording
                 _waveIn?.StopRecording();
-
-                lock (_recordLock)
-                {
-                    _waveWriter?.Dispose();
-                    _waveWriter = null;
-                }
-
                 _waveIn?.Dispose();
                 _waveIn = null;
 
-                // Update UI
+                lock (_recordLock)
+                {
+                    pcmBytes = _pcmBuffer != null ? _pcmBuffer.ToArray() : new byte[0];
+                    _pcmBuffer?.Dispose();
+                    _pcmBuffer = null;
+                }
+
                 if (micButton != null)
                 {
                     micButton.BackColor = SystemColors.Control;
@@ -133,18 +305,24 @@ namespace OutlookAI.TaskPane
 
                 ShowStatus("Transcribing...", false);
 
-                // Check file size
-                var fileInfo = new FileInfo(audioFile);
-                System.Diagnostics.Debug.WriteLine($"Audio file size: {fileInfo.Length} bytes");
-
-                if (fileInfo.Length < 1000)
+                if (pcmBytes.Length < 32000) // ~1s of 16-kHz mono PCM
                 {
                     ShowStatus("Recording too short. Please try again.", true);
                     return;
                 }
 
-                // Send to Whisper API
-                string transcription = await Task.Run(() => TranscribeWithWhisper(audioFile));
+                var voice = VoiceService;
+                if (voice == null)
+                {
+                    ShowStatus("Voice service unavailable. Restart Outlook.", true);
+                    return;
+                }
+
+                string transcription;
+                using (var stream = new MemoryStream(pcmBytes, writable: false))
+                {
+                    transcription = await voice.TranscribeAsync(stream, CancellationToken.None);
+                }
 
                 if (!string.IsNullOrEmpty(transcription))
                 {
@@ -152,7 +330,6 @@ namespace OutlookAI.TaskPane
                     {
                         if (textBox != null)
                         {
-                            // Replace text instead of appending
                             textBox.Text = transcription;
                         }
                         ShowStatus("Transcription complete!", false);
@@ -165,113 +342,14 @@ namespace OutlookAI.TaskPane
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine("Transcription error: " + ex.Message);
+                System.Diagnostics.Debug.WriteLine("Transcription error: " + ex);
                 InvokeOnUI(() => ShowStatus("Transcription error: " + ex.Message, true));
             }
             finally
             {
-                // Cleanup temp file
-                try
-                {
-                    if (File.Exists(audioFile))
-                        File.Delete(audioFile);
-                }
-                catch { }
-
                 _activeTextBox = null;
                 _activeMicButton = null;
             }
-        }
-
-        private string TranscribeWithWhisper(string audioFilePath)
-        {
-            try
-            {
-                ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
-
-                string boundary = "----WebKitFormBoundary" + DateTime.Now.Ticks.ToString("x");
-                byte[] fileBytes = File.ReadAllBytes(audioFilePath);
-
-                // Build multipart body in memory
-                using (var bodyStream = new MemoryStream())
-                {
-                    var encoding = new UTF8Encoding(false); // No BOM
-
-                    // File field
-                    byte[] fileHeader = encoding.GetBytes(
-                        $"--{boundary}\r\n" +
-                        $"Content-Disposition: form-data; name=\"file\"; filename=\"audio.wav\"\r\n" +
-                        $"Content-Type: audio/wav\r\n\r\n");
-                    bodyStream.Write(fileHeader, 0, fileHeader.Length);
-                    bodyStream.Write(fileBytes, 0, fileBytes.Length);
-
-                    // Model field
-                    byte[] modelField = encoding.GetBytes(
-                        $"\r\n--{boundary}\r\n" +
-                        $"Content-Disposition: form-data; name=\"model\"\r\n\r\n" +
-                        $"{Config.WhisperModel}");
-                    bodyStream.Write(modelField, 0, modelField.Length);
-
-                    // Language field
-                    byte[] langField = encoding.GetBytes(
-                        $"\r\n--{boundary}\r\n" +
-                        $"Content-Disposition: form-data; name=\"language\"\r\n\r\n" +
-                        $"en");
-                    bodyStream.Write(langField, 0, langField.Length);
-
-                    // Closing boundary
-                    byte[] closing = encoding.GetBytes($"\r\n--{boundary}--\r\n");
-                    bodyStream.Write(closing, 0, closing.Length);
-
-                    byte[] bodyBytes = bodyStream.ToArray();
-
-                    var request = (HttpWebRequest)WebRequest.Create("https://api.openai.com/v1/audio/transcriptions");
-                    request.Method = "POST";
-                    request.ContentType = "multipart/form-data; boundary=" + boundary;
-                    request.ContentLength = bodyBytes.Length;
-                    request.Headers.Add("Authorization", "Bearer " + Config.OpenAIApiKey);
-
-                    using (var requestStream = request.GetRequestStream())
-                    {
-                        requestStream.Write(bodyBytes, 0, bodyBytes.Length);
-                    }
-
-                    using (var response = (HttpWebResponse)request.GetResponse())
-                    using (var reader = new StreamReader(response.GetResponseStream()))
-                    {
-                        string json = reader.ReadToEnd();
-                        System.Diagnostics.Debug.WriteLine("Whisper response: " + json);
-
-                        // Parse "text" field from JSON
-                        int textStart = json.IndexOf("\"text\":");
-                        if (textStart >= 0)
-                        {
-                            textStart = json.IndexOf("\"", textStart + 7) + 1;
-                            int textEnd = json.IndexOf("\"", textStart);
-                            if (textEnd > textStart)
-                            {
-                                string text = json.Substring(textStart, textEnd - textStart);
-                                return text.Replace("\\n", "\n").Replace("\\\"", "\"");
-                            }
-                        }
-                    }
-                }
-            }
-            catch (WebException ex)
-            {
-                if (ex.Response != null)
-                {
-                    using (var reader = new StreamReader(ex.Response.GetResponseStream()))
-                    {
-                        string error = reader.ReadToEnd();
-                        System.Diagnostics.Debug.WriteLine("Whisper API error: " + error);
-                        throw new Exception("Whisper API: " + error);
-                    }
-                }
-                throw;
-            }
-
-            return null;
         }
 
         private void CleanupRecording()
@@ -280,11 +358,11 @@ namespace OutlookAI.TaskPane
 
             lock (_recordLock)
             {
-                try { _waveWriter?.Dispose(); } catch { }
-                _waveWriter = null;
+                try { _pcmBuffer?.Dispose(); } catch { /* ignore */ }
+                _pcmBuffer = null;
             }
 
-            try { _waveIn?.Dispose(); } catch { }
+            try { _waveIn?.Dispose(); } catch { /* ignore */ }
             _waveIn = null;
 
             if (_activeMicButton != null)
@@ -293,13 +371,6 @@ namespace OutlookAI.TaskPane
                 _activeMicButton.ForeColor = Color.Red;
                 _activeMicButton.Text = "\u25CF";
             }
-
-            try
-            {
-                if (!string.IsNullOrEmpty(_tempAudioFile) && File.Exists(_tempAudioFile))
-                    File.Delete(_tempAudioFile);
-            }
-            catch { }
 
             _activeTextBox = null;
             _activeMicButton = null;
@@ -310,36 +381,38 @@ namespace OutlookAI.TaskPane
             StartRecording(txtDraftPrompt, btnMicDraft);
         }
 
-        // SetMailItem removed - we always use ActiveInspector now
+        // -------------------------------------------------------------------
+        // Text actions — all routed through CodexChatService -> Codex backend.
+        // -------------------------------------------------------------------
 
         private async void btnProofread_Click(object sender, EventArgs e)
         {
-            await ProcessAction(ClaudeService.ActionType.Proofread);
+            await ProcessAction(CodexChatService.ActionType.Proofread);
         }
 
         private async void btnRevise_Click(object sender, EventArgs e)
         {
-            await ProcessAction(ClaudeService.ActionType.Revise);
+            await ProcessAction(CodexChatService.ActionType.Revise);
         }
 
         private async void btnShorten_Click(object sender, EventArgs e)
         {
-            await ProcessAction(ClaudeService.ActionType.Shorten);
+            await ProcessAction(CodexChatService.ActionType.Shorten);
         }
 
         private async void btnLengthen_Click(object sender, EventArgs e)
         {
-            await ProcessAction(ClaudeService.ActionType.Lengthen);
+            await ProcessAction(CodexChatService.ActionType.Lengthen);
         }
 
         private async void btnFormal_Click(object sender, EventArgs e)
         {
-            await ProcessAction(ClaudeService.ActionType.Formal);
+            await ProcessAction(CodexChatService.ActionType.Formal);
         }
 
         private async void btnFriendly_Click(object sender, EventArgs e)
         {
-            await ProcessAction(ClaudeService.ActionType.Friendly);
+            await ProcessAction(CodexChatService.ActionType.Friendly);
         }
 
         private async void btnDraft_Click(object sender, EventArgs e)
@@ -349,45 +422,111 @@ namespace OutlookAI.TaskPane
                 ShowStatus("Please enter instructions for the email you want to draft.", true);
                 return;
             }
-            await ProcessAction(ClaudeService.ActionType.Draft, txtDraftPrompt.Text);
+            await ProcessAction(CodexChatService.ActionType.Draft, txtDraftPrompt.Text);
         }
 
-        private async Task ProcessAction(ClaudeService.ActionType action, string prompt = "")
+        private async Task ProcessAction(CodexChatService.ActionType action, string prompt = "")
         {
-            // Stop any active recording
-            if (_isRecording) CleanupRecording();
+            TraceLog.Write(">> ProcessAction " + action, "AITaskPane");
+            if (_isRecording)
+            {
+                CleanupRecording();
+            }
+
+            if (!RequireSignedIn("Sign in to OutlookAI before using AI actions."))
+            {
+                return;
+            }
+
+            var chat = ChatService;
+            if (chat == null)
+            {
+                ShowStatus("Chat service unavailable. Restart Outlook.", true);
+                return;
+            }
 
             string emailContent = GetEmailBody();
-
-            // For non-Draft actions, we need existing content to work with
-            if (action != ClaudeService.ActionType.Draft && string.IsNullOrWhiteSpace(emailContent))
+            if (action != CodexChatService.ActionType.Draft && string.IsNullOrWhiteSpace(emailContent))
             {
                 ShowStatus("No email content found. Please write something first.", true);
                 return;
             }
 
-            // For Draft, truncate chain to avoid token limits (keep ~4000 chars)
-            if (action == ClaudeService.ActionType.Draft && emailContent.Length > 4000)
+            if (action == CodexChatService.ActionType.Draft && emailContent.Length > 4000)
             {
                 emailContent = emailContent.Substring(0, 4000) + "\n[... earlier messages truncated ...]";
             }
 
+            // Build the per-turn context. The Phase 2 system prompt is the
+            // Phase 1 prompt plus a tool-awareness addendum.
+            const string toolAddendum =
+                "\n\nYou may call mailbox tools if you need additional context "
+                + "(e.g. reading another message in the thread, searching the inbox, "
+                + "or creating/categorizing follow-up drafts). Most quick edits do "
+                + "not require any tools.";
+            var ctx = new ConversationContext
+            {
+                SystemInstructions = CodexChatService.GetSystemPrompt(action) + toolAddendum,
+                IncludeWriteTools = Config.WriteToolsEnabled
+            };
+
+            var userMessage = CodexChatService.BuildUserMessage(action, emailContent, prompt ?? "");
+            var toolHost = _toolHost ?? new OutlookToolHost(new NullSurface(), includeWriteTools: false);
+            var sink = new ActionsTabSink(this);
+
+            _toolStripLines.Clear();
+            InvokeOnUI(() =>
+            {
+                _lblToolStrip.Text = "";
+                _lblToolStrip.Visible = false;
+            });
+
+            _activeCts = new CancellationTokenSource();
             SetUIEnabled(false);
+            _btnCancel.Visible = true;
             ShowStatus("Processing...", false);
 
             try
             {
-                string result = await Task.Run(() =>
-                    _claudeService.ProcessEmailAsync(action, emailContent, prompt).Result);
+                var turnResult = await chat.RunTurnAsync(ctx, userMessage, toolHost, sink, _activeCts.Token);
 
-                _lastResult = result;
+                _lastResult = turnResult.FinalAssistantText ?? "";
 
                 InvokeOnUI(() =>
                 {
                     txtResult.Text = _lastResult;
-                    panelResult.Visible = true;
-                    ShowStatus("Done! Review the result below.", false);
+                    panelResult.Visible = !string.IsNullOrEmpty(_lastResult);
+                    string verdict;
+                    switch (turnResult.StopReason)
+                    {
+                        case StopReason.Completed:
+                            verdict = "Done! Review the result below.";
+                            break;
+                        case StopReason.Cancelled:
+                            verdict = "Stopped. Partial result shown.";
+                            break;
+                        case StopReason.MaxRoundsReached:
+                            verdict = "Reached max tool rounds. Partial result shown.";
+                            break;
+                        case StopReason.Error:
+                            verdict = "Error: " + (turnResult.ErrorMessage ?? "unknown");
+                            break;
+                        default:
+                            verdict = turnResult.StopReason.ToString();
+                            break;
+                    }
+                    ShowStatus(verdict, turnResult.StopReason == StopReason.Error);
                     SetUIEnabled(true);
+                    _btnCancel.Visible = false;
+                });
+            }
+            catch (OperationCanceledException)
+            {
+                InvokeOnUI(() =>
+                {
+                    ShowStatus("Cancelled.", false);
+                    SetUIEnabled(true);
+                    _btnCancel.Visible = false;
                 });
             }
             catch (Exception ex)
@@ -399,8 +538,84 @@ namespace OutlookAI.TaskPane
                     MessageBox.Show(msg, "OutlookAI Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     panelResult.Visible = false;
                     SetUIEnabled(true);
+                    _btnCancel.Visible = false;
                 });
             }
+            finally
+            {
+                _activeCts?.Dispose();
+                _activeCts = null;
+                TraceLog.Write("<< ProcessAction " + action, "AITaskPane");
+            }
+        }
+
+        private void BtnCancel_Click(object sender, EventArgs e)
+        {
+            try { _activeCts?.Cancel(); } catch { /* swallowed */ }
+        }
+
+        /// <summary>
+        /// Local sink that pipes tool-call events into the AITaskPane's
+        /// tool-strip label. We don't stream token deltas to the strip - the
+        /// final assistant text lands in the existing Result text box once
+        /// the turn completes.
+        /// </summary>
+        private sealed class ActionsTabSink : ChatEventSink
+        {
+            private readonly AITaskPane _pane;
+            public ActionsTabSink(AITaskPane pane) { _pane = pane; }
+
+            public override void OnToolCallStart(string callId, string name, string argsJson)
+            {
+                _pane.AppendToolStrip("  ... " + name);
+            }
+
+            public override void OnToolCallResult(string callId, bool ok, string summary, string resultJson)
+            {
+                var glyph = ok ? "\u2713" : "\u26A0"; // check or warning
+                _pane.AppendToolStrip("  " + glyph + " " + summary);
+            }
+
+            public override void OnError(string message)
+            {
+                _pane.AppendToolStrip("  ! " + (message ?? ""));
+            }
+        }
+
+        private void AppendToolStrip(string line)
+        {
+            _toolStripLines.Add(line);
+            // Keep the strip bounded so it doesn't bloat past its 60-px height.
+            while (_toolStripLines.Count > 6) _toolStripLines.RemoveAt(0);
+            InvokeOnUI(() =>
+            {
+                _lblToolStrip.Text = string.Join("\r\n", _toolStripLines);
+                _lblToolStrip.Visible = _toolStripLines.Count > 0;
+            });
+        }
+
+        // Fallback surface used when Bind() hasn't been called (e.g. legacy
+        // task-pane creation paths that don't supply an Inspector). Returns
+        // empty / null for everything so write-tools are disabled and reads
+        // produce safe defaults.
+        private sealed class NullSurface : IOutlookSurface
+        {
+            public ComposeStateResult GetCurrentComposeState(bool includeFullBody) => new ComposeStateResult();
+            public IReadOnlyList<FolderResult> ListFolders() => new FolderResult[0];
+            public IReadOnlyList<MessageSummary> SearchMessages(SearchMessagesArgs args, System.Threading.CancellationToken ct = default(System.Threading.CancellationToken)) => new MessageSummary[0];
+            public MessageDetail ReadMessage(string messageId, bool includeFullBody) => null;
+            public IReadOnlyList<MessageDetail> ReadMessages(string[] ids, bool includeBody, int maxItems, System.Threading.CancellationToken ct = default(System.Threading.CancellationToken)) => new MessageDetail[0];
+            public int CountMessages(SearchMessagesArgs args, System.Threading.CancellationToken ct = default(System.Threading.CancellationToken)) => 0;
+            public IReadOnlyList<AggregationBucket> AggregateMessages(AggregateMessagesArgs args, System.Threading.CancellationToken ct = default(System.Threading.CancellationToken)) => new AggregationBucket[0];
+            public IReadOnlyList<ThreadSummary> ListRecentThreadsWith(string recipientEmail, int maxThreads) => new ThreadSummary[0];
+            public FileSavedResult ExportExcel(ExportExcelArgs args, System.Threading.CancellationToken ct = default(System.Threading.CancellationToken)) => null;
+            public FileSavedResult ExportPdf(ExportPdfArgs args, System.Threading.CancellationToken ct = default(System.Threading.CancellationToken)) => null;
+            public CreatedDraft CreateDraft(CreateDraftArgs args) => null;
+            public CurrentSelectionResult GetCurrentSelection(bool includeFullBodies, int maxItems)
+                => new CurrentSelectionResult { Folder = "", FolderId = "", Count = 0, Messages = new MessageDetail[0] };
+            public void MarkAsRead(string messageId, bool read) { }
+            public void FlagMessage(string messageId, string flag) { }
+            public void SetCategory(string messageId, string category) { }
         }
 
         private void InvokeOnUI(Action action)
@@ -417,27 +632,21 @@ namespace OutlookAI.TaskPane
 
         private void btnInsert_Click(object sender, EventArgs e)
         {
-            if (!string.IsNullOrEmpty(_lastResult))
+            if (!string.IsNullOrEmpty(_lastResult) && InsertEmailBody(_lastResult))
             {
-                if (InsertEmailBody(_lastResult))
-                {
-                    panelResult.Visible = false;
-                    txtDraftPrompt.Text = "";
-                    ShowStatus("Draft inserted!", false);
-                }
+                panelResult.Visible = false;
+                txtDraftPrompt.Text = "";
+                ShowStatus("Draft inserted!", false);
             }
         }
 
         private void btnReplace_Click(object sender, EventArgs e)
         {
-            if (!string.IsNullOrEmpty(_lastResult))
+            if (!string.IsNullOrEmpty(_lastResult) && SetEmailBody(_lastResult))
             {
-                if (SetEmailBody(_lastResult))
-                {
-                    panelResult.Visible = false;
-                    txtDraftPrompt.Text = "";
-                    ShowStatus("Email replaced!", false);
-                }
+                panelResult.Visible = false;
+                txtDraftPrompt.Text = "";
+                ShowStatus("Email replaced!", false);
             }
         }
 
@@ -455,6 +664,10 @@ namespace OutlookAI.TaskPane
                 settingsForm.ShowDialog();
             }
         }
+
+        // -------------------------------------------------------------------
+        // Outlook OOM helpers (unchanged behavior)
+        // -------------------------------------------------------------------
 
         private string GetEmailBody()
         {
@@ -489,7 +702,6 @@ namespace OutlookAI.TaskPane
                     if (currentItem is Outlook.MailItem mail)
                     {
                         string existingBody = mail.Body ?? "";
-                        // Insert at top with separator
                         mail.Body = text + "\n\n" + existingBody;
                         return true;
                     }
@@ -550,92 +762,32 @@ namespace OutlookAI.TaskPane
             txtDraftPrompt.Enabled = enabled;
         }
 
+        private bool RequireSignedIn(string promptMessage)
+        {
+            var auth = AuthService;
+            if (auth == null)
+            {
+                ShowStatus("Auth service unavailable. Restart Outlook.", true);
+                return false;
+            }
+            var status = auth.GetStatus();
+            if (status.State == AuthState.Authenticated)
+            {
+                return true;
+            }
+            ShowStatus(promptMessage, true);
+            using (var settingsForm = new SettingsForm(auth))
+            {
+                settingsForm.ShowDialog();
+            }
+            return auth.GetStatus().State == AuthState.Authenticated;
+        }
+
         partial void DisposeCustomResources()
         {
             CleanupRecording();
-        }
-    }
-
-    public class SettingsForm : Form
-    {
-        private TextBox txtPassword;
-        private TextBox txtApiKey;
-        private ComboBox cboModel;
-        private NumericUpDown numMaxTokens;
-        private TextBox txtNewPassword;
-        private Button btnSave;
-        private Panel panelSettings;
-        private Label lblError;
-        private bool _authenticated = false;
-
-        public SettingsForm()
-        {
-            this.Text = "AI Assistant Settings";
-            this.Size = new Size(400, 350);
-            this.StartPosition = FormStartPosition.CenterParent;
-            this.FormBorderStyle = FormBorderStyle.FixedDialog;
-            this.MaximizeBox = false;
-            this.MinimizeBox = false;
-
-            var lblPassword = new Label { Text = "Admin Password:", Location = new Point(20, 20), AutoSize = true };
-            txtPassword = new TextBox { Location = new Point(20, 45), Width = 340, PasswordChar = '*' };
-            var btnLogin = new Button { Text = "Login", Location = new Point(280, 75), Width = 80 };
-            btnLogin.Click += BtnLogin_Click;
-
-            lblError = new Label { Location = new Point(20, 80), AutoSize = true, ForeColor = Color.DarkRed, Visible = false };
-
-            panelSettings = new Panel { Location = new Point(0, 110), Size = new Size(400, 200), Visible = false };
-
-            var lblApiKey = new Label { Text = "API Key (leave blank to keep current):", Location = new Point(20, 10), AutoSize = true };
-            txtApiKey = new TextBox { Location = new Point(20, 30), Width = 340, PasswordChar = '*' };
-
-            var lblModel = new Label { Text = "Model:", Location = new Point(20, 60), AutoSize = true };
-            cboModel = new ComboBox { Location = new Point(20, 80), Width = 340, DropDownStyle = ComboBoxStyle.DropDownList };
-            cboModel.Items.AddRange(Config.AvailableModels);
-            cboModel.SelectedItem = Config.Model;
-
-            var lblMaxTokens = new Label { Text = "Max Tokens:", Location = new Point(20, 110), AutoSize = true };
-            numMaxTokens = new NumericUpDown { Location = new Point(20, 130), Width = 100, Minimum = 256, Maximum = 4096, Value = Config.MaxTokens };
-
-            var lblNewPassword = new Label { Text = "New Password (leave blank to keep):", Location = new Point(20, 160), AutoSize = true };
-            txtNewPassword = new TextBox { Location = new Point(20, 180), Width = 200, PasswordChar = '*' };
-
-            btnSave = new Button { Text = "Save", Location = new Point(200, 210), Width = 80 };
-            btnSave.Click += BtnSave_Click;
-
-            var btnCancel = new Button { Text = "Cancel", Location = new Point(290, 210), Width = 80 };
-            btnCancel.Click += (s, e) => this.Close();
-
-            panelSettings.Controls.AddRange(new Control[] { lblApiKey, txtApiKey, lblModel, cboModel, lblMaxTokens, numMaxTokens, lblNewPassword, txtNewPassword, btnSave, btnCancel });
-            this.Controls.AddRange(new Control[] { lblPassword, txtPassword, btnLogin, lblError, panelSettings });
-        }
-
-        private void BtnLogin_Click(object sender, EventArgs e)
-        {
-            if (txtPassword.Text == Config.AdminPassword)
-            {
-                _authenticated = true;
-                panelSettings.Visible = true;
-                lblError.Visible = false;
-                txtPassword.Enabled = false;
-            }
-            else
-            {
-                lblError.Text = "Invalid password";
-                lblError.Visible = true;
-            }
-        }
-
-        private void BtnSave_Click(object sender, EventArgs e)
-        {
-            if (!_authenticated) return;
-            if (!string.IsNullOrWhiteSpace(txtApiKey.Text)) Config.ApiKey = txtApiKey.Text;
-            if (cboModel.SelectedItem != null) Config.Model = cboModel.SelectedItem.ToString();
-            Config.MaxTokens = (int)numMaxTokens.Value;
-            if (!string.IsNullOrWhiteSpace(txtNewPassword.Text)) Config.AdminPassword = txtNewPassword.Text;
-            Config.SaveConfig();
-            MessageBox.Show("Settings saved!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            this.Close();
+            try { _chatController?.Dispose(); } catch { }
+            try { _variantsController?.Dispose(); } catch { }
         }
     }
 }
