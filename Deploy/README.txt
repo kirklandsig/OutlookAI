@@ -37,8 +37,7 @@ WHAT THE INSTALLER DOES
 4. Copies the published build to:
      C:\Program Files\OutlookAI
 5. Writes a fresh v2 config.xml at C:\Program Files\OutlookAI\config.xml
-   if none exists. Server-authoritative defaults: Model, MaxTokens,
-   CodexAuthPath.
+   if none exists. Server-authoritative defaults: Model, CodexAuthPath.
 6. Creates the shared OAuth credential directory at:
      C:\ProgramData\OutlookAI
    with Authenticated Users: Modify (RDS shared-credential model).
