@@ -12,7 +12,7 @@
         with Authenticated Users: Modify (accepted shared-credential risk)
       - Renames any per-user v1 %APPDATA%\OutlookAI\config.xml to a backup
         so per-user files don't override the new server-authoritative
-        Model / MaxTokens / CodexAuthPath settings
+        Model / CodexAuthPath settings
 
     Run as Administrator.
 
@@ -372,7 +372,6 @@ $v2Config = @"
   <CodexAuthPath>C:\ProgramData\OutlookAI\auth.json</CodexAuthPath>
   <Model>gpt-5.5</Model>
   <VoiceModel>gpt-realtime-1.5</VoiceModel>
-  <MaxTokens>65536</MaxTokens>
 </Config>
 "@
 

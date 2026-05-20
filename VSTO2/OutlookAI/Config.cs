@@ -10,17 +10,16 @@ namespace OutlookAI
     {
         // ============================================================
         // CONFIGURATION DEFAULTS (v2 - ChatGPT OAuth)
-        // Server-authoritative fields (CodexAuthPath, Model, MaxTokens)
-        // load from defaults -> global config (Program Files). Per-user
-        // AppData config may override only AdminPassword. Legacy v1
-        // elements (ApiKey, OpenAIApiKey, WhisperModel, TranscribeModel,
+        // Server-authoritative fields (CodexAuthPath, Model) load from
+        // defaults -> global config (Program Files). Per-user AppData
+        // config may override only AdminPassword. Legacy v1 elements
+        // (ApiKey, OpenAIApiKey, WhisperModel, TranscribeModel, MaxTokens,
         // and Claude model names) are ignored if encountered.
         // ============================================================
 
         public const string DefaultModel = "gpt-5.5";
         public const string DefaultVoiceModel = "gpt-realtime-1.5";
         public const string DefaultCodexAuthPath = @"C:\ProgramData\OutlookAI\auth.json";
-        public const int DefaultMaxTokens = 65536;
         public const string DefaultReasoningEffort = "None";
         public const bool DefaultWriteToolsEnabled = true;
 
@@ -28,7 +27,6 @@ namespace OutlookAI
         public static string CodexAuthPath { get; set; } = DefaultCodexAuthPath;
         public static string Model { get; set; } = DefaultModel;
         public static string VoiceModel { get; set; } = DefaultVoiceModel;
-        public static int MaxTokens { get; set; } = DefaultMaxTokens;
 
         /// <summary>
         /// Default reasoning effort sent to the Codex backend on each turn.
@@ -166,7 +164,6 @@ namespace OutlookAI
             CodexAuthPath = DefaultCodexAuthPath;
             Model = DefaultModel;
             VoiceModel = DefaultVoiceModel;
-            MaxTokens = DefaultMaxTokens;
             ReasoningEffort = DefaultReasoningEffort;
             WriteToolsEnabled = DefaultWriteToolsEnabled;
             EnabledWriteTools = new HashSet<string>(AllWriteTools, StringComparer.Ordinal);
@@ -258,12 +255,6 @@ namespace OutlookAI
                 if (voiceModel != null && !string.IsNullOrWhiteSpace(voiceModel.Value))
                 {
                     VoiceModel = voiceModel.Value;
-                }
-
-                var maxTokens = root.Element("MaxTokens");
-                if (maxTokens != null && int.TryParse(maxTokens.Value, out var parsed) && parsed > 0)
-                {
-                    MaxTokens = parsed;
                 }
             }
             catch

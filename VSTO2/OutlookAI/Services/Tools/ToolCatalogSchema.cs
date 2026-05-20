@@ -52,7 +52,9 @@ namespace OutlookAI.Services.Tools
                     + "For 'I sent' / sent / outgoing report requests, prefer outlook_list_folders to discover Sent Items or Outbound and pass folder_id rather than scope:'all_mail' when possible. "
                     + "Do not use max_results:100 on broad all_mail targeted lookups; use 25 unless the user explicitly asks for a large row count or a specific folder is selected. "
                     + "If you pass NO filters, the tool returns the newest 25 messages in the current folder - almost never what the user asked for. "
-                    + "Prefer one precise call over many. After search, use outlook_read_message on the most-relevant id for full body.",
+                    + "Prefer one precise call over many. After search, use outlook_read_message on the most-relevant id for full body. "
+                    + "For tabular Excel exports over many messages, prefer metadata-only synthesis: the snippet field already contains the first ~200 chars of each match, so build Excel rows directly from search results and only call outlook_read_messages when a column genuinely requires full body content. Reading full bodies for 100+ messages will exceed the context window. "
+                    + "When body content really is required for an Excel/PDF report over many matches, page by date window: do separate searches per quarter / month, read up to 25 bodies per window, extract rows, accumulate across turns, then call the export tool once at the end.",
                     new JObject(
                         new JProperty("type", "object"),
                         new JProperty("properties", new JObject(
@@ -139,7 +141,7 @@ namespace OutlookAI.Services.Tools
                         new JProperty("additionalProperties", false))),
 
                 BuildToolEntry("outlook_read_messages",
-                    "Bulk-read message details by short ID array. Returns subject/sender/date/body/attachments per id. Use this instead of multiple outlook_read_message calls; 5-10x faster when you have many IDs from a prior outlook_search_messages and you need bodies (action items, topic-status, conversation summary reports).",
+                    "Bulk-read message details by short ID array. Returns subject/sender/date/body/attachments per id. Use this instead of multiple outlook_read_message calls; 5-10x faster when you have many IDs from a prior outlook_search_messages and you need bodies (action items, topic-status, conversation summary reports). Avoid calling on more than ~25 IDs when each body is long. For large result sets you intend to export, work from search metadata + snippet instead of bulk-reading bodies.",
                     new JObject(
                         new JProperty("type", "object"),
                         new JProperty("required", new JArray("ids")),
@@ -200,7 +202,7 @@ namespace OutlookAI.Services.Tools
                         new JProperty("additionalProperties", false))),
 
                 BuildToolEntry("outlook_export_excel",
-                    "Create a spreadsheet Excel .xlsx tabular export. Use when the user asks for spreadsheet, Excel, xlsx, or tabular export; pass typed columns and rows. Produces a styled workbook with bold/frozen header, autofilter, and per-column formatting. Best for vendor lists, message tables, aggregations by sender/day, and structured search-result exports. Do NOT use for prose, narrative reports, or arbitrary text; choose outlook_export_pdf for those. Maximum 10000 rows; aggregate or filter first if more. Example flow: search messages first, then export projected rows. File is saved to ~\\Documents\\OutlookAI\\Reports\\; the UI surfaces Open/Show-in-folder later.",
+                    "Create a spreadsheet Excel .xlsx tabular export. Use when the user asks for spreadsheet, Excel, xlsx, or tabular export; pass typed columns and rows. Produces a styled workbook with bold/frozen header, autofilter, and per-column formatting. Best for vendor lists, message tables, aggregations by sender/day, and structured search-result exports. Do NOT use for prose, narrative reports, or arbitrary text; choose outlook_export_pdf for those. Maximum 10000 rows; aggregate or filter first if more. Example flow: search messages first, then export projected rows. File is saved to ~\\Documents\\OutlookAI\\Reports\\; the UI surfaces Open/Show-in-folder later. For exports over 50+ messages, prefer projecting columns (subject, from, to, received_at, snippet) from outlook_search_messages results without reading full bodies; this is metadata-only synthesis and stays within the context window. Reading full bodies for 100+ messages will exceed context. For exports that genuinely require body-derived columns over a large result set, page by date window across multiple turns (search Q1 -> read 25 -> extract rows; search Q2 -> read 25 -> extract rows; ... -> outlook_export_excel once with all accumulated rows).",
                     new JObject(
                         new JProperty("type", "object"),
                         new JProperty("required", new JArray("columns", "rows")),

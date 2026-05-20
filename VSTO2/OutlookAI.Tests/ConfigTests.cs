@@ -24,7 +24,6 @@ namespace OutlookAI.Tests
             Assert.Equal(@"C:\ProgramData\OutlookAI\auth.json", Config.CodexAuthPath);
             Assert.Equal("gpt-5.5", Config.Model);
             Assert.Equal("gpt-realtime-1.5", Config.VoiceModel);
-            Assert.Equal(65536, Config.MaxTokens);
         }
 
         [Fact]
@@ -36,19 +35,18 @@ namespace OutlookAI.Tests
                 + "<CodexAuthPath>C:\\ProgramData\\OutlookAI\\auth.json</CodexAuthPath>"
                 + "<Model>gpt-5.5</Model>"
                 + "<VoiceModel>gpt-realtime-1.5</VoiceModel>"
-                + "<MaxTokens>65536</MaxTokens>"
                 + "</Config>");
             File.WriteAllText(u, "<Config>"
                 + "<AdminPassword>userpass</AdminPassword>"
                 + "<Model>claude-opus-4-6</Model>"
-                + "<MaxTokens>2048</MaxTokens>"
                 + "</Config>");
 
             Config.LoadConfigFromPaths(g, u);
 
             Assert.Equal("userpass", Config.AdminPassword);
+            // Server-authoritative Model is not overridden by per-user;
+            // unknown Claude-era model names also do not override it.
             Assert.Equal("gpt-5.5", Config.Model);
-            Assert.Equal(65536, Config.MaxTokens);
         }
 
         [Fact]

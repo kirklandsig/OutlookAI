@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
@@ -135,7 +136,14 @@ namespace OutlookAI.TaskPane.Chat
 
         private static void OpenWithDefaultApp(string path)
         {
-            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+            Process.Start(new ProcessStartInfo(path)
+            {
+                UseShellExecute = true,
+                // Force a local working directory so ShellExecute does not try
+                // to set CWD to a UNC path when ~\Documents is folder-redirected
+                // to a network share. Target file path is unaffected.
+                WorkingDirectory = Path.GetTempPath(),
+            });
         }
 
         private static void RevealWithExplorer(string path)
@@ -143,6 +151,7 @@ namespace OutlookAI.TaskPane.Chat
             Process.Start(new ProcessStartInfo("explorer.exe", "/select,\"" + path.Replace("\"", "\\\"") + "\"")
             {
                 UseShellExecute = true,
+                WorkingDirectory = Path.GetTempPath(),
             });
         }
     }
