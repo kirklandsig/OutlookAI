@@ -120,6 +120,29 @@ namespace OutlookAI.Tests.TaskPane.Chat
             Assert.Throws<ArgumentNullException>(() => new ExportBridge(new Surface(), new Policy(), null));
         }
 
+        [Fact]
+        public void OpenWithDefaultApp_SetsLocalWorkingDirectory_ToAvoidUncFailure()
+        {
+            var source = File.ReadAllText(FindSourceFile("OutlookAI", "TaskPane", "Chat", "ExportBridge.cs"));
+            var openStart = source.IndexOf("private static void OpenWithDefaultApp", StringComparison.Ordinal);
+            Assert.True(openStart >= 0, "OpenWithDefaultApp method declaration should exist.");
+
+            var nextMethod = source.IndexOf("private static void RevealWithExplorer", openStart, StringComparison.Ordinal);
+            var openMethod = nextMethod > openStart ? source.Substring(openStart, nextMethod - openStart) : source.Substring(openStart);
+            Assert.Contains("WorkingDirectory = Path.GetTempPath()", openMethod);
+        }
+
+        [Fact]
+        public void RevealWithExplorer_SetsLocalWorkingDirectory_ToAvoidUncFailure()
+        {
+            var source = File.ReadAllText(FindSourceFile("OutlookAI", "TaskPane", "Chat", "ExportBridge.cs"));
+            var revealStart = source.IndexOf("private static void RevealWithExplorer", StringComparison.Ordinal);
+            Assert.True(revealStart >= 0, "RevealWithExplorer method declaration should exist.");
+
+            var revealMethod = source.Substring(revealStart);
+            Assert.Contains("WorkingDirectory = Path.GetTempPath()", revealMethod);
+        }
+
         [Theory]
         [InlineData("Chat", "ChatController.cs")]
         [InlineData("InboxCopilot", "InboxCopilotController.cs")]
