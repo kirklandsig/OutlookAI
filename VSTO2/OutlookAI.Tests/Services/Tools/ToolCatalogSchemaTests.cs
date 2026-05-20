@@ -399,5 +399,44 @@ namespace OutlookAI.Tests.Services.Tools
             Assert.Contains("images", desc, System.StringComparison.OrdinalIgnoreCase);
             Assert.Contains("stripped", desc, System.StringComparison.OrdinalIgnoreCase);
         }
+
+        [Fact]
+        public void SearchMessages_Description_SteersTowardSnippetForBulkExports()
+        {
+            var tools = ToolCatalogSchema.BuildResponsesToolsArray(includeWriteTools: false);
+            var search = FindTool(tools, "outlook_search_messages");
+            Assert.NotNull(search);
+            var desc = (string)search["description"];
+            Assert.NotNull(desc);
+
+            Assert.Contains("snippet", desc, System.StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("metadata-only", desc, System.StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void ReadMessages_Description_WarnsAgainstLargeBatchesForExports()
+        {
+            var tools = ToolCatalogSchema.BuildResponsesToolsArray(includeWriteTools: false);
+            var read = FindTool(tools, "outlook_read_messages");
+            Assert.NotNull(read);
+            var desc = (string)read["description"];
+            Assert.NotNull(desc);
+
+            Assert.Contains("metadata", desc, System.StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("snippet", desc, System.StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void ExportExcel_Description_PrefersSearchSnippetsOverBodyReads()
+        {
+            var tools = ToolCatalogSchema.BuildResponsesToolsArray(includeWriteTools: false);
+            var excel = FindTool(tools, "outlook_export_excel");
+            Assert.NotNull(excel);
+            var desc = (string)excel["description"];
+            Assert.NotNull(desc);
+
+            Assert.Contains("metadata-only", desc, System.StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("snippet", desc, System.StringComparison.OrdinalIgnoreCase);
+        }
     }
 }
