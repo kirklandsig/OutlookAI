@@ -438,5 +438,29 @@ namespace OutlookAI.Tests.Services.Tools
             Assert.Contains("metadata-only", desc, System.StringComparison.OrdinalIgnoreCase);
             Assert.Contains("snippet", desc, System.StringComparison.OrdinalIgnoreCase);
         }
+
+        [Fact]
+        public void SearchMessages_Description_TeachesDateWindowedPagination()
+        {
+            var tools = ToolCatalogSchema.BuildResponsesToolsArray(includeWriteTools: false);
+            var search = FindTool(tools, "outlook_search_messages");
+            Assert.NotNull(search);
+            var desc = (string)search["description"];
+            Assert.NotNull(desc);
+
+            Assert.Contains("page by date window", desc, System.StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void ExportExcel_Description_MentionsPaginatedExtractionForLargeSets()
+        {
+            var tools = ToolCatalogSchema.BuildResponsesToolsArray(includeWriteTools: false);
+            var excel = FindTool(tools, "outlook_export_excel");
+            Assert.NotNull(excel);
+            var desc = (string)excel["description"];
+            Assert.NotNull(desc);
+
+            Assert.Contains("page by date window", desc, System.StringComparison.OrdinalIgnoreCase);
+        }
     }
 }
