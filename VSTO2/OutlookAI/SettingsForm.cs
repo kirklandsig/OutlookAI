@@ -57,6 +57,9 @@ namespace OutlookAI
         // the connection pool instead of churning sockets.
         private static readonly System.Net.Http.HttpClient _updaterHttp = new System.Net.Http.HttpClient();
 
+        // Shared history-log handle so we don't allocate one per Append call.
+        private readonly UpdateHistoryLog _history = new UpdateHistoryLog();
+
         private bool _authenticated;
 
         public SettingsForm()
@@ -461,51 +464,71 @@ namespace OutlookAI
             _btnInstallUpdate.Enabled = false;
             _lblUpdateStatus.Text = "Checking…";
 
-            var installed = UpdateManifest.LoadFromInstallDir();
-            var ua = "OutlookAI-Updater/" + (installed.IsDevBuild ? "dev" : installed.Tag);
-            var client = new GitHubReleaseClient(_updaterHttp, "kirklandsig/OutlookAI", ua);
-
-            var result = await client.GetLatestStableAsync(CancellationToken.None);
-            _lastCheckedAt = DateTimeOffset.Now;
-            _lblLastChecked.Text = _lastCheckedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
-
-            switch (result)
-            {
-                case ReleaseFound found:
-                    _latestRelease = found.Info;
-                    _lblLatestVersion.Text = found.Info.Tag;
-                    _availability = VersionComparator.Compare(installed.Tag, found.Info.Tag);
-                    _btnInstallUpdate.Enabled = _availability == UpdateAvailability.NewerAvailable;
-                    _lblUpdateStatus.Text = _availability == UpdateAvailability.NewerAvailable
-                        ? ("Update available: " + found.Info.Tag)
-                        : (_availability == UpdateAvailability.NoUpdate ? "Already up to date." :
-                           _availability == UpdateAvailability.OlderThanInstalled ? "Latest is older than installed (unusual)." :
-                           "Latest tag could not be compared to installed version.");
-                    break;
-                case NoReleasesAvailable _:
-                    _lblLatestVersion.Text = "—";
-                    _lblUpdateStatus.Text = "No releases published yet on GitHub.";
-                    break;
-                case RateLimited rl:
-                    _lblLatestVersion.Text = "—";
-                    _lblUpdateStatus.Text = "GitHub rate limit hit. Try again after " + rl.ResetAt.ToLocalTime().ToString("HH:mm") + ".";
-                    break;
-                case NetworkError ne:
-                    _lblLatestVersion.Text = "—";
-                    _lblUpdateStatus.Text = "Could not reach GitHub: " + ne.Detail;
-                    break;
-            }
-
             try
             {
-                new UpdateHistoryLog().Append("check",
-                    result.GetType().Name.ToLowerInvariant(),
-                    (_latestRelease != null ? _latestRelease.Tag : ""),
-                    _lblUpdateStatus.Text);
-            }
-            catch { /* Logging is best-effort; never break the update flow. */ }
+                var installed = UpdateManifest.LoadFromInstallDir();
+                var ua = "OutlookAI-Updater/" + (installed.IsDevBuild ? "dev" : installed.Tag);
+                var client = new GitHubReleaseClient(_updaterHttp, "kirklandsig/OutlookAI", ua);
 
-            _btnCheckNow.Enabled = true;
+                var result = await client.GetLatestStableAsync(CancellationToken.None);
+                _lastCheckedAt = DateTimeOffset.Now;
+                _lblLastChecked.Text = _lastCheckedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+
+                switch (result)
+                {
+                    case ReleaseFound found:
+                        _latestRelease = found.Info;
+                        _lblLatestVersion.Text = found.Info.Tag;
+                        _availability = VersionComparator.Compare(installed.Tag, found.Info.Tag);
+                        _btnInstallUpdate.Enabled = _availability == UpdateAvailability.NewerAvailable;
+                        _lblUpdateStatus.Text = _availability == UpdateAvailability.NewerAvailable
+                            ? ("Update available: " + found.Info.Tag)
+                            : (_availability == UpdateAvailability.NoUpdate ? "Already up to date." :
+                               _availability == UpdateAvailability.OlderThanInstalled ? "Latest is older than installed (unusual)." :
+                               "Latest tag could not be compared to installed version.");
+                        break;
+                    case NoReleasesAvailable _:
+                        _latestRelease = null;
+                        _availability = UpdateAvailability.NoReleases;
+                        _lblLatestVersion.Text = "—";
+                        _lblUpdateStatus.Text = "No releases published yet on GitHub.";
+                        break;
+                    case RateLimited rl:
+                        _latestRelease = null;
+                        _availability = UpdateAvailability.NotComparable;
+                        _lblLatestVersion.Text = "—";
+                        _lblUpdateStatus.Text = "GitHub rate limit hit. Try again after " + rl.ResetAt.ToLocalTime().ToString("HH:mm") + ".";
+                        break;
+                    case NetworkError ne:
+                        _latestRelease = null;
+                        _availability = UpdateAvailability.NotComparable;
+                        _lblLatestVersion.Text = "—";
+                        _lblUpdateStatus.Text = "Could not reach GitHub: " + ne.Detail;
+                        break;
+                }
+
+                try
+                {
+                    _history.Append("check",
+                        result.GetType().Name.ToLowerInvariant(),
+                        (_latestRelease != null ? _latestRelease.Tag : ""),
+                        _lblUpdateStatus.Text);
+                }
+                catch { /* Logging is best-effort; never break the update flow. */ }
+            }
+            catch (ObjectDisposedException)
+            {
+                // Settings form was closed mid-await; nothing more to do.
+            }
+            catch (Exception ex)
+            {
+                try { _lblUpdateStatus.Text = "Update check failed: " + ex.Message; } catch { }
+                try { _history.Append("check", "exception", "", ex.Message); } catch { }
+            }
+            finally
+            {
+                try { _btnCheckNow.Enabled = true; } catch { }
+            }
         }
 
         private async void BtnInstallUpdate_Click(object sender, EventArgs e)
@@ -530,68 +553,86 @@ namespace OutlookAI
             _btnCheckNow.Enabled = false;
             _lblUpdateStatus.Text = "Downloading…";
 
-            var downloader = new UpdateDownloader(_updaterHttp);
-            var dl = await downloader.DownloadAsync(_latestRelease, null, CancellationToken.None);
-
-            if (!(dl is DownloadSuccess success))
-            {
-                // C# 7.3: classic switch (switch expressions require C# 8).
-                switch (dl)
-                {
-                    case HashMismatch _:
-                        _lblUpdateStatus.Text = "Downloaded file failed integrity check. Aborting.";
-                        break;
-                    case MissingInstallerScript _:
-                        _lblUpdateStatus.Text = "Update package is malformed (no installer). Please file a bug.";
-                        break;
-                    case DownloadFailed df:
-                        _lblUpdateStatus.Text = "Download failed: " + df.Detail;
-                        break;
-                    case Cancelled _:
-                        _lblUpdateStatus.Text = "Cancelled.";
-                        break;
-                    default:
-                        _lblUpdateStatus.Text = "Unknown download result.";
-                        break;
-                }
-                try { new UpdateHistoryLog().Append("download", "failed", _latestRelease.Tag, _lblUpdateStatus.Text); } catch { }
-                _btnInstallUpdate.Enabled = true;
-                _btnCheckNow.Enabled = true;
-                return;
-            }
-            try { new UpdateHistoryLog().Append("download", "ok", _latestRelease.Tag, "sha256_ok"); } catch { }
-
-            // Write sentinel; cleared by ThisAddIn.Startup on next Outlook start.
+            var launchedSuccessfully = false;
             try
             {
-                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(UpdatePaths.InProgressSentinel));
-                System.IO.File.WriteAllText(UpdatePaths.InProgressSentinel, _latestRelease.Tag);
+                var downloader = new UpdateDownloader(_updaterHttp);
+                var dl = await downloader.DownloadAsync(_latestRelease, null, CancellationToken.None);
+
+                if (!(dl is DownloadSuccess success))
+                {
+                    // C# 7.3: classic switch (switch expressions require C# 8).
+                    switch (dl)
+                    {
+                        case HashMismatch _:
+                            _lblUpdateStatus.Text = "Downloaded file failed integrity check. Aborting.";
+                            break;
+                        case MissingInstallerScript _:
+                            _lblUpdateStatus.Text = "Update package is malformed (no installer). Please file a bug.";
+                            break;
+                        case DownloadFailed df:
+                            _lblUpdateStatus.Text = "Download failed: " + df.Detail;
+                            break;
+                        case Cancelled _:
+                            _lblUpdateStatus.Text = "Cancelled.";
+                            break;
+                        default:
+                            _lblUpdateStatus.Text = "Unknown download result.";
+                            break;
+                    }
+                    try { _history.Append("download", "failed", _latestRelease.Tag, _lblUpdateStatus.Text); } catch { }
+                    return;
+                }
+                try { _history.Append("download", "ok", _latestRelease.Tag, "sha256_ok"); } catch { }
+
+                // Write sentinel; cleared by ThisAddIn.Startup on next Outlook start.
+                try
+                {
+                    System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(UpdatePaths.InProgressSentinel));
+                    System.IO.File.WriteAllText(UpdatePaths.InProgressSentinel, _latestRelease.Tag);
+                }
+                catch { }
+
+                var installer = new UpdateInstaller();
+                var launch = installer.LaunchElevatedInstall(success);
+
+                switch (launch)
+                {
+                    case Launched l:
+                        _lblUpdateStatus.Text = "Installer launched (PID " + l.Pid + "). Outlook will close shortly to apply the update.";
+                        try { _history.Append("launch", "launched", _latestRelease.Tag, "pid=" + l.Pid); } catch { }
+                        launchedSuccessfully = true;
+                        break;
+                    case UacDeclined _:
+                        _lblUpdateStatus.Text = "Update cancelled — administrator privileges required.";
+                        try { System.IO.File.Delete(UpdatePaths.InProgressSentinel); } catch { }
+                        try { _history.Append("launch", "uac_declined", _latestRelease.Tag, ""); } catch { }
+                        break;
+                    case LaunchFailed lf:
+                        _lblUpdateStatus.Text = "Failed to launch installer: " + lf.Detail;
+                        try { System.IO.File.Delete(UpdatePaths.InProgressSentinel); } catch { }
+                        try { _history.Append("launch", "failed", _latestRelease.Tag, lf.Detail); } catch { }
+                        break;
+                }
             }
-            catch { }
-
-            var installer = new UpdateInstaller();
-            var launch = installer.LaunchElevatedInstall(success);
-
-            switch (launch)
+            catch (ObjectDisposedException)
             {
-                case Launched l:
-                    _lblUpdateStatus.Text = "Installer launched (PID " + l.Pid + "). Outlook will close shortly to apply the update.";
-                    try { new UpdateHistoryLog().Append("launch", "launched", _latestRelease.Tag, "pid=" + l.Pid); } catch { }
-                    break;
-                case UacDeclined _:
-                    _lblUpdateStatus.Text = "Update cancelled — administrator privileges required.";
-                    try { System.IO.File.Delete(UpdatePaths.InProgressSentinel); } catch { }
-                    _btnInstallUpdate.Enabled = true;
-                    _btnCheckNow.Enabled = true;
-                    try { new UpdateHistoryLog().Append("launch", "uac_declined", _latestRelease.Tag, ""); } catch { }
-                    break;
-                case LaunchFailed lf:
-                    _lblUpdateStatus.Text = "Failed to launch installer: " + lf.Detail;
-                    try { System.IO.File.Delete(UpdatePaths.InProgressSentinel); } catch { }
-                    _btnInstallUpdate.Enabled = true;
-                    _btnCheckNow.Enabled = true;
-                    try { new UpdateHistoryLog().Append("launch", "failed", _latestRelease.Tag, lf.Detail); } catch { }
-                    break;
+                // Settings form was closed mid-await; nothing more to do.
+            }
+            catch (Exception ex)
+            {
+                try { _lblUpdateStatus.Text = "Install failed: " + ex.Message; } catch { }
+                try { _history.Append("install", "exception", _latestRelease != null ? _latestRelease.Tag : "", ex.Message); } catch { }
+                // Sentinel may have been written; try to clean it up so we don't lie to the reconciler.
+                try { System.IO.File.Delete(UpdatePaths.InProgressSentinel); } catch { }
+            }
+            finally
+            {
+                if (!launchedSuccessfully)
+                {
+                    try { _btnInstallUpdate.Enabled = true; } catch { }
+                    try { _btnCheckNow.Enabled = true; } catch { }
+                }
             }
         }
 
