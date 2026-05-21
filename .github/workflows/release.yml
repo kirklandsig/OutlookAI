@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-2025
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v2
+
+      - name: Restore packages
+        shell: pwsh
+        run: |
+          nuget restore VSTO2\OutlookAI.sln
+
+      - name: Build deploy ZIP
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          .\Deploy\Make-ReleaseZip.ps1 -Tag $tag -OutDir out
+
+      - name: Read tag annotation as release body
+        id: tagbody
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $body = git tag -l --format='%(contents)' $tag
+          if ([string]::IsNullOrWhiteSpace($body)) { $body = "Release $tag" }
+          $body | Out-File -FilePath release-body.md -Encoding UTF8
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $zip = "out\OutlookAI-$tag-RDS-Deploy.zip"
+          $sha = "$zip.sha256"
+          gh release create $tag $zip $sha --title $tag --notes-file release-body.md
