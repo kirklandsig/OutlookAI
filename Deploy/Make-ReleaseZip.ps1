@@ -33,7 +33,11 @@ if (Test-Path $staging) { Remove-Item -LiteralPath $staging -Recurse -Force }
 New-Item -ItemType Directory -Path $staging | Out-Null
 
 $msbuild = "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe"
-& $msbuild "VSTO2\OutlookAI.sln" /target:Publish /p:Configuration=Release /p:Platform="Any CPU" /p:PublishDir="$staging\" /v:minimal /nologo
+# Publish only the main project, not the whole solution, so the staging dir
+# does not pick up OutlookAI.Tests artifacts (Moq, xunit, Castle.Core,
+# Microsoft.CodeCoverage.*, etc.). The csproj's Platform is "AnyCPU"
+# (no space) even though the sln uses "Any CPU".
+& $msbuild "VSTO2\OutlookAI\OutlookAI.csproj" /target:Publish /p:Configuration=Release /p:Platform="AnyCPU" /p:PublishDir="$staging\" /v:minimal /nologo
 
 # Copy install assets next to OutlookAI.vsto / Application Files\
 foreach ($f in @(
