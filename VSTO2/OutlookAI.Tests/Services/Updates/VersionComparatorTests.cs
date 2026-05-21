@@ -16,6 +16,9 @@ namespace OutlookAI.Tests.Services.Updates
         [InlineData("v2.1.0-beta.1", "v2.1.0", UpdateAvailability.NewerAvailable)]     // beta < release
         [InlineData("v2.1.0", "v2.1.0-beta.1", UpdateAvailability.OlderThanInstalled)] // release > beta
         [InlineData("v2.1.0-beta.1", "v2.1.0-beta.2", UpdateAvailability.NewerAvailable)]
+        [InlineData("v2.1.0-beta.1", "v2.1.0-rc.1",     UpdateAvailability.NewerAvailable)]  // ordinal alpha: "beta" < "rc"
+        [InlineData("v2.1.0-1",      "v2.1.0-alpha",    UpdateAvailability.NewerAvailable)]  // numeric prerelease sorts below alphanumeric
+        [InlineData("v2.1.0-alpha",  "v2.1.0-alpha.1",  UpdateAvailability.NewerAvailable)]  // token-count tiebreak: shorter < longer when prefix equal
         public void Compare_KnownPairs_ReturnsExpected(string installed, string latest, UpdateAvailability expected)
         {
             Assert.Equal(expected, VersionComparator.Compare(installed, latest));
