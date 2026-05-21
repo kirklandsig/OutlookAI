@@ -391,6 +391,7 @@
     <Compile Include="Services\Updates\SemVer.cs" />
     <Compile Include="Services\Updates\UpdateAvailability.cs" />
     <Compile Include="Services\Updates\UpdateDownloader.cs" />
+    <Compile Include="Services\Updates\UpdateHistoryLog.cs" />
     <Compile Include="Services\Updates\UpdateInstaller.cs" />
     <Compile Include="Services\Updates\UpdateManifest.cs" />
     <Compile Include="Services\Updates\UpdatePaths.cs" />
