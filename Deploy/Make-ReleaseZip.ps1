@@ -11,12 +11,21 @@
     Directory where the final .zip and .zip.sha256 should land. Defaults to
     .\out next to the repo root.
 
+.PARAMETER CertThumbprint
+    Optional override for <ManifestCertificateThumbprint> in the csproj.
+    Used by the CI release workflow to point MSBuild at an ephemeral
+    self-signed cert generated on the runner (the dev box's cert is not
+    available there, and VSTO's Office targets require manifest signing).
+    When empty, MSBuild uses whatever the csproj specifies — that's the
+    correct default for local dev builds.
+
 .EXAMPLE
     .\Deploy\Make-ReleaseZip.ps1 -Tag v2.1.0
 #>
 param(
     [Parameter(Mandatory=$true)][string]$Tag,
-    [string]$OutDir = "out"
+    [string]$OutDir = "out",
+    [string]$CertThumbprint = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -62,12 +71,29 @@ try {
     # does not pick up OutlookAI.Tests artifacts (Moq, xunit, Castle.Core,
     # Microsoft.CodeCoverage.*, etc.). The csproj's Platform is "AnyCPU"
     # (no space) even though the sln uses "Any CPU".
-    & $msbuild "VSTO2\OutlookAI\OutlookAI.csproj" `
-        /target:Publish `
-        /p:Configuration=Release `
-        /p:Platform="AnyCPU" `
-        /p:PublishDir="$staging\" `
-        /v:minimal /nologo
+    #
+    # The csproj has a hardcoded <ManifestCertificateThumbprint> pointing at
+    # the dev box's local cert store. On the dev box this Just Works; on a
+    # CI runner the cert isn't there, so MSBuild dies with MSB3323. VSTO's
+    # Office targets force SignManifests=true (can't bypass), so the
+    # workaround is to OVERRIDE the thumbprint with an ephemeral runner-local
+    # cert that the workflow generates per-run. The resulting signature is
+    # never re-checked at install time: Install-OutlookAI.ps1 registers the
+    # add-in with the `|vstolocal` trust modifier, which makes Outlook trust
+    # the manifest by location rather than by publisher.
+    $msbuildArgs = @(
+        "VSTO2\OutlookAI\OutlookAI.csproj"
+        "/target:Publish"
+        "/p:Configuration=Release"
+        "/p:Platform=AnyCPU"
+        "/p:PublishDir=$staging\"
+        "/v:minimal"
+        "/nologo"
+    )
+    if (-not [string]::IsNullOrWhiteSpace($CertThumbprint)) {
+        $msbuildArgs += "/p:ManifestCertificateThumbprint=$CertThumbprint"
+    }
+    & $msbuild @msbuildArgs
     if ($LASTEXITCODE -ne 0) {
         throw "MSBuild publish failed with exit code $LASTEXITCODE."
     }
