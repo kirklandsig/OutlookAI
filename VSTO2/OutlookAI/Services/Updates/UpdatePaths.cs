@@ -21,11 +21,14 @@ namespace OutlookAI.Services.Updates
 
         /// <summary>
         /// Location of the installed version.json. Read at runtime to tell the
-        /// updater what version is live.
+        /// updater what version is live. Uses %ProgramW6432% so a 32-bit Outlook
+        /// process still resolves to C:\Program Files\OutlookAI (matching the
+        /// installer's hard-coded install path), instead of C:\Program Files (x86)\.
         /// </summary>
         public static string InstalledVersionJson { get; set; } =
             Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                Environment.GetEnvironmentVariable("ProgramW6432")
+                    ?? Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
                 "OutlookAI",
                 "version.json");
 
