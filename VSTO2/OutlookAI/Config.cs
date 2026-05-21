@@ -323,9 +323,20 @@ namespace OutlookAI
                 }
                 doc.Save(filePath);
             }
-            catch
+            catch (Exception ex)
             {
-                // Silently fail (read-only target, ACL denied, etc.).
+                // Silently fail (read-only target, ACL denied, etc.) but record
+                // it so the maintainer can see the failure mode without breaking
+                // the user flow. Without this trace the admin gets a "Saved"
+                // indicator and only discovers the shared write didn't take when
+                // another user's login still shows defaults.
+                try
+                {
+                    OutlookAI.Diagnostics.TraceLog.Write(
+                        "Config.TrySaveTo failed for '" + filePath + "': " + ex.Message,
+                        "Config");
+                }
+                catch { }
             }
         }
     }

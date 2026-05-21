@@ -347,3 +347,45 @@ Behavior:
 
 This is the only Phase 1.x follow-up currently planned. Anything beyond it
 belongs in Phase 2 (tool calling) or Phase 3 (Inbox Copilot UI).
+
+## Addendum — v2.1.1 precedence change (commit 2dec846)
+
+The original design above stated: *"`Config.ReasoningEffort` in the **global**
+`config.xml`. … There is no per-user override (consistent with the existing
+server-authoritative precedence for `Model`)."*
+
+That model broke on RDS: the admin-gated `SettingsForm` writes to
+`%APPDATA%\OutlookAI\config.xml` (the admin's own profile). Other users on the
+same RDS host don't see those changes because their `%APPDATA%` is separate.
+As shipped in v2.1.0, an admin setting "Medium" only affected their own future
+sessions — not the rest of the server.
+
+v2.1.1 (commit `2dec846`) introduces a third storage layer between global and
+per-user:
+
+| Layer | Location | Writable by | Purpose |
+| --- | --- | --- | --- |
+| 1. Defaults | hardcoded in `Config.cs` | n/a | Last-resort fallback. |
+| 2. Global (server-authoritative) | `C:\Program Files\OutlookAI\config.xml` | installer only | Fields the server enforces: `CodexAuthPath`, `VoiceModel`, etc. |
+| 3. **Shared admin defaults (new)** | `C:\ProgramData\OutlookAI\config.xml` | Admins (ProgramData ACL) | What the admin chose as the server-wide default for user-tunable fields. |
+| 4. Per-user override | `%APPDATA%\OutlookAI\config.xml` | The user | Optional per-user tweak. |
+
+`SaveConfig()` writes user-tunable fields to BOTH layer 3 and layer 4 — the
+layer-3 write silently no-ops for non-admin users (ProgramData ACL denies
+write), so only admin saves change the shared defaults. Layer 4 always
+succeeds, so the saving user's own preference still takes effect immediately.
+
+Load order is 1 → 2 → 3 → 4 with later layers winning. Net effect:
+
+- Admin sets `ReasoningEffort = Medium` on the RDS host → ProgramData gets
+  `Medium` → every user's next launch loads `Medium` as their default → users
+  can still override to their own value if they want (Layer 4).
+- A non-admin user setting their own value silently no-ops the ProgramData
+  write (no permission) — only their AppData is updated, only their session
+  is affected.
+
+Tests covering this precedence are in `VSTO2/OutlookAI.Tests/ConfigTests.cs`:
+`LoadConfigFromPaths_SharedDefaultsAppliedWhenUserAbsent`,
+`LoadConfigFromPaths_UserOverridesSharedDefaults`,
+`LoadConfigFromPaths_SharedConfigPathNull_TreatedAsAbsent`,
+`LoadConfigFromPaths_GlobalAndSharedAndUser_UserBeatsSharedBeatsGlobal`.
