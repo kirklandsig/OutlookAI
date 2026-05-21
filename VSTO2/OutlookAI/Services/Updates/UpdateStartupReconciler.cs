@@ -36,9 +36,12 @@ namespace OutlookAI.Services.Updates
                     history?.Append("install", "aborted", sentinelTag, "sentinel stale > 30 min");
                 }
             }
-            catch
+            catch (Exception ex)
             {
                 // Best-effort; never break Outlook startup over a stale sentinel.
+                // Log to TraceLog so the maintainer at least sees the failure mode
+                // if a corrupt version.json or locked sentinel ever trips this path.
+                try { OutlookAI.Diagnostics.TraceLog.Write("Reconcile error: " + ex, "Updater"); } catch { }
             }
         }
     }
