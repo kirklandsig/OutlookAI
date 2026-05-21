@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using OutlookAI.Services;
+using OutlookAI.Services.Updates;
 
 namespace OutlookAI
 {
@@ -34,6 +35,30 @@ namespace OutlookAI
         private CheckedListBox _clbWriteTools;
         private Button _btnSaveAiSettings;
         private Label _lblAiSaved;
+
+        // Updates group (Task 8)
+        private GroupBox _grpUpdates;
+        private Label _lblCurrentVersionCaption;
+        private Label _lblCurrentVersion;
+        private Label _lblLatestVersionCaption;
+        private Label _lblLatestVersion;
+        private Label _lblLastCheckedCaption;
+        private Label _lblLastChecked;
+        private Button _btnCheckNow;
+        private Button _btnInstallUpdate;
+        private Label _lblUpdateStatus;
+
+        // Updater state
+        private ReleaseInfo _latestRelease;
+        private UpdateAvailability _availability = UpdateAvailability.NoUpdate;
+        private DateTimeOffset? _lastCheckedAt;
+
+        // Single HttpClient for the updater. Static so repeated checks reuse
+        // the connection pool instead of churning sockets.
+        private static readonly System.Net.Http.HttpClient _updaterHttp = new System.Net.Http.HttpClient();
+
+        // Shared history-log handle so we don't allocate one per Append call.
+        private readonly UpdateHistoryLog _history = new UpdateHistoryLog();
 
         private bool _authenticated;
 
@@ -182,6 +207,7 @@ namespace OutlookAI
             });
 
             BuildAiBehaviorGroup();
+            BuildUpdatesGroup();
 
             Controls.Add(_panelSettings);
         }
@@ -361,6 +387,253 @@ namespace OutlookAI
             var t = new System.Windows.Forms.Timer { Interval = 2500 };
             t.Tick += (s2, e2) => { _lblAiSaved.Visible = false; t.Stop(); t.Dispose(); };
             t.Start();
+        }
+
+        private void BuildUpdatesGroup()
+        {
+            // AI Behavior group lives at (20, 200) with height 280, so its
+            // bottom edge is y=480. Place Updates 12 px below that for visual
+            // separation; the panel scrolls if the form is short.
+            _grpUpdates = new GroupBox
+            {
+                Text = "Updates",
+                Font = new Font("Segoe UI", 9F, FontStyle.Bold),
+                Location = new Point(20, 492),
+                Size = new Size(400, 180),
+                ForeColor = Color.Black,
+            };
+
+            _lblCurrentVersionCaption = new Label { Text = "Current:",      Location = new Point(12, 24), AutoSize = true, ForeColor = Color.Black };
+            _lblCurrentVersion        = new Label { Text = "—",             Location = new Point(96, 24), AutoSize = true, ForeColor = Color.Black };
+
+            _lblLatestVersionCaption  = new Label { Text = "Latest:",       Location = new Point(12, 48), AutoSize = true, ForeColor = Color.Black };
+            _lblLatestVersion         = new Label { Text = "—",             Location = new Point(96, 48), AutoSize = true, ForeColor = Color.Black };
+
+            _lblLastCheckedCaption    = new Label { Text = "Last checked:", Location = new Point(12, 72), AutoSize = true, ForeColor = Color.Black };
+            _lblLastChecked           = new Label { Text = "—",             Location = new Point(96, 72), AutoSize = true, ForeColor = Color.Black };
+
+            _btnCheckNow = new Button
+            {
+                Text = "Check Now",
+                Location = new Point(12, 100),
+                Size = new Size(110, 28),
+                ForeColor = Color.Black,
+                BackColor = SystemColors.ButtonFace,
+                UseVisualStyleBackColor = false,
+            };
+            _btnCheckNow.Click += BtnCheckNow_Click;
+
+            _btnInstallUpdate = new Button
+            {
+                Text = "Install Update",
+                Location = new Point(130, 100),
+                Size = new Size(130, 28),
+                ForeColor = Color.Black,
+                BackColor = SystemColors.ButtonFace,
+                UseVisualStyleBackColor = false,
+                Enabled = false,
+            };
+            _btnInstallUpdate.Click += BtnInstallUpdate_Click;
+
+            _lblUpdateStatus = new Label
+            {
+                Text = "",
+                Location = new Point(12, 138),
+                AutoSize = false,
+                Size = new Size(375, 32),
+                ForeColor = Color.Black,
+            };
+
+            _grpUpdates.Controls.AddRange(new Control[]
+            {
+                _lblCurrentVersionCaption, _lblCurrentVersion,
+                _lblLatestVersionCaption,  _lblLatestVersion,
+                _lblLastCheckedCaption,    _lblLastChecked,
+                _btnCheckNow, _btnInstallUpdate, _lblUpdateStatus,
+            });
+            _panelSettings.Controls.Add(_grpUpdates);
+
+            // Populate current version from disk so the user sees it as soon
+            // as the form opens, before any "Check Now" click.
+            _lblCurrentVersion.Text = UpdateManifest.LoadFromInstallDir().Tag;
+        }
+
+        private async void BtnCheckNow_Click(object sender, EventArgs e)
+        {
+            _btnCheckNow.Enabled = false;
+            _btnInstallUpdate.Enabled = false;
+            _lblUpdateStatus.Text = "Checking…";
+
+            try
+            {
+                var installed = UpdateManifest.LoadFromInstallDir();
+                var ua = "OutlookAI-Updater/" + (installed.IsDevBuild ? "dev" : installed.Tag);
+                var client = new GitHubReleaseClient(_updaterHttp, "kirklandsig/OutlookAI", ua);
+
+                var result = await client.GetLatestStableAsync(CancellationToken.None);
+                _lastCheckedAt = DateTimeOffset.Now;
+                _lblLastChecked.Text = _lastCheckedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+
+                switch (result)
+                {
+                    case ReleaseFound found:
+                        _latestRelease = found.Info;
+                        _lblLatestVersion.Text = found.Info.Tag;
+                        _availability = VersionComparator.Compare(installed.Tag, found.Info.Tag);
+                        _btnInstallUpdate.Enabled = _availability == UpdateAvailability.NewerAvailable;
+                        _lblUpdateStatus.Text = _availability == UpdateAvailability.NewerAvailable
+                            ? ("Update available: " + found.Info.Tag)
+                            : (_availability == UpdateAvailability.NoUpdate ? "Already up to date." :
+                               _availability == UpdateAvailability.OlderThanInstalled ? "Latest is older than installed (unusual)." :
+                               "Latest tag could not be compared to installed version.");
+                        break;
+                    case NoReleasesAvailable _:
+                        _latestRelease = null;
+                        _availability = UpdateAvailability.NoReleases;
+                        _lblLatestVersion.Text = "—";
+                        _lblUpdateStatus.Text = "No releases published yet on GitHub.";
+                        break;
+                    case RateLimited rl:
+                        _latestRelease = null;
+                        _availability = UpdateAvailability.NotComparable;
+                        _lblLatestVersion.Text = "—";
+                        _lblUpdateStatus.Text = "GitHub rate limit hit. Try again after " + rl.ResetAt.ToLocalTime().ToString("HH:mm") + ".";
+                        break;
+                    case NetworkError ne:
+                        _latestRelease = null;
+                        _availability = UpdateAvailability.NotComparable;
+                        _lblLatestVersion.Text = "—";
+                        _lblUpdateStatus.Text = "Could not reach GitHub: " + ne.Detail;
+                        break;
+                }
+
+                try
+                {
+                    _history.Append("check",
+                        result.GetType().Name.ToLowerInvariant(),
+                        (_latestRelease != null ? _latestRelease.Tag : ""),
+                        _lblUpdateStatus.Text);
+                }
+                catch { /* Logging is best-effort; never break the update flow. */ }
+            }
+            catch (ObjectDisposedException)
+            {
+                // Settings form was closed mid-await; nothing more to do.
+            }
+            catch (Exception ex)
+            {
+                try { _lblUpdateStatus.Text = "Update check failed: " + ex.Message; } catch { }
+                try { _history.Append("check", "exception", "", ex.Message); } catch { }
+            }
+            finally
+            {
+                try { _btnCheckNow.Enabled = true; } catch { }
+            }
+        }
+
+        private async void BtnInstallUpdate_Click(object sender, EventArgs e)
+        {
+            if (_latestRelease == null || _availability != UpdateAvailability.NewerAvailable) return;
+
+            var confirm = MessageBox.Show(
+                text:
+                    "Install OutlookAI " + _latestRelease.Tag + ".\n\n" +
+                    "This will:\n" +
+                    "  • close Outlook for ALL users currently on this server\n" +
+                    "  • run the OutlookAI installer with administrator privileges\n" +
+                    "  • leave Outlook closed when finished — everyone reopens manually\n\n" +
+                    "Have you given users a heads-up?",
+                caption: "Install Update",
+                buttons: MessageBoxButtons.OKCancel,
+                icon: MessageBoxIcon.Warning,
+                defaultButton: MessageBoxDefaultButton.Button2);
+            if (confirm != DialogResult.OK) return;
+
+            _btnInstallUpdate.Enabled = false;
+            _btnCheckNow.Enabled = false;
+            _lblUpdateStatus.Text = "Downloading…";
+
+            var launchedSuccessfully = false;
+            try
+            {
+                var downloader = new UpdateDownloader(_updaterHttp);
+                var dl = await downloader.DownloadAsync(_latestRelease, null, CancellationToken.None);
+
+                if (!(dl is DownloadSuccess success))
+                {
+                    // C# 7.3: classic switch (switch expressions require C# 8).
+                    switch (dl)
+                    {
+                        case HashMismatch _:
+                            _lblUpdateStatus.Text = "Downloaded file failed integrity check. Aborting.";
+                            break;
+                        case MissingInstallerScript _:
+                            _lblUpdateStatus.Text = "Update package is malformed (no installer). Please file a bug.";
+                            break;
+                        case DownloadFailed df:
+                            _lblUpdateStatus.Text = "Download failed: " + df.Detail;
+                            break;
+                        case Cancelled _:
+                            _lblUpdateStatus.Text = "Cancelled.";
+                            break;
+                        default:
+                            _lblUpdateStatus.Text = "Unknown download result.";
+                            break;
+                    }
+                    try { _history.Append("download", "failed", _latestRelease.Tag, _lblUpdateStatus.Text); } catch { }
+                    return;
+                }
+                try { _history.Append("download", "ok", _latestRelease.Tag, "sha256_ok"); } catch { }
+
+                // Write sentinel; cleared by ThisAddIn.Startup on next Outlook start.
+                try
+                {
+                    System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(UpdatePaths.InProgressSentinel));
+                    System.IO.File.WriteAllText(UpdatePaths.InProgressSentinel, _latestRelease.Tag);
+                }
+                catch { }
+
+                var installer = new UpdateInstaller();
+                var launch = installer.LaunchElevatedInstall(success);
+
+                switch (launch)
+                {
+                    case Launched l:
+                        _lblUpdateStatus.Text = "Installer launched (PID " + l.Pid + "). Outlook will close shortly to apply the update.";
+                        try { _history.Append("launch", "launched", _latestRelease.Tag, "pid=" + l.Pid); } catch { }
+                        launchedSuccessfully = true;
+                        break;
+                    case UacDeclined _:
+                        _lblUpdateStatus.Text = "Update cancelled — administrator privileges required.";
+                        try { System.IO.File.Delete(UpdatePaths.InProgressSentinel); } catch { }
+                        try { _history.Append("launch", "uac_declined", _latestRelease.Tag, ""); } catch { }
+                        break;
+                    case LaunchFailed lf:
+                        _lblUpdateStatus.Text = "Failed to launch installer: " + lf.Detail;
+                        try { System.IO.File.Delete(UpdatePaths.InProgressSentinel); } catch { }
+                        try { _history.Append("launch", "failed", _latestRelease.Tag, lf.Detail); } catch { }
+                        break;
+                }
+            }
+            catch (ObjectDisposedException)
+            {
+                // Settings form was closed mid-await; nothing more to do.
+            }
+            catch (Exception ex)
+            {
+                try { _lblUpdateStatus.Text = "Install failed: " + ex.Message; } catch { }
+                try { _history.Append("install", "exception", _latestRelease != null ? _latestRelease.Tag : "", ex.Message); } catch { }
+                // Sentinel may have been written; try to clean it up so we don't lie to the reconciler.
+                try { System.IO.File.Delete(UpdatePaths.InProgressSentinel); } catch { }
+            }
+            finally
+            {
+                if (!launchedSuccessfully)
+                {
+                    try { _btnInstallUpdate.Enabled = true; } catch { }
+                    try { _btnCheckNow.Enabled = true; } catch { }
+                }
+            }
         }
 
         private void BtnLogin_Click(object sender, EventArgs e)
