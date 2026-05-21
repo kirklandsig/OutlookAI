@@ -383,8 +383,11 @@
     <Compile Include="Services\Tools\OutlookSetCategoryTool.cs" />
     <Compile Include="Services\Tools\ToolArgValidationException.cs" />
     <Compile Include="Services\Tools\ToolCatalogSchema.cs" />
+    <Compile Include="Services\Updates\SemVer.cs" />
+    <Compile Include="Services\Updates\UpdateAvailability.cs" />
     <Compile Include="Services\Updates\UpdateManifest.cs" />
     <Compile Include="Services\Updates\UpdatePaths.cs" />
+    <Compile Include="Services\Updates\VersionComparator.cs" />
     <Compile Include="Services\Variants\Tone.cs" />
     <Compile Include="Services\Variants\Variant.cs" />
     <Compile Include="Services\Variants\VariantParser.cs" />
