@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-2025
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # full history needed for `git tag -l --format` to read annotated tag body
+          fetch-depth: 0
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v2
+
+      - name: Restore packages
+        shell: pwsh
+        run: |
+          nuget restore VSTO2\OutlookAI.sln
+          # The VSTO project's packages.config sometimes isn't picked up by the
+          # solution-level restore on a clean runner, leaving Microsoft.Office.*
+          # refs unresolved at MSBuild time. Restore the project's packages.config
+          # explicitly to guarantee bin\Release is buildable.
+          nuget restore VSTO2\OutlookAI\packages.config -PackagesDirectory VSTO2\OutlookAI\packages
+
+      - name: Build deploy ZIP
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          .\Deploy\Make-ReleaseZip.ps1 -Tag $tag -OutDir out
+
+      - name: Read tag annotation as release body
+        id: tagbody
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $body = git tag -l --format="%(contents)" $tag
+          if ([string]::IsNullOrWhiteSpace($body)) { $body = "Release $tag" }
+          $body | Out-File -FilePath release-body.md -Encoding UTF8
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $zip = "out\OutlookAI-$tag-RDS-Deploy.zip"
+          $sha = "$zip.sha256"
+          gh release create $tag $zip $sha --title $tag --notes-file release-body.md
