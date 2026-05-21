@@ -48,6 +48,10 @@ namespace OutlookAI.Services.Updates
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
+                // Deleting the staging dir here also removes the partially-written zip
+                // that DownloadToFileAsync left behind when cancellation tripped the
+                // inner loop. Both streams are already disposed (via using) before we
+                // get here, so the file handle is released.
                 try { Directory.Delete(stagingDir, true); } catch { }
                 return new Cancelled();
             }
