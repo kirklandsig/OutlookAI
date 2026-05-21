@@ -377,6 +377,19 @@ $v2Config = @"
 
 Set-Content -Path $ConfigFilePath -Value $v2Config -Encoding UTF8
 Write-Host "  Wrote $ConfigFilePath" -ForegroundColor Gray
+# v2.1+ release packages ship a version.json alongside Install-OutlookAI.ps1.
+# Copy it into the install dir so the in-app updater knows what is installed.
+$stagedVersionJson = Join-Path $SourcePath "version.json"
+if (Test-Path $stagedVersionJson) {
+    $installedVersionJson = Join-Path $InstallPath "version.json"
+    Copy-Item -LiteralPath $stagedVersionJson -Destination $installedVersionJson -Force
+    Write-Host "  Wrote $installedVersionJson" -ForegroundColor Gray
+} else {
+    # Backwards-compatible: older deploy ZIPs do not have version.json. The
+    # in-app updater shows "Current: (dev build)" in this case and still
+    # allows updates.
+    Write-Host "  (no version.json in source path; skipping)" -ForegroundColor Gray
+}
 Write-Host "  Done." -ForegroundColor Green
 
 # --- 6. Provision shared OAuth auth folder + ACL -------------------------
