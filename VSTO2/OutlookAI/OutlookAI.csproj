@@ -178,6 +178,8 @@
     </Reference>
     <Reference Include="System.Data" />
     <Reference Include="System.Drawing" />
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
     <Reference Include="System.IO.Packaging, Version=6.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
       <HintPath>..\packages\System.IO.Packaging.6.0.0\lib\net461\System.IO.Packaging.dll</HintPath>
     </Reference>
@@ -381,6 +383,8 @@
     <Compile Include="Services\Tools\OutlookSetCategoryTool.cs" />
     <Compile Include="Services\Tools\ToolArgValidationException.cs" />
     <Compile Include="Services\Tools\ToolCatalogSchema.cs" />
+    <Compile Include="Services\Updates\UpdateManifest.cs" />
+    <Compile Include="Services\Updates\UpdatePaths.cs" />
     <Compile Include="Services\Variants\Tone.cs" />
     <Compile Include="Services\Variants\Variant.cs" />
     <Compile Include="Services\Variants\VariantParser.cs" />
