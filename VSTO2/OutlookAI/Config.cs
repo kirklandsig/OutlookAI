@@ -139,6 +139,17 @@ namespace OutlookAI
             "config.xml"
         );
 
+        // Shared admin defaults: writable by Admins (RDS scenario), readable by
+        // all users on the box. Loaded between the server-authoritative global
+        // config and the per-user AppData override. SettingsForm-driven Save
+        // writes here AND to AppData so the admin's preference becomes the
+        // default for every user on the server.
+        private static readonly string SharedConfigFilePath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            "OutlookAI",
+            "config.xml"
+        );
+
         static Config()
         {
             LoadConfig();
@@ -146,16 +157,25 @@ namespace OutlookAI
 
         public static void LoadConfig()
         {
-            LoadConfigFromPaths(GlobalConfigFilePath, UserConfigFilePath);
+            LoadConfigFromPaths(GlobalConfigFilePath, SharedConfigFilePath, UserConfigFilePath);
         }
 
-        // Test seam: explicit paths so we don't touch Program Files / AppData
-        // during unit tests.
-        public static void LoadConfigFromPaths(string globalConfigPath, string userConfigPath)
+        // Test seam: explicit paths so we don't touch Program Files /
+        // ProgramData / AppData during unit tests.
+        public static void LoadConfigFromPaths(string globalConfigPath, string sharedConfigPath, string userConfigPath)
         {
             ResetDefaults();
             LoadFromFile(globalConfigPath, allowServerFields: true);
+            LoadFromFile(sharedConfigPath, allowServerFields: false);
             LoadFromFile(userConfigPath, allowServerFields: false);
+        }
+
+        // Back-compat overload for existing tests that don't care about the
+        // shared-defaults layer. Equivalent to passing a non-existent shared
+        // path (LoadFromFile short-circuits on null/missing).
+        public static void LoadConfigFromPaths(string globalConfigPath, string userConfigPath)
+        {
+            LoadConfigFromPaths(globalConfigPath, sharedConfigPath: null, userConfigPath);
         }
 
         public static void ResetDefaults()
@@ -173,7 +193,7 @@ namespace OutlookAI
         {
             try
             {
-                if (!File.Exists(filePath))
+                if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
                 {
                     return;
                 }
@@ -265,35 +285,47 @@ namespace OutlookAI
 
         public static void SaveConfig()
         {
+            // Per-user config persists AdminPassword + the user-tunable AI
+            // behavior fields. Shared config persists the same fields so
+            // admins on an RDS host can set server-wide defaults that
+            // propagate to every user.
+            var doc = new XDocument(
+                new XElement("Config",
+                    new XElement("AdminPassword", AdminPassword),
+                    new XElement("Model", Model),
+                    new XElement("ReasoningEffort", ReasoningEffort),
+                    new XElement("WriteToolsEnabled", WriteToolsEnabled),
+                    new XElement("EnabledWriteTools",
+                        string.Join(",", EnabledWriteTools ?? new HashSet<string>()))
+                )
+            );
+
+            // 1) Per-user override (always attempted; failures silently
+            //    swallowed so a read-only AppData doesn't block the workflow).
+            TrySaveTo(UserConfigFilePath, doc);
+
+            // 2) Shared admin defaults (only succeeds if running as
+            //    Administrator on the RDS host - ProgramData ACL by default
+            //    is Admin-write, User-read. Regular users silently no-op
+            //    here, which is the intended behavior: a non-admin can't
+            //    change server-wide defaults).
+            TrySaveTo(SharedConfigFilePath, doc);
+        }
+
+        private static void TrySaveTo(string filePath, XDocument doc)
+        {
             try
             {
-                var dir = Path.GetDirectoryName(UserConfigFilePath);
+                var dir = Path.GetDirectoryName(filePath);
                 if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                 {
                     Directory.CreateDirectory(dir);
                 }
-
-                // Per-user config persists AdminPassword + the user-tunable
-                // AI behavior fields (ReasoningEffort, WriteToolsEnabled,
-                // EnabledWriteTools, Model). All other fields are
-                // server-authoritative and owned by the global config in
-                // Program Files.
-                var doc = new XDocument(
-                    new XElement("Config",
-                        new XElement("AdminPassword", AdminPassword),
-                        new XElement("Model", Model),
-                        new XElement("ReasoningEffort", ReasoningEffort),
-                        new XElement("WriteToolsEnabled", WriteToolsEnabled),
-                        new XElement("EnabledWriteTools",
-                            string.Join(",", EnabledWriteTools ?? new HashSet<string>()))
-                    )
-                );
-
-                doc.Save(UserConfigFilePath);
+                doc.Save(filePath);
             }
             catch
             {
-                // Silently fail if can't save (e.g. read-only AppData).
+                // Silently fail (read-only target, ACL denied, etc.).
             }
         }
     }

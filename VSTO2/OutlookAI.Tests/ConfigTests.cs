@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using OutlookAI;
 using Xunit;
@@ -227,6 +228,88 @@ namespace OutlookAI.Tests
             // Should fall back to the v2 default since the requested model
             // isn't in AvailableModels.
             Assert.Equal("gpt-5.5", Config.Model);
+        }
+
+        [Fact]
+        public void LoadConfigFromPaths_SharedDefaultsAppliedWhenUserAbsent()
+        {
+            var g = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".xml");
+            var s = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".xml");
+            var u = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".xml");
+
+            File.WriteAllText(s, "<Config><ReasoningEffort>Medium</ReasoningEffort></Config>");
+            // No user file
+            try
+            {
+                Config.LoadConfigFromPaths(g, s, u);
+                Assert.Equal("Medium", Config.ReasoningEffort);
+            }
+            finally
+            {
+                if (File.Exists(s)) File.Delete(s);
+            }
+        }
+
+        [Fact]
+        public void LoadConfigFromPaths_UserOverridesSharedDefaults()
+        {
+            var g = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".xml");
+            var s = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".xml");
+            var u = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".xml");
+
+            File.WriteAllText(s, "<Config><ReasoningEffort>Medium</ReasoningEffort></Config>");
+            File.WriteAllText(u, "<Config><ReasoningEffort>Low</ReasoningEffort></Config>");
+            try
+            {
+                Config.LoadConfigFromPaths(g, s, u);
+                Assert.Equal("Low", Config.ReasoningEffort);
+            }
+            finally
+            {
+                if (File.Exists(s)) File.Delete(s);
+                if (File.Exists(u)) File.Delete(u);
+            }
+        }
+
+        [Fact]
+        public void LoadConfigFromPaths_SharedConfigPathNull_TreatedAsAbsent()
+        {
+            var g = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".xml");
+            var u = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".xml");
+
+            File.WriteAllText(u, "<Config><ReasoningEffort>High</ReasoningEffort></Config>");
+            try
+            {
+                Config.LoadConfigFromPaths(g, sharedConfigPath: null, userConfigPath: u);
+                Assert.Equal("High", Config.ReasoningEffort);
+            }
+            finally
+            {
+                if (File.Exists(u)) File.Delete(u);
+            }
+        }
+
+        [Fact]
+        public void LoadConfigFromPaths_GlobalAndSharedAndUser_UserBeatsSharedBeatsGlobal()
+        {
+            var g = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".xml");
+            var s = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".xml");
+            var u = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".xml");
+
+            File.WriteAllText(g, "<Config><ReasoningEffort>High</ReasoningEffort></Config>");
+            File.WriteAllText(s, "<Config><ReasoningEffort>Medium</ReasoningEffort></Config>");
+            File.WriteAllText(u, "<Config><ReasoningEffort>Low</ReasoningEffort></Config>");
+            try
+            {
+                Config.LoadConfigFromPaths(g, s, u);
+                Assert.Equal("Low", Config.ReasoningEffort);
+            }
+            finally
+            {
+                if (File.Exists(g)) File.Delete(g);
+                if (File.Exists(s)) File.Delete(s);
+                if (File.Exists(u)) File.Delete(u);
+            }
         }
     }
 }
