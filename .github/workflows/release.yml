@@ -34,11 +34,35 @@ jobs:
           # explicitly to guarantee bin\Release is buildable.
           nuget restore VSTO2\OutlookAI\packages.config -PackagesDirectory VSTO2\OutlookAI\packages
 
+      - name: Generate ephemeral code-signing cert
+        id: cert
+        shell: pwsh
+        run: |
+          # VSTO's Office targets force SignManifests=true (can't bypass) and
+          # the csproj has a hardcoded <ManifestCertificateThumbprint> that
+          # points at the dev box's local cert store. On the CI runner that
+          # cert isn't installed, so MSBuild dies with MSB3323.
+          #
+          # Workaround: generate an ephemeral self-signed cert per run and
+          # pass its thumbprint to MSBuild. The resulting signature is never
+          # re-checked at install time because Install-OutlookAI.ps1 uses
+          # the `|vstolocal` trust modifier, which makes Outlook trust the
+          # add-in by install location rather than by publisher.
+          $cert = New-SelfSignedCertificate `
+            -Type CodeSigningCert `
+            -Subject "CN=OutlookAI-CI-Ephemeral" `
+            -CertStoreLocation Cert:\CurrentUser\My `
+            -KeyUsage DigitalSignature `
+            -KeyAlgorithm RSA `
+            -KeyLength 2048 `
+            -NotAfter (Get-Date).AddDays(7)
+          "thumb=$($cert.Thumbprint)" >> $env:GITHUB_OUTPUT
+
       - name: Build deploy ZIP
         shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
-          .\Deploy\Make-ReleaseZip.ps1 -Tag $tag -OutDir out
+          .\Deploy\Make-ReleaseZip.ps1 -Tag $tag -OutDir out -CertThumbprint "${{ steps.cert.outputs.thumb }}"
 
       - name: Read tag annotation as release body
         id: tagbody
