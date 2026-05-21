@@ -105,5 +105,50 @@ namespace OutlookAI.Tests.Services.Updates
             Assert.Equal("https://api.github.com/repos/kirklandsig/OutlookAI/releases/latest",
                 req.RequestUri.ToString());
         }
+
+        [Fact]
+        public async Task GetLatestStableAsync_MultipleZipAssets_FirstWins()
+        {
+            const string multiZipJson = @"{
+                ""tag_name"": ""v2.1.0"",
+                ""html_url"": ""https://github.com/.../releases/tag/v2.1.0"",
+                ""published_at"": ""2026-06-02T19:14:00Z"",
+                ""body"": """",
+                ""assets"": [
+                    { ""name"": ""OutlookAI-v2.1.0-RDS-Deploy.zip"",
+                      ""browser_download_url"": ""https://github.com/.../primary.zip"" },
+                    { ""name"": ""OutlookAI-v2.1.0-RDS-Deploy.zip.sha256"",
+                      ""browser_download_url"": ""https://github.com/.../primary.zip.sha256"" },
+                    { ""name"": ""SomethingElse.zip"",
+                      ""browser_download_url"": ""https://github.com/.../secondary.zip"" }
+                ]
+            }";
+            var handler = new FakeHttpMessageHandler();
+            handler.QueueJson(HttpStatusCode.OK, multiZipJson);
+
+            var result = await NewClient(handler).GetLatestStableAsync(CancellationToken.None);
+
+            var found = Assert.IsType<ReleaseFound>(result);
+            Assert.Equal("OutlookAI-v2.1.0-RDS-Deploy.zip", found.Info.ZipAssetName);
+            Assert.EndsWith("primary.zip", found.Info.ZipUrl);
+        }
+
+        [Fact]
+        public async Task GetLatestStableAsync_MissingTagName_ReturnsNetworkError()
+        {
+            const string noTagJson = @"{
+                ""html_url"": ""https://github.com/.../releases/latest"",
+                ""published_at"": ""2026-06-02T19:14:00Z"",
+                ""body"": """",
+                ""assets"": []
+            }";
+            var handler = new FakeHttpMessageHandler();
+            handler.QueueJson(HttpStatusCode.OK, noTagJson);
+
+            var result = await NewClient(handler).GetLatestStableAsync(CancellationToken.None);
+
+            var err = Assert.IsType<NetworkError>(result);
+            Assert.Contains("Malformed release JSON", err.Detail);
+        }
     }
 }

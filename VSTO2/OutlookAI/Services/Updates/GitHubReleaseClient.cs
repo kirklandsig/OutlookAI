@@ -46,6 +46,10 @@ namespace OutlookAI.Services.Updates
             {
                 return new NetworkError { Detail = "Request timed out: " + ex.Message };
             }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                return new NetworkError { Detail = ex.Message };
+            }
 
             if (resp.StatusCode == HttpStatusCode.NotFound)
             {
@@ -92,6 +96,11 @@ namespace OutlookAI.Services.Updates
                 PublishedAt = ParseDate((string)o["published_at"]),
             };
 
+            if (string.IsNullOrWhiteSpace(info.Tag))
+            {
+                throw new FormatException("Release JSON missing tag_name.");
+            }
+
             var assets = o["assets"] as JArray;
             if (assets != null)
             {
@@ -107,8 +116,11 @@ namespace OutlookAI.Services.Updates
                     }
                     else if (name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
                     {
-                        info.ZipAssetName = name;
-                        info.ZipUrl = url;
+                        if (info.ZipUrl == null)
+                        {
+                            info.ZipAssetName = name;
+                            info.ZipUrl = url;
+                        }
                     }
                 }
             }
