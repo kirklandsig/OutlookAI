@@ -3,18 +3,15 @@ using Xunit;
 namespace OutlookAI.Tests.Services.Updates
 {
     /// <summary>
-    /// xUnit collection that serializes test classes which mutate the shared
-    /// static <see cref="OutlookAI.Services.Updates.UpdatePaths"/> properties.
-    /// By default xUnit runs test classes in parallel, which would race on
-    /// <c>UpdatePaths.BaseUpdatesDir</c> between e.g. UpdateDownloaderTests and
-    /// UpdateStartupReconcilerTests. Classes opting into this collection run
-    /// serially with respect to each other while still parallel across other
-    /// collections.
+    /// xUnit collection used to serialize test classes that mutate the shared
+    /// static state on <c>UpdatePaths</c> (e.g. <c>BaseUpdatesDir</c>,
+    /// <c>InstalledVersionJson</c>). Members opt in via
+    /// <c>[Collection("UpdatePaths")]</c> on the class. The
+    /// <c>DisableParallelization</c> flag is the explicit way to ask xUnit
+    /// to run them one at a time; we don't need any shared fixture.
     /// </summary>
-    [CollectionDefinition("UpdatePaths")]
-    public sealed class UpdatePathsCollection : ICollectionFixture<object>
+    [CollectionDefinition("UpdatePaths", DisableParallelization = true)]
+    public sealed class UpdatePathsCollection
     {
-        // Empty: this exists solely to opt classes into a shared collection so
-        // they run serially. The fixture object is not used.
     }
 }
