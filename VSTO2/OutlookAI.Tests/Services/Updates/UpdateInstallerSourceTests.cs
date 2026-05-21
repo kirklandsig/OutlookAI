@@ -34,6 +34,7 @@ namespace OutlookAI.Tests.Services.Updates
             Assert.Contains("-File", method);
             Assert.Contains("-SourcePath", method);
             Assert.Contains("WorkingDirectory = Path.GetTempPath()", method);
+            Assert.Matches(@"-NoExit\s+-NoProfile\s+-ExecutionPolicy\s+Bypass\s+-File", source);
         }
 
         [Fact]

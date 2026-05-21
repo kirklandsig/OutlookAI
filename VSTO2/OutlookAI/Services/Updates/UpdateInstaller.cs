@@ -16,8 +16,8 @@ namespace OutlookAI.Services.Updates
         public LaunchResult LaunchElevatedInstall(DownloadSuccess update)
         {
             if (update == null) throw new ArgumentNullException(nameof(update));
-            if (string.IsNullOrWhiteSpace(update.InstallerScriptPath)) throw new ArgumentException("InstallerScriptPath required.");
-            if (string.IsNullOrWhiteSpace(update.ExtractedDir)) throw new ArgumentException("ExtractedDir required.");
+            if (string.IsNullOrWhiteSpace(update.InstallerScriptPath)) throw new ArgumentException("InstallerScriptPath required.", nameof(update));
+            if (string.IsNullOrWhiteSpace(update.ExtractedDir)) throw new ArgumentException("ExtractedDir required.", nameof(update));
 
             var psi = new ProcessStartInfo("powershell.exe")
             {
@@ -34,8 +34,12 @@ namespace OutlookAI.Services.Updates
 
             try
             {
-                var p = Process.Start(psi);
-                return new Launched { Pid = p?.Id ?? 0 };
+                using (var p = Process.Start(psi))
+                {
+                    if (p == null)
+                        return new LaunchFailed { Detail = "Process.Start returned null; elevated installer did not launch." };
+                    return new Launched { Pid = p.Id };
+                }
             }
             catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
             {
