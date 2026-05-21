@@ -27,6 +27,7 @@ jobs:
         shell: pwsh
         run: |
           nuget restore VSTO2\OutlookAI.sln
+          nuget restore VSTO2\OutlookAI\packages.config -PackagesDirectory VSTO2\OutlookAI\packages
 
       - name: Build deploy ZIP
         shell: pwsh
