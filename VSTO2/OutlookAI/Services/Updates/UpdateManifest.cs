@@ -39,7 +39,13 @@ namespace OutlookAI.Services.Updates
                 var json = File.ReadAllText(path);
                 return Parse(json);
             }
-            catch { return Dev(); }
+            catch (Exception ex) when (ex is System.IO.IOException
+                                    || ex is System.UnauthorizedAccessException
+                                    || ex is Newtonsoft.Json.JsonException
+                                    || ex is System.IO.InvalidDataException)
+            {
+                return Dev();
+            }
         }
 
         public static UpdateManifest LoadFromZip(string zipPath)
@@ -56,7 +62,13 @@ namespace OutlookAI.Services.Updates
                     }
                 }
             }
-            catch { return Dev(); }
+            catch (Exception ex) when (ex is System.IO.IOException
+                                    || ex is System.UnauthorizedAccessException
+                                    || ex is Newtonsoft.Json.JsonException
+                                    || ex is System.IO.InvalidDataException)
+            {
+                return Dev();
+            }
         }
 
         private static UpdateManifest Parse(string json)
