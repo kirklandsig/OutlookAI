@@ -73,5 +73,34 @@ namespace OutlookAI.Tests.Services.Export
                 if (File.Exists(sandbox)) File.Delete(sandbox);
             }
         }
+
+        [Fact]
+        public void ResolveBaseDir_WhenMyDocumentsIsUnc_FallsBackToLocalAppData()
+        {
+            var fakeUnc = @"\\fileserver\users\jdoe\Documents";
+            var fakeLocal = @"C:\Users\jdoe\AppData\Local";
+            var resolver = new ExportPathResolver(
+                baseDirOverride: null,
+                docsProvider: () => fakeUnc,
+                localAppDataProvider: () => fakeLocal);
+
+            var path = resolver.ResolveBaseDir();
+
+            Assert.Equal(Path.Combine(fakeLocal, "OutlookAI", "Reports"), path);
+        }
+
+        [Fact]
+        public void ResolveBaseDir_WhenMyDocumentsIsLocal_UsesIt()
+        {
+            var fakeLocal = @"C:\Users\jdoe\Documents";
+            var resolver = new ExportPathResolver(
+                baseDirOverride: null,
+                docsProvider: () => fakeLocal,
+                localAppDataProvider: () => @"C:\Users\jdoe\AppData\Local");
+
+            var path = resolver.ResolveBaseDir();
+
+            Assert.Equal(Path.Combine(fakeLocal, "OutlookAI", "Reports"), path);
+        }
     }
 }

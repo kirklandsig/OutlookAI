@@ -13,6 +13,17 @@ namespace OutlookAI.Services.Export
         }
 
         public ExportPathResolver(string baseDirOverride)
+            : this(baseDirOverride, docsProvider: null, localAppDataProvider: null)
+        {
+        }
+
+        // Test seam: lets unit tests inject fake MyDocuments / LocalAppData
+        // values so we can exercise the UNC-fallback branch without
+        // actually owning a redirected folder.
+        internal ExportPathResolver(
+            string baseDirOverride,
+            Func<string> docsProvider,
+            Func<string> localAppDataProvider)
         {
             if (baseDirOverride != null)
             {
@@ -20,8 +31,26 @@ namespace OutlookAI.Services.Export
                 return;
             }
 
-            var docs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-            _baseDir = Path.Combine(docs, "OutlookAI", "Reports");
+            var docs = (docsProvider != null
+                ? docsProvider()
+                : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments));
+            var candidate = Path.Combine(docs, "OutlookAI", "Reports");
+
+            // On RDS hosts with Folder Redirection, MyDocuments can resolve
+            // to a UNC share (e.g. \\fileserver\users\jdoe\Documents). The
+            // export pipeline downstream (ExportPathPolicy + PdfRenderer +
+            // ClosedXML tempfile-rename) doesn't tolerate UNC roots, so
+            // fall back to LocalAppData which is always machine-local and
+            // writable by the running user.
+            if (candidate.StartsWith(@"\\", StringComparison.Ordinal))
+            {
+                var localAppData = (localAppDataProvider != null
+                    ? localAppDataProvider()
+                    : Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
+                candidate = Path.Combine(localAppData, "OutlookAI", "Reports");
+            }
+
+            _baseDir = candidate;
         }
 
         public string ResolveBaseDir()
