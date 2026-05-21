@@ -45,6 +45,9 @@ namespace OutlookAI
                 ev.SetObserved();
             };
 
+            try { OutlookAI.Services.Updates.UpdateStartupReconciler.Reconcile(new OutlookAI.Services.Updates.UpdateHistoryLog()); }
+            catch { /* never block startup */ }
+
             try
             {
                 AuthService = new CodexAuthService(Config.CodexAuthPath);
