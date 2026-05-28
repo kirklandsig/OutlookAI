@@ -214,7 +214,7 @@ namespace OutlookAI.Services.Tools
                         "SearchMessages primary=AdvancedSearch complete raw_count=" + primary.Items.Count,
                         "LiveOutlookSurface");
                     return _marshaller.RunAsync(
-                        () => SearchResultProjector.Project(primary.Items, args, _classifier),
+                        () => SearchResultProjector.Project(primary.Items, args, _classifier).Messages,
                         ct).GetAwaiter().GetResult();
                 }
 
@@ -1307,7 +1307,7 @@ namespace OutlookAI.Services.Tools
             }
 
             return _marshaller.RunAsync(
-                () => SearchResultProjector.Project(allInputs, args, _classifier),
+                () => SearchResultProjector.Project(allInputs, args, _classifier).Messages,
                 ct).GetAwaiter().GetResult();
         }
 

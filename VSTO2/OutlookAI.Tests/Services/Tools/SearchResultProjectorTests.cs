@@ -31,7 +31,7 @@ namespace OutlookAI.Tests.Services.Tools
             var input = new[] { Item("a", 2010), Item("b", 2024), Item("c", 2017) };
             var args = new SearchMessagesArgs { SortOrder = "newest", MaxResults = 5 };
             var result = SearchResultProjector.Project(input, args, new FolderClassifier());
-            Assert.Equal(new[] { "b", "c", "a" }, result.Select(r => r.Id).ToArray());
+            Assert.Equal(new[] { "b", "c", "a" }, result.Messages.Select(r => r.Id).ToArray());
         }
 
         [Fact]
@@ -40,7 +40,7 @@ namespace OutlookAI.Tests.Services.Tools
             var input = new[] { Item("a", 2010), Item("b", 2024), Item("c", 2017) };
             var args = new SearchMessagesArgs { SortOrder = "oldest", MaxResults = 5 };
             var result = SearchResultProjector.Project(input, args, new FolderClassifier());
-            Assert.Equal(new[] { "a", "c", "b" }, result.Select(r => r.Id).ToArray());
+            Assert.Equal(new[] { "a", "c", "b" }, result.Messages.Select(r => r.Id).ToArray());
         }
 
         [Fact]
@@ -49,7 +49,7 @@ namespace OutlookAI.Tests.Services.Tools
             var input = Enumerable.Range(0, 20).Select(i => Item("i" + i, 2000 + i)).ToList();
             var args = new SearchMessagesArgs { SortOrder = "newest", MaxResults = 3 };
             var result = SearchResultProjector.Project(input, args, new FolderClassifier());
-            Assert.Equal(3, result.Count);
+            Assert.Equal(3, result.Messages.Count);
         }
 
         [Fact]
@@ -63,7 +63,7 @@ namespace OutlookAI.Tests.Services.Tools
             };
             var args = new SearchMessagesArgs { SortOrder = "newest", MaxResults = 5 };
             var result = SearchResultProjector.Project(input, args, new FolderClassifier());
-            Assert.Equal(new[] { "good" }, result.Select(r => r.Id).ToArray());
+            Assert.Equal(new[] { "good" }, result.Messages.Select(r => r.Id).ToArray());
         }
 
         [Fact]
@@ -90,7 +90,7 @@ namespace OutlookAI.Tests.Services.Tools
             var args = new SearchMessagesArgs { SortOrder = "newest", MaxResults = 3 };
             var result = SearchResultProjector.Project(input, args, new FolderClassifier());
 
-            Assert.Equal(3, result.Count);
+            Assert.Equal(3, result.Messages.Count);
             Assert.Equal(3, snippetCalls); // exactly the surviving top-N had snippet evaluated
         }
 
@@ -114,9 +114,33 @@ namespace OutlookAI.Tests.Services.Tools
             };
             var args = new SearchMessagesArgs { SortOrder = "newest", MaxResults = 5 };
             var result = SearchResultProjector.Project(input, args, new FolderClassifier());
-            Assert.Equal(2, result.Count);
-            Assert.Equal("good", result.First(r => r.Id == "ok").Snippet);
-            Assert.Equal("", result.First(r => r.Id == "bad").Snippet);
+            Assert.Equal(2, result.Messages.Count);
+            Assert.Equal("good", result.Messages.First(r => r.Id == "ok").Snippet);
+            Assert.Equal("", result.Messages.First(r => r.Id == "bad").Snippet);
+        }
+
+        [Fact]
+        public void Project_ReportsTotalMatchesAndTruncated_WhenClamped()
+        {
+            var input = Enumerable.Range(0, 10).Select(i => Item("i" + i, 2000 + i)).ToList();
+            var args = new SearchMessagesArgs { SortOrder = "newest", MaxResults = 3 };
+            var result = SearchResultProjector.Project(input, args, new FolderClassifier());
+
+            Assert.Equal(3, result.Messages.Count);
+            Assert.Equal(10, result.TotalMatches);
+            Assert.True(result.Truncated);
+        }
+
+        [Fact]
+        public void Project_NotTruncated_WhenUnderLimit()
+        {
+            var input = new[] { Item("a", 2010), Item("b", 2024) };
+            var args = new SearchMessagesArgs { SortOrder = "newest", MaxResults = 25 };
+            var result = SearchResultProjector.Project(input, args, new FolderClassifier());
+
+            Assert.Equal(2, result.Messages.Count);
+            Assert.Equal(2, result.TotalMatches);
+            Assert.False(result.Truncated);
         }
     }
 }
