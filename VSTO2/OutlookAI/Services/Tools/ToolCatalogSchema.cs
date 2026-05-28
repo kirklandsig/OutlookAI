@@ -50,7 +50,7 @@ namespace OutlookAI.Services.Tools
                     + "(4) broaden scope to all_mail if you started with auto. "
                     + "Never send default false filters such as has_attachment:false or is_unread:false; use attachment_filter/read_status/flag_status/importance_filter and use 'any' when not requested. "
                     + "For 'I sent' / sent / outgoing report requests, prefer outlook_list_folders to discover Sent Items or Outbound and pass folder_id rather than scope:'all_mail' when possible. "
-                    + "Do not use max_results:100 on broad all_mail targeted lookups; use 25 unless the user explicitly asks for a large row count or a specific folder is selected. "
+                    + "The result includes total_matches and truncated. If truncated is true you did NOT get all matches - the array is capped at max_results (hard cap 100). When the user wants a COMPLETE list or spreadsheet, do NOT try to raise max_results past 100; instead call outlook_export_search_results, which collects the full set server-side. "
                     + "If you pass NO filters, the tool returns the newest 25 messages in the current folder - almost never what the user asked for. "
                     + "Prefer one precise call over many. After search, use outlook_read_message on the most-relevant id for full body. "
                     + "For tabular Excel exports over many messages, prefer metadata-only synthesis: the snippet field already contains the first ~200 chars of each match, so build Excel rows directly from search results and only call outlook_read_messages when a column genuinely requires full body content. Reading full bodies for 100+ messages will exceed the context window. "
@@ -255,7 +255,44 @@ namespace OutlookAI.Services.Tools
                             new JProperty("content_markdown", new JObject(
                                 new JProperty("type", "string"),
                                 new JProperty("maxLength", 250000),
-                                new JProperty("description", "Required markdown body, max 250000 chars. Supports headings, GFM tables, lists, blockquotes, code blocks, bold/italic, and links; inline images are stripped."))))),
+                                 new JProperty("description", "Required markdown body, max 250000 chars. Supports headings, GFM tables, lists, blockquotes, code blocks, bold/italic, and links; inline images are stripped."))))),
+                        new JProperty("additionalProperties", false))),
+
+                BuildToolEntry("outlook_export_search_results",
+                    "Export a COMPLETE list of messages matching a search filter to a styled Excel .xlsx, up to a server-configured ceiling (default 2000 rows). "
+                    + "Use this whenever the user wants 'all', 'every', 'a list of', or 'a spreadsheet of' messages matching criteria and completeness matters - e.g. 'Excel of every email from IT Creations', 'list all messages I sent to Susan in 2025'. "
+                    + "Unlike calling outlook_search_messages then outlook_export_excel (which caps at 100 results and silently drops the rest), this tool counts the true total and collects up to the ceiling server-side in one call, then reports how many it exported vs the true total. "
+                    + "Pass the SAME filter fields as outlook_search_messages (from, to, query, subject_contains, body_contains, scope, date_from, date_to, folder_id) plus a 'columns' array choosing from: subject, from, to, received_at, snippet, has_attachments. Columns default to received_at/from/to/subject/snippet when omitted. "
+                    + "This tool projects only those mechanical fields (it does NOT read full bodies and cannot summarize or synthesize). For a report that needs per-message AI summaries, instead page outlook_search_messages by date window, read up to 25 bodies per window, accumulate, and call outlook_export_pdf once. "
+                    + "If the result says truncated:true, tell the user you exported N of M and suggest narrowing the date range to capture the rest.",
+                    new JObject(
+                        new JProperty("type", "object"),
+                        new JProperty("properties", new JObject(
+                            new JProperty("query",            new JObject(new JProperty("type","string"),
+                                                              new JProperty("description","Free-form keyword(s) matched against subject + body. Use dedicated fields for sender/recipient/dates."))),
+                            new JProperty("from",             new JObject(new JProperty("type","string"),
+                                                              new JProperty("description","Sender substring; matches display name OR email (case-insensitive)."))),
+                            new JProperty("to",               new JObject(new JProperty("type","string"),
+                                                              new JProperty("description","Recipient substring."))),
+                            new JProperty("subject_contains", new JObject(new JProperty("type","string"))),
+                            new JProperty("body_contains",    new JObject(new JProperty("type","string"))),
+                            new JProperty("scope",            new JObject(new JProperty("type","string"),
+                                                              new JProperty("enum", new JArray("current_folder","all_mail","auto")),
+                                                              new JProperty("description","Default auto. Use all_mail for 'ever'/'any'/'everything'. folder_id overrides scope."))),
+                            new JProperty("folder_id",        new JObject(new JProperty("type","string"),
+                                                              new JProperty("description","Use outlook_list_folders to discover ids."))),
+                            new JProperty("date_from",        new JObject(new JProperty("type","string"),
+                                                              new JProperty("format","date-time"),
+                                                              new JProperty("description","Inclusive lower bound, ISO-8601 UTC."))),
+                            new JProperty("date_to",          new JObject(new JProperty("type","string"),
+                                                              new JProperty("format","date-time"),
+                                                              new JProperty("description","Exclusive upper bound, ISO-8601 UTC."))),
+                            new JProperty("columns",          new JObject(new JProperty("type","array"),
+                                                              new JProperty("items", new JObject(new JProperty("type","string"),
+                                                                  new JProperty("enum", new JArray("subject","from","to","received_at","snippet","has_attachments")))),
+                                                              new JProperty("description","Mechanical columns to include. Defaults to received_at, from, to, subject, snippet."))),
+                            new JProperty("filename_hint",    new JObject(new JProperty("type","string"),
+                                                              new JProperty("description","Optional base filename, e.g. 'IT-Creations-quotes'."))))),
                         new JProperty("additionalProperties", false))),
 
                 BuildToolEntry("outlook_get_current_selection",
