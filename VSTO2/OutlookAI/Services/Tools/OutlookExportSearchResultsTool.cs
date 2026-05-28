@@ -165,6 +165,11 @@ namespace OutlookAI.Services.Tools
             foreach (var c in InvalidSheetNameChars) s = s.Replace(c, ' ');
             s = s.Trim().Trim('\'').Trim();
             if (string.IsNullOrEmpty(s)) s = "Results";
+            // "History" is reserved by Excel; ClosedXML throws if a worksheet
+            // is named it (case-insensitive). filename_hint defaults to the
+            // sheet name, so a model-supplied "History" would otherwise crash
+            // the export with a misleading error.
+            if (string.Equals(s, "History", StringComparison.OrdinalIgnoreCase)) s = "Results";
             return s.Length <= 31 ? s : s.Substring(0, 31);
         }
 
