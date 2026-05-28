@@ -7,7 +7,7 @@ using OutlookAI.Services.Tools;
 namespace OutlookAI.Services
 {
     /// <summary>
-    /// IToolHost implementation that aggregates the 10 Phase 2
+    /// IToolHost implementation that aggregates the Phase 2+
     /// <see cref="IOutlookTool"/>s and a single <see cref="IOutlookSurface"/>,
     /// dispatching via <see cref="ToolDispatcher"/>. Write tools are included
     /// conditionally based on the admin's tool-permission setting.
@@ -31,6 +31,7 @@ namespace OutlookAI.Services
                 new OutlookListRecentThreadsWithTool(),
                 new OutlookExportExcelTool(),            // Phase 5: Excel export
                 new OutlookExportPdfTool(),              // Phase 5: PDF export
+                new OutlookExportSearchResultsTool(),    // v2.1.2: complete bulk list export
             };
             if (includeWriteTools)
             {
