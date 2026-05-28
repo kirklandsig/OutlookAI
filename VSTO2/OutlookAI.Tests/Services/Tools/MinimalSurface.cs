@@ -16,7 +16,7 @@ namespace OutlookAI.Tests.Services.Tools
             => throw new System.NotImplementedException();
         public virtual IReadOnlyList<FolderResult> ListFolders()
             => throw new System.NotImplementedException();
-        public virtual IReadOnlyList<MessageSummary> SearchMessages(SearchMessagesArgs args, CancellationToken ct = default(CancellationToken))
+        public virtual SearchResult SearchMessages(SearchMessagesArgs args, CancellationToken ct = default(CancellationToken))
             => throw new System.NotImplementedException();
         public virtual MessageDetail ReadMessage(string messageId, bool includeFullBody)
             => throw new System.NotImplementedException();
