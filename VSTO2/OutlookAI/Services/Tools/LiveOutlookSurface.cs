@@ -1312,6 +1312,10 @@ namespace OutlookAI.Services.Tools
             var projected = _marshaller.RunAsync(
                 () => SearchResultProjector.Project(allInputs, args, _classifier),
                 ct).GetAwaiter().GetResult();
+            // Early-stop means we abandoned the scan before walking all folders,
+            // so the page is necessarily incomplete even if the projector did
+            // not clamp it. Force Truncated so the model never treats a
+            // partial scan as the complete result set.
             if (earlyStop) projected.Truncated = true;
             return projected;
         }
