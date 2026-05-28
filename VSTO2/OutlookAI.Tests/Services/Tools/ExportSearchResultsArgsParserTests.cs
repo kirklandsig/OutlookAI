@@ -46,5 +46,19 @@ namespace OutlookAI.Tests.Services.Tools
             var args = ExportSearchResultsArgsParser.Parse("{\"columns\":[\"subject\",\"subject\",\"from\"]}");
             Assert.Equal(new[] { "subject", "from" }, args.Columns.ToArray());
         }
+
+        [Fact]
+        public void Parse_FilenameHint_DefaultsWhenAbsent()
+        {
+            var args = ExportSearchResultsArgsParser.Parse("{\"from\":\"x\"}");
+            Assert.Equal("OutlookAI-Search-Export", args.FilenameHint);
+        }
+
+        [Fact]
+        public void Parse_SheetName_DefaultsToFilenameHint()
+        {
+            var args = ExportSearchResultsArgsParser.Parse("{\"filename_hint\":\"vendor\"}");
+            Assert.Equal("vendor", args.SheetName);
+        }
     }
 }
