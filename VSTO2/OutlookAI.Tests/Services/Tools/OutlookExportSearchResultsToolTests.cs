@@ -106,5 +106,83 @@ namespace OutlookAI.Tests.Services.Tools
             Assert.Equal("no_matches", (string)obj["result_type"]);
             Assert.Null(surface.CapturedExcel);
         }
+
+        [Fact]
+        public void Execute_SanitizesInvalidSheetNameChars_StillExports()
+        {
+            var surface = new FakeSurface { Count = 3, Hits = Make(3) };
+            var tool = new OutlookExportSearchResultsTool();
+
+            var json = tool.ExecuteAsync(
+                "{\"from\":\"x\",\"columns\":[\"subject\"],\"filename_hint\":\"Acme: invoices/2025\"}",
+                surface, CancellationToken.None).GetAwaiter().GetResult();
+            var obj = JObject.Parse(json);
+
+            Assert.Equal("file_saved", (string)obj["result_type"]);
+            // Sheet name must contain none of the invalid Excel chars and be <= 31 chars.
+            var sheet = surface.CapturedExcel.SheetName;
+            Assert.DoesNotContain(':', sheet);
+            Assert.DoesNotContain('/', sheet);
+            Assert.True(sheet.Length <= 31);
+        }
+
+        [Fact]
+        public void Execute_ProjectsCellValues_ReceivedAtToJoinAndBool()
+        {
+            var when = new DateTimeOffset(2026, 3, 4, 5, 6, 7, TimeSpan.Zero);
+            var surface = new FakeSurface
+            {
+                Count = 1,
+                Hits = new List<MessageSummary>
+                {
+                    new MessageSummary
+                    {
+                        Id = "id1", Subject = "Hello", From = "alice@x.com",
+                        To = new[] { "bob@x.com", "carol@x.com" },
+                        ReceivedAt = when, Snippet = "hi there", HasAttachments = true,
+                    },
+                },
+            };
+            var tool = new OutlookExportSearchResultsTool();
+
+            var json = tool.ExecuteAsync(
+                "{\"from\":\"x\",\"columns\":[\"received_at\",\"to\",\"has_attachments\",\"subject\"]}",
+                surface, CancellationToken.None).GetAwaiter().GetResult();
+            JObject.Parse(json);   // ensure valid JSON result
+
+            var rows = surface.CapturedExcel.Rows;
+            Assert.Single(rows);
+            var cells = rows[0];
+            // Column order: received_at, to, has_attachments, subject
+            Assert.Equal(when.ToString("o"), (string)cells[0]);
+            Assert.Equal("bob@x.com; carol@x.com", (string)cells[1]);
+            Assert.Equal(true, (bool)cells[2]);
+            Assert.Equal("Hello", (string)cells[3]);
+        }
+
+        [Fact]
+        public void Execute_DefaultColumns_WhenNoneProvided()
+        {
+            var surface = new FakeSurface { Count = 2, Hits = Make(2) };
+            var tool = new OutlookExportSearchResultsTool();
+
+            var json = tool.ExecuteAsync("{\"from\":\"x\"}", surface, CancellationToken.None).GetAwaiter().GetResult();
+            JObject.Parse(json);
+
+            // DefaultColumns = received_at, from, to, subject, snippet => 5 columns
+            Assert.Equal(5, surface.CapturedExcel.Columns.Count);
+        }
+
+        [Fact]
+        public void Execute_MalformedJson_ReturnsInvalidArgs()
+        {
+            var surface = new FakeSurface { Count = 0 };
+            var tool = new OutlookExportSearchResultsTool();
+
+            var json = tool.ExecuteAsync("{not valid json", surface, CancellationToken.None).GetAwaiter().GetResult();
+            var obj = JObject.Parse(json);
+
+            Assert.Equal("invalid_args", (string)obj["error"]["code"]);
+        }
     }
 }

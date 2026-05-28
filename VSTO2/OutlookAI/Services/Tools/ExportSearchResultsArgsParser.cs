@@ -16,7 +16,7 @@ namespace OutlookAI.Services.Tools
     {
         public static readonly string[] AllowedColumns =
         {
-            "subject", "from", "to", "received_at", "snippet", "has_attachments", "folder",
+            "subject", "from", "to", "received_at", "snippet", "has_attachments",
         };
 
         public static readonly string[] DefaultColumns =
@@ -30,10 +30,18 @@ namespace OutlookAI.Services.Tools
         {
             var raw = string.IsNullOrWhiteSpace(argsJson) ? "{}" : argsJson;
 
+            JObject obj;
+            try
+            {
+                obj = JObject.Parse(raw);
+            }
+            catch (Newtonsoft.Json.JsonException ex)
+            {
+                throw new ToolArgValidationException("invalid_args", "Invalid JSON args: " + ex.Message);
+            }
+
             // Reuse the existing filter parser (count shape: no max_results cap).
             var filter = SearchMessagesArgsParser.ParseCount(raw);
-
-            var obj = JObject.Parse(raw);
 
             var columns = ParseColumns(obj["columns"]);
             var filenameHint = CleanString(obj["filename_hint"]) ?? DefaultFilenameHint;

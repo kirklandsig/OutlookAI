@@ -113,7 +113,7 @@ namespace OutlookAI.Services.Tools
             return new ExportExcelArgs
             {
                 FilenameHint = args.FilenameHint,
-                SheetName = Truncate(args.SheetName, 31),
+                SheetName = SanitizeSheetName(args.SheetName),
                 Columns = columns,
                 Rows = rows,
             };
@@ -129,7 +129,6 @@ namespace OutlookAI.Services.Tools
                 case "received_at": return "Received";
                 case "snippet": return "Snippet";
                 case "has_attachments": return "Has Attachments";
-                case "folder": return "Folder";
                 default: return col;
             }
         }
@@ -154,15 +153,19 @@ namespace OutlookAI.Services.Tools
                 case "received_at": return m.ReceivedAt.ToString("o");
                 case "snippet": return m.Snippet ?? "";
                 case "has_attachments": return m.HasAttachments;
-                case "folder": return "";   // folder name not on MessageSummary; reserved
                 default: return "";
             }
         }
 
-        private static string Truncate(string s, int max)
+        private static readonly char[] InvalidSheetNameChars = { ':', '\\', '/', '?', '*', '[', ']' };
+
+        private static string SanitizeSheetName(string raw)
         {
-            if (string.IsNullOrEmpty(s)) return s;
-            return s.Length <= max ? s : s.Substring(0, max);
+            var s = string.IsNullOrWhiteSpace(raw) ? "Results" : raw;
+            foreach (var c in InvalidSheetNameChars) s = s.Replace(c, ' ');
+            s = s.Trim().Trim('\'').Trim();
+            if (string.IsNullOrEmpty(s)) s = "Results";
+            return s.Length <= 31 ? s : s.Substring(0, 31);
         }
 
         private static string BuildError(string code, string message)
