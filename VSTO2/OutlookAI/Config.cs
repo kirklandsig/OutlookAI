@@ -22,6 +22,9 @@ namespace OutlookAI
         public const string DefaultCodexAuthPath = @"C:\ProgramData\OutlookAI\auth.json";
         public const string DefaultReasoningEffort = "None";
         public const bool DefaultWriteToolsEnabled = true;
+        public const int DefaultMaxBulkExportRows = 2000;
+        private const int MinBulkExportRows = 1;
+        private const int MaxBulkExportRowsCeiling = 50000;
 
         public static string AdminPassword { get; set; } = "admin";
         public static string CodexAuthPath { get; set; } = DefaultCodexAuthPath;
@@ -44,6 +47,14 @@ namespace OutlookAI
         /// individual writes are surfaced.
         /// </summary>
         public static bool WriteToolsEnabled { get; set; } = DefaultWriteToolsEnabled;
+
+        /// <summary>
+        /// Hard ceiling on rows collected by outlook_export_search_results.
+        /// Server-authoritative (global config only); not user-overridable.
+        /// Bounds runtime/memory on large mailboxes. Clamped to
+        /// [MinBulkExportRows, MaxBulkExportRowsCeiling] on load.
+        /// </summary>
+        public static int MaxBulkExportRows { get; set; } = DefaultMaxBulkExportRows;
 
         /// <summary>
         /// Full set of write-tool names supported by Phase 2. Used both as
@@ -186,6 +197,7 @@ namespace OutlookAI
             VoiceModel = DefaultVoiceModel;
             ReasoningEffort = DefaultReasoningEffort;
             WriteToolsEnabled = DefaultWriteToolsEnabled;
+            MaxBulkExportRows = DefaultMaxBulkExportRows;
             EnabledWriteTools = new HashSet<string>(AllWriteTools, StringComparer.Ordinal);
         }
 
@@ -275,6 +287,14 @@ namespace OutlookAI
                 if (voiceModel != null && !string.IsNullOrWhiteSpace(voiceModel.Value))
                 {
                     VoiceModel = voiceModel.Value;
+                }
+
+                var maxBulkExportRows = root.Element("MaxBulkExportRows");
+                if (maxBulkExportRows != null && int.TryParse(maxBulkExportRows.Value, out var mber))
+                {
+                    if (mber < MinBulkExportRows) mber = MinBulkExportRows;
+                    if (mber > MaxBulkExportRowsCeiling) mber = MaxBulkExportRowsCeiling;
+                    MaxBulkExportRows = mber;
                 }
             }
             catch
