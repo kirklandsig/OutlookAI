@@ -311,5 +311,62 @@ namespace OutlookAI.Tests
                 if (File.Exists(u)) File.Delete(u);
             }
         }
+
+        [Fact]
+        public void MaxBulkExportRows_DefaultsTo2000()
+        {
+            var g = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".xml");
+            var u = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".xml");
+            Config.LoadConfigFromPaths(g, sharedConfigPath: null, userConfigPath: u);
+            Assert.Equal(2000, Config.MaxBulkExportRows);
+        }
+
+        [Fact]
+        public void MaxBulkExportRows_LoadsFromGlobalConfig()
+        {
+            var g = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".xml");
+            var u = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".xml");
+            File.WriteAllText(g, "<Config><MaxBulkExportRows>500</MaxBulkExportRows></Config>");
+            try
+            {
+                Config.LoadConfigFromPaths(g, sharedConfigPath: null, userConfigPath: u);
+                Assert.Equal(500, Config.MaxBulkExportRows);
+            }
+            finally { if (File.Exists(g)) File.Delete(g); }
+        }
+
+        [Fact]
+        public void MaxBulkExportRows_ClampsToFloorAndCeiling()
+        {
+            var g = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".xml");
+            var u = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".xml");
+
+            File.WriteAllText(g, "<Config><MaxBulkExportRows>0</MaxBulkExportRows></Config>");
+            try
+            {
+                Config.LoadConfigFromPaths(g, sharedConfigPath: null, userConfigPath: u);
+                Assert.Equal(1, Config.MaxBulkExportRows);   // floor
+
+                File.WriteAllText(g, "<Config><MaxBulkExportRows>999999</MaxBulkExportRows></Config>");
+                Config.LoadConfigFromPaths(g, sharedConfigPath: null, userConfigPath: u);
+                Assert.Equal(50000, Config.MaxBulkExportRows);  // ceiling
+            }
+            finally { if (File.Exists(g)) File.Delete(g); }
+        }
+
+        [Fact]
+        public void MaxBulkExportRows_NotUserOverridable()
+        {
+            var g = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".xml");
+            var u = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".xml");
+            File.WriteAllText(g, "<Config><MaxBulkExportRows>750</MaxBulkExportRows></Config>");
+            File.WriteAllText(u, "<Config><MaxBulkExportRows>3000</MaxBulkExportRows></Config>");
+            try
+            {
+                Config.LoadConfigFromPaths(g, sharedConfigPath: null, userConfigPath: u);
+                Assert.Equal(750, Config.MaxBulkExportRows);  // user value ignored
+            }
+            finally { if (File.Exists(g)) File.Delete(g); if (File.Exists(u)) File.Delete(u); }
+        }
     }
 }
