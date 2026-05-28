@@ -160,7 +160,7 @@ namespace OutlookAI.Services.Tools
                 return (IReadOnlyList<FolderResult>)results;
             }) ?? (IReadOnlyList<FolderResult>)new List<FolderResult>();
 
-        public IReadOnlyList<MessageSummary> SearchMessages(SearchMessagesArgs args, CancellationToken ct = default(CancellationToken))
+        public SearchResult SearchMessages(SearchMessagesArgs args, CancellationToken ct = default(CancellationToken))
         {
             args = args ?? new SearchMessagesArgs();
             var filter = BuildRestrictFilter(args);
@@ -214,7 +214,7 @@ namespace OutlookAI.Services.Tools
                         "SearchMessages primary=AdvancedSearch complete raw_count=" + primary.Items.Count,
                         "LiveOutlookSurface");
                     return _marshaller.RunAsync(
-                        () => SearchResultProjector.Project(primary.Items, args, _classifier).Messages,
+                        () => SearchResultProjector.Project(primary.Items, args, _classifier),
                         ct).GetAwaiter().GetResult();
                 }
 
@@ -1237,10 +1237,11 @@ namespace OutlookAI.Services.Tools
         // Phase 3b yielding fallback. Walks each folder via one
         // marshaller.RunAsync call so the UI thread is released between
         // folders (Outlook can pump messages between marshalled calls).
-        private IReadOnlyList<MessageSummary> FallbackIterativeSearch(
+        private SearchResult FallbackIterativeSearch(
             SearchMessagesArgs args, string filter, string scopeMode, CancellationToken ct)
         {
             var allInputs = new List<MessageProjectionInput>();
+            var earlyStop = false;
             var searchAllMail = scopeMode == "all_mail" || scopeMode == "auto";
 
             IReadOnlyList<Outlook.MAPIFolder> folders;
@@ -1287,6 +1288,7 @@ namespace OutlookAI.Services.Tools
                             "LiveOutlookSurface");
                     }
                     catch { }
+                    earlyStop = true;
                     break;
                 }
 
@@ -1302,13 +1304,16 @@ namespace OutlookAI.Services.Tools
                             "LiveOutlookSurface");
                     }
                     catch { }
+                    earlyStop = true;
                     break;
                 }
             }
 
-            return _marshaller.RunAsync(
-                () => SearchResultProjector.Project(allInputs, args, _classifier).Messages,
+            var projected = _marshaller.RunAsync(
+                () => SearchResultProjector.Project(allInputs, args, _classifier),
                 ct).GetAwaiter().GetResult();
+            if (earlyStop) projected.Truncated = true;
+            return projected;
         }
 
         // Collect one folder's worth of MessageProjectionInput using Outlook's
