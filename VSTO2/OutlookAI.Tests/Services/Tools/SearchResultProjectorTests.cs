@@ -142,5 +142,24 @@ namespace OutlookAI.Tests.Services.Tools
             Assert.Equal(2, result.TotalMatches);
             Assert.False(result.Truncated);
         }
+
+        [Fact]
+        public void Project_TotalMatches_ExcludesSystemFolderItems()
+        {
+            // TotalMatches must count AFTER the system-folder filter, so junk /
+            // deleted items never inflate the reported total (or the truncated flag).
+            var input = new[]
+            {
+                Item("good",  2024, folder: "Inbox"),
+                Item("junk",  2024, folder: "Junk E-mail"),
+                Item("trash", 2024, folder: "Deleted Items"),
+            };
+            var args = new SearchMessagesArgs { SortOrder = "newest", MaxResults = 5 };
+            var result = SearchResultProjector.Project(input, args, new FolderClassifier());
+
+            Assert.Equal(1, result.Messages.Count);
+            Assert.Equal(1, result.TotalMatches);
+            Assert.False(result.Truncated);
+        }
     }
 }
