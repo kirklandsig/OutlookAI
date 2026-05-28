@@ -127,6 +127,24 @@ namespace OutlookAI.Tests.Services.Tools
         }
 
         [Fact]
+        public void Execute_FilenameHintHistory_AvoidsReservedSheetName()
+        {
+            // "History" is reserved by Excel; ClosedXML throws if a worksheet is
+            // named it. filename_hint defaults to the sheet name, so this must
+            // be remapped rather than crash the export.
+            var surface = new FakeSurface { Count = 2, Hits = Make(2) };
+            var tool = new OutlookExportSearchResultsTool();
+
+            var json = tool.ExecuteAsync(
+                "{\"from\":\"x\",\"columns\":[\"subject\"],\"filename_hint\":\"History\"}",
+                surface, CancellationToken.None).GetAwaiter().GetResult();
+            var obj = JObject.Parse(json);
+
+            Assert.Equal("file_saved", (string)obj["result_type"]);
+            Assert.NotEqual("History", surface.CapturedExcel.SheetName);
+        }
+
+        [Fact]
         public void Execute_ProjectsCellValues_ReceivedAtToJoinAndBool()
         {
             var when = new DateTimeOffset(2026, 3, 4, 5, 6, 7, TimeSpan.Zero);
