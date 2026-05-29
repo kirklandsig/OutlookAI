@@ -351,6 +351,8 @@
     <Compile Include="Services\Tools\ExportExcelArgsParser.cs" />
     <Compile Include="Services\Tools\ExportPdfArgs.cs" />
     <Compile Include="Services\Tools\ExportPdfArgsParser.cs" />
+    <Compile Include="Services\Tools\ExportSearchResultsArgs.cs" />
+    <Compile Include="Services\Tools\ExportSearchResultsArgsParser.cs" />
     <Compile Include="Services\Tools\IAdvancedSearchHost.cs" />
     <Compile Include="Services\Tools\IFolderClassifier.cs" />
     <Compile Include="Services\Tools\IOutlookSurface.cs" />
@@ -365,6 +367,7 @@
     <Compile Include="Services\Tools\OutlookCreateDraftTool.cs" />
     <Compile Include="Services\Tools\OutlookExportExcelTool.cs" />
     <Compile Include="Services\Tools\OutlookExportPdfTool.cs" />
+    <Compile Include="Services\Tools\OutlookExportSearchResultsTool.cs" />
     <Compile Include="Services\Tools\OutlookFlagMessageTool.cs" />
     <Compile Include="Services\Tools\OutlookGetCurrentComposeStateTool.cs" />
     <Compile Include="Services\Tools\OutlookListFoldersTool.cs" />
@@ -376,6 +379,7 @@
     <Compile Include="Services\Tools\OutlookGetCurrentSelectionTool.cs" />
     <Compile Include="Services\Tools\SearchFallbackBudget.cs" />
     <Compile Include="Services\Tools\SearchMessagesArgsParser.cs" />
+    <Compile Include="Services\Tools\SearchResult.cs" />
     <Compile Include="Services\Tools\SearchScopeFormatter.cs" />
     <Compile Include="Services\Tools\SenderKeyNormalizer.cs" />
     <Compile Include="Services\Tools\TableMessageClassFilter.cs" />

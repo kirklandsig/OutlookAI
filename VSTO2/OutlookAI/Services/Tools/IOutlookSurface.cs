@@ -15,7 +15,7 @@ namespace OutlookAI.Services.Tools
     {
         ComposeStateResult GetCurrentComposeState(bool includeFullBody);
         IReadOnlyList<FolderResult> ListFolders();
-        IReadOnlyList<MessageSummary> SearchMessages(SearchMessagesArgs args, CancellationToken ct = default(CancellationToken));
+        SearchResult SearchMessages(SearchMessagesArgs args, CancellationToken ct = default(CancellationToken));
         MessageDetail ReadMessage(string messageId, bool includeFullBody);
         IReadOnlyList<MessageDetail> ReadMessages(string[] ids, bool includeBody, int maxItems, CancellationToken ct = default(CancellationToken));
         int CountMessages(SearchMessagesArgs args, CancellationToken ct = default(CancellationToken));

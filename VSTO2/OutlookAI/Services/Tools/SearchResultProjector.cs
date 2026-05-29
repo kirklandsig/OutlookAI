@@ -9,11 +9,13 @@ namespace OutlookAI.Services.Tools
     /// IFolderClassifier, sorts by ReceivedAt per args.SortOrder, clamps to
     /// args.MaxResults, then evaluates each survivor's SnippetFactory.
     /// Resilient: a throwing SnippetFactory yields an empty snippet but
-    /// does not poison the batch.
+    /// does not poison the batch. Returns a <see cref="SearchResult"/>
+    /// carrying the clamped list plus the pre-clamp total and a truncated
+    /// flag.
     /// </summary>
     public static class SearchResultProjector
     {
-        public static IReadOnlyList<MessageSummary> Project(
+        public static SearchResult Project(
             IEnumerable<MessageProjectionInput> items,
             SearchMessagesArgs args,
             IFolderClassifier classifier)
@@ -30,8 +32,11 @@ namespace OutlookAI.Services.Tools
                 ? filtered.OrderBy(i => i.ReceivedAt)
                 : filtered.OrderByDescending(i => i.ReceivedAt);
 
+            var orderedList = ordered.ToList();
+            var total = orderedList.Count;
+
             var maxResults = args.MaxResults > 0 ? args.MaxResults : 25;
-            var top = ordered.Take(maxResults).ToList();
+            var top = orderedList.Take(maxResults).ToList();
 
             var output = new List<MessageSummary>(top.Count);
             foreach (var i in top)
@@ -51,7 +56,13 @@ namespace OutlookAI.Services.Tools
                     HasAttachments = i.HasAttachments,
                 });
             }
-            return output;
+
+            return new SearchResult
+            {
+                Messages = output,
+                TotalMatches = total,
+                Truncated = total > output.Count,
+            };
         }
     }
 }
