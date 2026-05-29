@@ -8,7 +8,7 @@ namespace OutlookAI.Services.Tools
 {
     internal static class ExportExcelArgsParser
     {
-        private const int MaxRows = 10000;
+        private const int MaxRows = BulkExportRowCap.Max;
         private const string DefaultFilenameHint = "OutlookAI-Report";
         private static readonly char[] InvalidSheetNameChars = { ':', '\\', '/', '?', '*', '[', ']' };
 

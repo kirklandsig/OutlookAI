@@ -430,14 +430,15 @@ namespace OutlookAI.Tests.Services.Tools
         }
 
         [Fact]
-        public void ExportSearchResults_ColumnsEnum_OmitsFolder()
+        public void ExportSearchResults_ColumnsEnum_IncludesFolder()
         {
+            // #12.3: the `folder` column was deferred in v2.1.2 (MessageSummary
+            // had no folder name) and is now re-added per the original spec.
             var tools = ToolCatalogSchema.BuildResponsesToolsArray(includeWriteTools: false);
             var tool = FindTool(tools, "outlook_export_search_results");
             var enumArr = (Newtonsoft.Json.Linq.JArray)tool["parameters"]["properties"]["columns"]["items"]["enum"];
             var values = enumArr.Select(t => (string)t).ToArray();
-            Assert.Equal(new[] { "subject", "from", "to", "received_at", "snippet", "has_attachments" }, values);
-            Assert.DoesNotContain("folder", values);
+            Assert.Equal(new[] { "subject", "from", "to", "received_at", "snippet", "has_attachments", "folder" }, values);
         }
 
         [Fact]
