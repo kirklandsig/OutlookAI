@@ -24,7 +24,9 @@ namespace OutlookAI
         public const bool DefaultWriteToolsEnabled = true;
         public const int DefaultMaxBulkExportRows = 2000;
         private const int MinBulkExportRows = 1;
-        private const int MaxBulkExportRowsCeiling = 50000;
+        // Shared with the interactive export path so the two Excel exporters
+        // can never produce workbooks of differing maximum size (#12.1).
+        private const int MaxBulkExportRowsCeiling = Services.Tools.BulkExportRowCap.Max;
 
         public static string AdminPassword { get; set; } = "admin";
         public static string CodexAuthPath { get; set; } = DefaultCodexAuthPath;

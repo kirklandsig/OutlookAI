@@ -117,6 +117,13 @@ namespace OutlookAI.Services.Tools
         public DateTimeOffset ReceivedAt { get; set; }
         public string Snippet { get; set; }
         public bool HasAttachments { get; set; }
+        /// <summary>
+        /// Display name of the folder the message lives in. Populated by
+        /// <see cref="SearchResultProjector"/> from the projection input; used
+        /// by the bulk-export `folder` column. May be empty when the source
+        /// path did not carry a folder name.
+        /// </summary>
+        public string FolderName { get; set; }
     }
 
     public sealed class MessageDetail

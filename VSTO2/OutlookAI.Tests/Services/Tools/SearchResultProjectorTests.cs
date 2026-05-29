@@ -44,6 +44,17 @@ namespace OutlookAI.Tests.Services.Tools
         }
 
         [Fact]
+        public void Project_CarriesFolderNameToSummary()
+        {
+            // #12.3: the projector must copy the input's FolderName onto the
+            // MessageSummary so the bulk export `folder` column can render it.
+            var input = new[] { Item("a", 2024, folder: "Clients/Acme") };
+            var args = new SearchMessagesArgs { SortOrder = "newest", MaxResults = 5 };
+            var result = SearchResultProjector.Project(input, args, new FolderClassifier());
+            Assert.Equal("Clients/Acme", result.Messages[0].FolderName);
+        }
+
+        [Fact]
         public void Project_TopN_ClampsToMaxResults()
         {
             var input = Enumerable.Range(0, 20).Select(i => Item("i" + i, 2000 + i)).ToList();
