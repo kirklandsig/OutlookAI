@@ -5,6 +5,7 @@ using Xunit;
 
 namespace OutlookAI.Tests
 {
+    [Collection("Config")]
     public class ConfigTests
     {
         private static (string global, string user) MakeTempPaths()
@@ -349,7 +350,9 @@ namespace OutlookAI.Tests
 
                 File.WriteAllText(g, "<Config><MaxBulkExportRows>999999</MaxBulkExportRows></Config>");
                 Config.LoadConfigFromPaths(g, sharedConfigPath: null, userConfigPath: u);
-                Assert.Equal(50000, Config.MaxBulkExportRows);  // ceiling
+                // Ceiling shares the interactive export cap (#12.1) so neither
+                // Excel path can exceed BulkExportRowCap.Max (10,000).
+                Assert.Equal(10000, Config.MaxBulkExportRows);  // ceiling
             }
             finally { if (File.Exists(g)) File.Delete(g); }
         }

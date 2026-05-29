@@ -262,7 +262,7 @@ namespace OutlookAI.Services.Tools
                     "Export a COMPLETE list of messages matching a search filter to a styled Excel .xlsx, up to a server-configured ceiling (default 2000 rows). "
                     + "Use this whenever the user wants 'all', 'every', 'a list of', or 'a spreadsheet of' messages matching criteria and completeness matters - e.g. 'Excel of every email from IT Creations', 'list all messages I sent to Susan in 2025'. "
                     + "Unlike calling outlook_search_messages then outlook_export_excel (which caps at 100 results and silently drops the rest), this tool counts the true total and collects up to the ceiling server-side in one call, then reports how many it exported vs the true total. "
-                    + "Pass the SAME filter fields as outlook_search_messages (from, to, query, subject_contains, body_contains, scope, date_from, date_to, folder_id) plus a 'columns' array choosing from: subject, from, to, received_at, snippet, has_attachments. Columns default to received_at/from/to/subject/snippet when omitted. "
+                    + "Pass the SAME filter fields as outlook_search_messages (from, to, query, subject_contains, body_contains, scope, date_from, date_to, folder_id) plus a 'columns' array choosing from: subject, from, to, received_at, snippet, has_attachments, folder. Columns default to received_at/from/to/subject/snippet when omitted. "
                     + "This tool projects only those mechanical fields (it does NOT read full bodies and cannot summarize or synthesize). For a report that needs per-message AI summaries, instead page outlook_search_messages by date window, read up to 25 bodies per window, accumulate, and call outlook_export_pdf once. "
                     + "If the result says truncated:true, tell the user you exported N of M and suggest narrowing the date range to capture the rest.",
                     new JObject(
@@ -289,8 +289,8 @@ namespace OutlookAI.Services.Tools
                                                               new JProperty("description","Exclusive upper bound, ISO-8601 UTC."))),
                             new JProperty("columns",          new JObject(new JProperty("type","array"),
                                                               new JProperty("items", new JObject(new JProperty("type","string"),
-                                                                  new JProperty("enum", new JArray("subject","from","to","received_at","snippet","has_attachments")))),
-                                                              new JProperty("description","Mechanical columns to include. Defaults to received_at, from, to, subject, snippet."))),
+                                                                  new JProperty("enum", new JArray("subject","from","to","received_at","snippet","has_attachments","folder")))),
+                                                              new JProperty("description","Mechanical columns to include. Defaults to received_at, from, to, subject, snippet. 'folder' is the folder the message lives in."))),
                             new JProperty("filename_hint",    new JObject(new JProperty("type","string"),
                                                               new JProperty("description","Optional base filename, e.g. 'IT-Creations-quotes'."))))),
                         new JProperty("additionalProperties", false))),

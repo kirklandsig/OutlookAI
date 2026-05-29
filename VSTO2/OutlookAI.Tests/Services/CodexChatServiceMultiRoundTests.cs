@@ -14,6 +14,7 @@ using Xunit;
 
 namespace OutlookAI.Tests.Services
 {
+    [Collection("Config")]
     public class CodexChatServiceMultiRoundTests
     {
         private static (CodexAuthService Auth, HttpClient AuthHttp, string TmpDir) MakeAuth()

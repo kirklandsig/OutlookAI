@@ -346,6 +346,7 @@
     <Compile Include="Services\Tools\AggregateMessagesArgs.cs" />
     <Compile Include="Services\Tools\AggregateMessagesArgsParser.cs" />
     <Compile Include="Services\Tools\AggregationBucket.cs" />
+    <Compile Include="Services\Tools\BulkExportRowCap.cs" />
     <Compile Include="Services\Tools\DateBucketFormatter.cs" />
     <Compile Include="Services\Tools\ExportExcelArgs.cs" />
     <Compile Include="Services\Tools\ExportExcelArgsParser.cs" />

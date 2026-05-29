@@ -38,7 +38,23 @@ namespace OutlookAI.Services.Tools
                 var args = ExportSearchResultsArgsParser.Parse(argsJson);
                 var ceiling = _maxRowsOverride ?? Config.MaxBulkExportRows;
                 if (ceiling < 1) ceiling = 1;
+                // Never exceed the cap the interactive outlook_export_excel
+                // path enforces, so the two exporters can't produce workbooks
+                // of differing maximum size (#12.1).
+                if (ceiling > BulkExportRowCap.Max) ceiling = BulkExportRowCap.Max;
 
+                // Two separate Outlook traversals: count first (true total M),
+                // then collect (up to the ceiling, N). On a churning mailbox a
+                // message can arrive/move/delete between the two calls, and the
+                // count path's per-folder cap (SearchFallbackBudget.CountModeCap,
+                // 5000) can differ from the search path's per-folder budget — so
+                // the reported "exported N of M" / truncated can be slightly off.
+                // Accepted by design (#12.2): a single fused traversal would lose
+                // the accurate M denominator (you'd only know M up to the
+                // ceiling). N is always <= M here because we set MaxResults to
+                // min(ceiling, total) and SearchResultProjector clamps its output
+                // globally to MaxResults (not per-folder), so the report can never
+                // claim it exported more than the total.
                 // True total (count-mode, bounded per folder).
                 var total = surface.CountMessages(args.Filter, ct);
                 if (total <= 0)
@@ -129,6 +145,7 @@ namespace OutlookAI.Services.Tools
                 case "received_at": return "Received";
                 case "snippet": return "Snippet";
                 case "has_attachments": return "Has Attachments";
+                case "folder": return "Folder";
                 default: return col;
             }
         }
@@ -153,6 +170,7 @@ namespace OutlookAI.Services.Tools
                 case "received_at": return m.ReceivedAt.ToString("o");
                 case "snippet": return m.Snippet ?? "";
                 case "has_attachments": return m.HasAttachments;
+                case "folder": return m.FolderName ?? "";
                 default: return "";
             }
         }
