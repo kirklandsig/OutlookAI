@@ -1,84 +1,101 @@
 name: Release
 
+# Publish-only / verify-only workflow (issue #9).
+#
+# Why this does NOT build:
+#   OutlookAI is a VSTO add-in. Its csproj resolves the Office/Outlook COM
+#   type libraries via <COMReference> GUIDs that only exist on a machine with
+#   Microsoft Outlook installed. The windows-2025 GitHub runner image has no
+#   Office, so MSBuild dies with CS0234 on every Microsoft.Office.Core.* /
+#   Microsoft.Office.Interop.Outlook.* type. Installing the VSTO build
+#   workload is not the same as installing Outlook, and the NuGet-PIA path is
+#   unproven for runtime-identical .vsto loading. So the build stays local.
+#
+# The actual release flow (see Deploy/README.txt and handoff.md "Publish a
+# release"):
+#   1. git tag -a vX.Y.Z -m "..."   &&   git push origin vX.Y.Z   (fires THIS)
+#   2. .\Deploy\Make-ReleaseZip.ps1 -Tag vX.Y.Z -OutDir out        (local build)
+#   3. gh release create vX.Y.Z out\...zip out\...zip.sha256        (publish)
+#
+# This workflow waits for that release to appear, then VERIFIES it is
+# well-formed: both expected assets present, and the ZIP's SHA256 matches its
+# .sha256 sidecar. It goes GREEN when you have published a correct release and
+# RED if an asset is missing, the hash disagrees, or you never published. No
+# more "doomed build run you ignore" — a red check now means a real problem.
+
 on:
   push:
     tags:
       - "v*"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build-and-release:
-    runs-on: windows-2025
+  verify-release:
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          # full history needed for `git tag -l --format` to read annotated tag body
-          fetch-depth: 0
-
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
-
-      - name: Setup NuGet
-        uses: NuGet/setup-nuget@v2
-
-      - name: Restore packages
-        shell: pwsh
-        run: |
-          nuget restore VSTO2\OutlookAI.sln
-          # The VSTO project's packages.config sometimes isn't picked up by the
-          # solution-level restore on a clean runner, leaving Microsoft.Office.*
-          # refs unresolved at MSBuild time. Restore the project's packages.config
-          # explicitly to guarantee bin\Release is buildable.
-          nuget restore VSTO2\OutlookAI\packages.config -PackagesDirectory VSTO2\OutlookAI\packages
-
-      - name: Generate ephemeral code-signing cert
-        id: cert
-        shell: pwsh
-        run: |
-          # VSTO's Office targets force SignManifests=true (can't bypass) and
-          # the csproj has a hardcoded <ManifestCertificateThumbprint> that
-          # points at the dev box's local cert store. On the CI runner that
-          # cert isn't installed, so MSBuild dies with MSB3323.
-          #
-          # Workaround: generate an ephemeral self-signed cert per run and
-          # pass its thumbprint to MSBuild. The resulting signature is never
-          # re-checked at install time because Install-OutlookAI.ps1 uses
-          # the `|vstolocal` trust modifier, which makes Outlook trust the
-          # add-in by install location rather than by publisher.
-          $cert = New-SelfSignedCertificate `
-            -Type CodeSigningCert `
-            -Subject "CN=OutlookAI-CI-Ephemeral" `
-            -CertStoreLocation Cert:\CurrentUser\My `
-            -KeyUsage DigitalSignature `
-            -KeyAlgorithm RSA `
-            -KeyLength 2048 `
-            -NotAfter (Get-Date).AddDays(7)
-          "thumb=$($cert.Thumbprint)" >> $env:GITHUB_OUTPUT
-
-      - name: Build deploy ZIP
-        shell: pwsh
-        run: |
-          $tag = "${{ github.ref_name }}"
-          .\Deploy\Make-ReleaseZip.ps1 -Tag $tag -OutDir out -CertThumbprint "${{ steps.cert.outputs.thumb }}"
-
-      - name: Read tag annotation as release body
-        id: tagbody
-        shell: pwsh
-        run: |
-          $tag = "${{ github.ref_name }}"
-          $body = git tag -l --format="%(contents)" $tag
-          if ([string]::IsNullOrWhiteSpace($body)) { $body = "Release $tag" }
-          $body | Out-File -FilePath release-body.md -Encoding UTF8
-
-      - name: Create GitHub Release
+      - name: Verify the published release is well-formed
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: pwsh
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        shell: bash
         run: |
-          $tag = "${{ github.ref_name }}"
-          $zip = "out\OutlookAI-$tag-RDS-Deploy.zip"
-          $sha = "$zip.sha256"
-          gh release create $tag $zip $sha --title $tag --notes-file release-body.md
+          set -euo pipefail
+
+          ZIP="OutlookAI-${TAG}-RDS-Deploy.zip"
+          SHA="${ZIP}.sha256"
+
+          # The release is created locally by `gh release create` AFTER the tag
+          # push that triggered this run, so it may not exist yet. Poll for it.
+          echo "Waiting for release ${TAG} to be published..."
+          found=""
+          for attempt in $(seq 1 30); do
+            if gh release view "${TAG}" >/dev/null 2>&1; then
+              found="yes"
+              echo "Release ${TAG} found (attempt ${attempt})."
+              break
+            fi
+            echo "  not yet (attempt ${attempt}/30); sleeping 20s..."
+            sleep 20
+          done
+
+          if [ -z "${found}" ]; then
+            echo "::error::Release ${TAG} was never published within 10 minutes."
+            echo "::error::Run: .\\Deploy\\Make-ReleaseZip.ps1 -Tag ${TAG} -OutDir out; then gh release create ${TAG} out\\${ZIP} out\\${SHA}"
+            exit 1
+          fi
+
+          # Both expected assets must be attached.
+          assets="$(gh release view "${TAG}" --json assets --jq '.assets[].name')"
+          echo "Attached assets:"
+          echo "${assets}" | sed 's/^/  - /'
+
+          for required in "${ZIP}" "${SHA}"; do
+            if ! grep -qxF "${required}" <<< "${assets}"; then
+              echo "::error::Release ${TAG} is missing required asset: ${required}"
+              exit 1
+            fi
+          done
+
+          # Download both and verify the ZIP hashes to the sidecar value.
+          workdir="$(mktemp -d)"
+          gh release download "${TAG}" --dir "${workdir}" --pattern "${ZIP}" --pattern "${SHA}"
+
+          expected="$(tr -d '[:space:]' < "${workdir}/${SHA}" | tr 'A-F' 'a-f')"
+          actual="$(sha256sum "${workdir}/${ZIP}" | awk '{print $1}' | tr 'A-F' 'a-f')"
+
+          echo "Expected SHA256 (sidecar): ${expected}"
+          echo "Actual   SHA256 (zip)    : ${actual}"
+
+          if [ -z "${expected}" ]; then
+            echo "::error::Sidecar ${SHA} is empty."
+            exit 1
+          fi
+          if [ "${expected}" != "${actual}" ]; then
+            echo "::error::SHA256 mismatch for ${ZIP} — the sidecar does not match the uploaded ZIP."
+            exit 1
+          fi
+
+          echo "Release ${TAG} is well-formed: both assets present and SHA256 verified."
