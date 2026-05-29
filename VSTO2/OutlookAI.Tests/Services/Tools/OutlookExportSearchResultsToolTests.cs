@@ -93,6 +93,29 @@ namespace OutlookAI.Tests.Services.Tools
         }
 
         [Fact]
+        public void Execute_CeilingAboveInteractiveCap_ClampedToInteractiveCap()
+        {
+            // #12.1: the bulk tool must not produce a workbook larger than the
+            // interactive outlook_export_excel tool permits. An admin who sets
+            // MaxBulkExportRows between 10,001 and 50,000 would otherwise get a
+            // bulk export exceeding ExportExcelArgsParser's 10,000-row cap. The
+            // bulk ceiling shares that one cap constant, so a 20,000 override is
+            // clamped down to 10,000.
+            var surface = new FakeSurface { Count = 20000, Hits = Make(20000) };
+            var tool = new OutlookExportSearchResultsTool(maxRowsOverride: 20000);
+
+            var json = tool.ExecuteAsync(
+                "{\"from\":\"x\",\"columns\":[\"subject\"]}",
+                surface, CancellationToken.None).GetAwaiter().GetResult();
+            var obj = JObject.Parse(json);
+
+            Assert.Equal(BulkExportRowCap.Max, surface.CapturedMaxResults);
+            Assert.Equal(BulkExportRowCap.Max, (int)obj["exported"]);
+            Assert.Equal(20000, (int)obj["total_matches"]);
+            Assert.True((bool)obj["truncated"]);
+        }
+
+        [Fact]
         public void Execute_ZeroMatches_ReturnsNoMatchesWithoutWritingFile()
         {
             var surface = new FakeSurface { Count = 0, Hits = Make(0) };
@@ -176,6 +199,39 @@ namespace OutlookAI.Tests.Services.Tools
             Assert.Equal("bob@x.com; carol@x.com", (string)cells[1]);
             Assert.Equal(true, (bool)cells[2]);
             Assert.Equal("Hello", (string)cells[3]);
+        }
+
+        [Fact]
+        public void Execute_FolderColumn_ProjectsFolderName()
+        {
+            // #12.3: the `folder` column was deferred in v2.1.2 because
+            // MessageSummary carried no folder name. Now that it does, a
+            // requested `folder` column must render the message's folder.
+            var surface = new FakeSurface
+            {
+                Count = 1,
+                Hits = new List<MessageSummary>
+                {
+                    new MessageSummary
+                    {
+                        Id = "id1", Subject = "Hello", From = "alice@x.com",
+                        To = new[] { "me@x.com" }, ReceivedAt = DateTimeOffset.UtcNow,
+                        Snippet = "hi", HasAttachments = false, FolderName = "Clients/Acme",
+                    },
+                },
+            };
+            var tool = new OutlookExportSearchResultsTool();
+
+            var json = tool.ExecuteAsync(
+                "{\"from\":\"x\",\"columns\":[\"subject\",\"folder\"]}",
+                surface, CancellationToken.None).GetAwaiter().GetResult();
+            var obj = JObject.Parse(json);
+
+            Assert.Equal("file_saved", (string)obj["result_type"]);
+            Assert.Equal(2, surface.CapturedExcel.Columns.Count);
+            Assert.Equal("Folder", surface.CapturedExcel.Columns[1].Name);
+            // Column order: subject, folder
+            Assert.Equal("Clients/Acme", (string)surface.CapturedExcel.Rows[0][1]);
         }
 
         [Fact]

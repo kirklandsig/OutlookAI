@@ -54,6 +54,7 @@ namespace OutlookAI.Services.Tools
                     ReceivedAt = i.ReceivedAt,
                     Snippet = snippet,
                     HasAttachments = i.HasAttachments,
+                    FolderName = i.FolderName ?? "",
                 });
             }
 

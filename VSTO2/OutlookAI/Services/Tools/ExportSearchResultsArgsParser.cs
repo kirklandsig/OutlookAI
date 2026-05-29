@@ -16,7 +16,7 @@ namespace OutlookAI.Services.Tools
     {
         public static readonly string[] AllowedColumns =
         {
-            "subject", "from", "to", "received_at", "snippet", "has_attachments",
+            "subject", "from", "to", "received_at", "snippet", "has_attachments", "folder",
         };
 
         public static readonly string[] DefaultColumns =
