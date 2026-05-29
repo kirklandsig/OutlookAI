@@ -114,8 +114,12 @@ namespace OutlookAI.Tests.Services.Tools
             Assert.Contains("outlook_list_folders", desc);
             Assert.Contains("Sent Items", desc);
             Assert.Contains("folder_id", desc);
-            Assert.Contains("max_results:100", desc);
-            Assert.Contains("use 25", desc);
+            // The old "use max_results:100 / use 25" steering was replaced by
+            // truncation-aware steering that escalates to the bulk export tool
+            // for complete lists (Task 6). Keep asserting the recipient/sent
+            // guidance above; here we pin the new cap + escalation wording.
+            Assert.Contains("max_results", desc);
+            Assert.Contains("outlook_export_search_results", desc);
         }
 
         [Fact]
@@ -411,6 +415,40 @@ namespace OutlookAI.Tests.Services.Tools
 
             Assert.Contains("snippet", desc, System.StringComparison.OrdinalIgnoreCase);
             Assert.Contains("metadata-only", desc, System.StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void ExportSearchResults_Tool_IsRegistered()
+        {
+            var tools = ToolCatalogSchema.BuildResponsesToolsArray(includeWriteTools: false);
+            var tool = FindTool(tools, "outlook_export_search_results");
+            Assert.NotNull(tool);
+            var desc = (string)tool["description"];
+            Assert.NotNull(desc);
+            Assert.Contains("complete", desc, System.StringComparison.OrdinalIgnoreCase);
+            Assert.NotNull(tool["parameters"]["properties"]["columns"]);
+        }
+
+        [Fact]
+        public void ExportSearchResults_ColumnsEnum_OmitsFolder()
+        {
+            var tools = ToolCatalogSchema.BuildResponsesToolsArray(includeWriteTools: false);
+            var tool = FindTool(tools, "outlook_export_search_results");
+            var enumArr = (Newtonsoft.Json.Linq.JArray)tool["parameters"]["properties"]["columns"]["items"]["enum"];
+            var values = enumArr.Select(t => (string)t).ToArray();
+            Assert.Equal(new[] { "subject", "from", "to", "received_at", "snippet", "has_attachments" }, values);
+            Assert.DoesNotContain("folder", values);
+        }
+
+        [Fact]
+        public void SearchMessages_Description_TeachesTruncatedEscalation()
+        {
+            var tools = ToolCatalogSchema.BuildResponsesToolsArray(includeWriteTools: false);
+            var search = FindTool(tools, "outlook_search_messages");
+            var desc = (string)search["description"];
+            Assert.NotNull(desc);
+            Assert.Contains("truncated", desc, System.StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("outlook_export_search_results", desc, System.StringComparison.Ordinal);
         }
 
         [Fact]

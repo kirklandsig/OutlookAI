@@ -181,16 +181,44 @@ namespace OutlookAI.Tests.Services.Tools
             Assert.Equal("high", observed.ImportanceFilter);
         }
 
+        [Fact]
+        public void Execute_IncludesTotalMatchesAndTruncated_WhenResultCapped()
+        {
+            var surface = new Surface
+            {
+                OnSearch = _ => new[]
+                {
+                    new MessageSummary { Id = "a", Subject = "s", From = "f", To = new[] { "t" }, ReceivedAt = System.DateTimeOffset.UtcNow, Snippet = "x" },
+                },
+                TotalMatchesOverride = 42,
+            };
+            var tool = new OutlookSearchMessagesTool();
+
+            var json = tool.ExecuteAsync("{\"from\":\"alice\"}", surface, System.Threading.CancellationToken.None).GetAwaiter().GetResult();
+            var obj = Newtonsoft.Json.Linq.JObject.Parse(json);
+
+            Assert.Equal(42, (int)obj["total_matches"]);
+            Assert.True((bool)obj["truncated"]);
+            Assert.Single((Newtonsoft.Json.Linq.JArray)obj["messages"]);
+        }
+
         private sealed class Surface : MinimalSurface
         {
             public Func<SearchMessagesArgs, IReadOnlyList<MessageSummary>> OnSearch { get; set; }
             public Func<SearchMessagesArgs, CancellationToken, IReadOnlyList<MessageSummary>> OnSearchWithCt { get; set; }
+            public int? TotalMatchesOverride { get; set; }
             public CancellationToken LastCt { get; private set; }
-            public override IReadOnlyList<MessageSummary> SearchMessages(SearchMessagesArgs args, CancellationToken ct = default(CancellationToken))
+            public override SearchResult SearchMessages(SearchMessagesArgs args, CancellationToken ct = default(CancellationToken))
             {
                 LastCt = ct;
-                if (OnSearchWithCt != null) return OnSearchWithCt(args, ct);
-                return OnSearch(args);
+                var list = OnSearchWithCt != null ? OnSearchWithCt(args, ct) : OnSearch(args);
+                list = list ?? new MessageSummary[0];
+                return new SearchResult
+                {
+                    Messages = list,
+                    TotalMatches = TotalMatchesOverride ?? list.Count,
+                    Truncated = TotalMatchesOverride.HasValue && TotalMatchesOverride.Value > list.Count,
+                };
             }
         }
     }

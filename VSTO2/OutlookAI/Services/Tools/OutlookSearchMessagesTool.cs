@@ -21,7 +21,8 @@ namespace OutlookAI.Services.Tools
             {
                 ct.ThrowIfCancellationRequested();
                 var search = SearchMessagesArgsParser.ParseSearch(argsJson);
-                var hits = surface.SearchMessages(search, ct) ?? new MessageSummary[0];
+                var result = surface.SearchMessages(search, ct) ?? new SearchResult();
+                var hits = result.Messages ?? new MessageSummary[0];
 
                 var json = new JObject(
                     new JProperty("messages", new JArray(hits.Select(m =>
@@ -32,7 +33,9 @@ namespace OutlookAI.Services.Tools
                             new JProperty("to", new JArray((m.To ?? new string[0]).Cast<object>())),
                             new JProperty("received_at", m.ReceivedAt.ToString("o")),
                             new JProperty("snippet", m.Snippet ?? ""),
-                            new JProperty("has_attachments", m.HasAttachments))))));
+                            new JProperty("has_attachments", m.HasAttachments))))),
+                    new JProperty("total_matches", result.TotalMatches),
+                    new JProperty("truncated", result.Truncated));
                 return Task.FromResult(json.ToString(Newtonsoft.Json.Formatting.None));
             }
             catch (OperationCanceledException)
