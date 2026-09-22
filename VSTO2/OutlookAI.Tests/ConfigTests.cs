@@ -1,13 +1,23 @@
 using System;
 using System.IO;
 using OutlookAI;
+using OutlookAI.Services.Models;
+using OutlookAI.Tests.Helpers;
 using Xunit;
 
 namespace OutlookAI.Tests
 {
     [Collection("Config")]
-    public class ConfigTests
+    public class ConfigTests : IDisposable
     {
+        // Built-in catalog + a clock before the gpt-5.5 retirement, restored after each test.
+        private readonly ConfigStateScope _scope = new ConfigStateScope();
+
+        public void Dispose()
+        {
+            _scope.Dispose();
+        }
+
         private static (string global, string user) MakeTempPaths()
         {
             var dir = Path.Combine(Path.GetTempPath(),
@@ -24,8 +34,11 @@ namespace OutlookAI.Tests
 
             Assert.Equal("admin", Config.AdminPassword);
             Assert.Equal(@"C:\ProgramData\OutlookAI\auth.json", Config.CodexAuthPath);
-            Assert.Equal("gpt-5.5", Config.Model);
+            // Default model = the catalog's top listed, non-retired model.
+            Assert.Equal("gpt-6-astra", Config.DefaultModel);
+            Assert.Equal("gpt-6-astra", Config.Model);
             Assert.Equal("gpt-realtime-1.5", Config.VoiceModel);
+            Assert.Equal("", Config.ModelCatalogClientVersion);
         }
 
         [Fact]
@@ -63,7 +76,7 @@ namespace OutlookAI.Tests
 
             Config.LoadConfigFromPaths(g, u);
 
-            Assert.Equal("gpt-5.5", Config.Model);
+            Assert.Equal(Config.DefaultModel, Config.Model);
             Assert.Equal("gpt-realtime-1.5", Config.VoiceModel);
         }
 
@@ -110,20 +123,17 @@ namespace OutlookAI.Tests
         }
 
         [Fact]
-        public void ReasoningEffortsForModel_RestrictsForNonReasoningModels()
+        public void ReasoningEffortsForModel_ModelOutsideTheCatalog_OffersOnlyNone()
         {
             Assert.Equal(new[] { "None" }, Config.ReasoningEffortsForModel("gpt-4.1-nano"));
-            Assert.Equal(new[] { "None" }, Config.ReasoningEffortsForModel("gpt-4.1-mini"));
+            Assert.Equal(new[] { "None" }, Config.ReasoningEffortsForModel("gpt-5.5-pro"));
             Assert.Contains("High", Config.ReasoningEffortsForModel("gpt-5.5"));
-            Assert.Contains("Medium", Config.ReasoningEffortsForModel("gpt-5.5-pro"));
         }
 
         [Fact]
         public void ReasoningEffortsForModel_Gpt55_ExcludesMinimal_IncludesXHigh()
         {
-            // Backend ground truth (captured from a real Codex error):
-            // 'minimal' is not supported with gpt-5.5; the supported set
-            // is none/low/medium/high/xhigh.
+            // Backend ground truth: 'minimal' and 'max' are rejected for gpt-5.5.
             var efforts = Config.ReasoningEffortsForModel("gpt-5.5");
             Assert.DoesNotContain("Minimal", efforts);
             Assert.Contains("XHigh", efforts);
@@ -131,31 +141,68 @@ namespace OutlookAI.Tests
         }
 
         [Fact]
-        public void ReasoningEffortsForModel_Gpt54_IncludesMinimalAndXHigh()
+        public void ReasoningEffortsForModel_Gpt6Astra_OffersMax_NotTheClientOnlyUltra()
         {
-            // Per OpenAI docs: gpt-5.4 family supports the full enum.
-            var efforts = Config.ReasoningEffortsForModel("gpt-5.4");
-            Assert.Contains("Minimal", efforts);
-            Assert.Contains("XHigh", efforts);
+            var efforts = Config.ReasoningEffortsForModel("gpt-6-astra");
+            Assert.Contains("Max", efforts);
+            Assert.DoesNotContain("Ultra", efforts);
         }
 
         [Fact]
-        public void AvailableReasoningEfforts_MatchesOpenAiPublicEnum()
+        public void ReasoningEffortsForModel_FollowsARefreshedCatalog()
         {
-            // Per OpenAI 'Reasoning models' guide:
-            // "Supported values are model-dependent and can include
-            //  'none', 'minimal', 'low', 'medium', 'high', and 'xhigh'."
-            var expected = new[] { "None", "Minimal", "Low", "Medium", "High", "XHigh" };
-            Assert.Equal(expected, Config.AvailableReasoningEfforts);
+            Config.ModelCatalog = TestCatalogs.Catalog(
+                TestCatalogs.Entry("gpt-7", 1, new[] { "low", "extreme" }));
+
+            Assert.Equal(new[] { "None", "Low" }, Config.ReasoningEffortsForModel("gpt-7"));
+            Config.ModelCatalog = new ModelCatalog(Config.ModelCatalog.Models, new[] { "low", "extreme" },
+                ModelCatalog.SourceChatGpt, TestCatalogs.FixedNow, "0.160.0");
+            Assert.Equal(new[] { "None", "Low", "Extreme" }, Config.ReasoningEffortsForModel("gpt-7"));
         }
 
         [Fact]
-        public void AvailableModels_ContainsExpectedCatalog()
+        public void LoadConfigFromPaths_RecordsEveryModelNamedInConfig_EvenRejectedOnes()
         {
-            Assert.Contains("gpt-5.5", Config.AvailableModels);
-            Assert.Contains("gpt-5.5-pro", Config.AvailableModels);
-            Assert.Contains("gpt-4.1-mini", Config.AvailableModels);
-            Assert.Contains("gpt-5.3-codex", Config.AvailableModels);
+            // Update Models keeps these alive when a filtered list omits them.
+            var g = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".xml");
+            var s = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".xml");
+            var u = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".xml");
+            File.WriteAllText(g, "<Config><Model>gpt-5.5</Model></Config>");
+            File.WriteAllText(s, "<Config><Model> gpt-7 </Model></Config>");
+            File.WriteAllText(u, "<Config><Model>GPT-6-SOL</Model></Config>");
+            try
+            {
+                Config.LoadConfigFromPaths(g, s, u);
+
+                Assert.Equal(new[] { "gpt-5.5", "gpt-7", "GPT-6-SOL" }, Config.ModelsNamedInConfig);
+                Assert.Equal("gpt-6-sol", Config.Model);
+            }
+            finally
+            {
+                File.Delete(g);
+                File.Delete(s);
+                File.Delete(u);
+            }
+        }
+
+        [Fact]
+        public void NotifyAiSettingsChanged_RunsEveryHandler_EvenIfOneThrows()
+        {
+            var calls = 0;
+            EventHandler failing = (s, e) => { calls++; throw new InvalidOperationException("pane disposed"); };
+            EventHandler working = (s, e) => calls++;
+            Config.AiSettingsChanged += failing;
+            Config.AiSettingsChanged += working;
+            try
+            {
+                Config.NotifyAiSettingsChanged();
+                Assert.Equal(2, calls);
+            }
+            finally
+            {
+                Config.AiSettingsChanged -= failing;
+                Config.AiSettingsChanged -= working;
+            }
         }
 
         [Fact]
@@ -211,11 +258,11 @@ namespace OutlookAI.Tests
         {
             var (g, u) = MakeTempPaths();
             File.WriteAllText(g, "<Config><Model>gpt-5.5</Model></Config>");
-            File.WriteAllText(u, "<Config><Model>gpt-5.5-pro</Model></Config>");
+            File.WriteAllText(u, "<Config><Model>gpt-6-sol</Model></Config>");
 
             Config.LoadConfigFromPaths(g, u);
 
-            Assert.Equal("gpt-5.5-pro", Config.Model);
+            Assert.Equal("gpt-6-sol", Config.Model);
         }
 
         [Fact]
@@ -226,9 +273,121 @@ namespace OutlookAI.Tests
 
             Config.LoadConfigFromPaths(g, u);
 
-            // Should fall back to the v2 default since the requested model
-            // isn't in AvailableModels.
-            Assert.Equal("gpt-5.5", Config.Model);
+            // Falls back to the catalog default since the requested model
+            // isn't in the catalog.
+            Assert.Equal(Config.DefaultModel, Config.Model);
+        }
+
+        [Fact]
+        public void LoadConfigFromPaths_AcceptsModelsFromARefreshedCatalog()
+        {
+            var (g, u) = MakeTempPaths();
+            File.WriteAllText(g, "<Config><Model>gpt-7</Model></Config>");
+
+            Config.LoadConfigFromPaths(g, u);
+            Assert.NotEqual("gpt-7", Config.Model);   // built-in catalog doesn't know it
+
+            // gpt-7 is deliberately not the catalog default, so only the config
+            // value can put it there.
+            Config.ModelCatalog = TestCatalogs.Catalog(
+                TestCatalogs.Entry("gpt-top", 1, new[] { "low" }),
+                TestCatalogs.Entry("gpt-7", 2, new[] { "low" }),
+                TestCatalogs.Entry("gpt-reserve", 3, new[] { "low" }, listed: false));
+            Config.LoadConfigFromPaths(g, u);
+            Assert.Equal("gpt-7", Config.Model);
+
+            // Hidden catalog models are still valid when set explicitly.
+            File.WriteAllText(g, "<Config><Model>gpt-reserve</Model></Config>");
+            Config.LoadConfigFromPaths(g, u);
+            Assert.Equal("gpt-reserve", Config.Model);
+        }
+
+        [Fact]
+        public void LoadConfigFromPaths_MatchesModelCaseInsensitively_AndStoresTheCanonicalSlug()
+        {
+            var (g, u) = MakeTempPaths();
+            File.WriteAllText(g, "<Config><Model>  GPT-5.6-SOL </Model></Config>");
+
+            Config.LoadConfigFromPaths(g, u);
+
+            Assert.Equal("gpt-5.6-sol", Config.Model);
+        }
+
+        [Theory]
+        [InlineData("max", "Max")]
+        [InlineData("XHIGH", "XHigh")]
+        [InlineData("medium", "Medium")]
+        public void LoadConfigFromPaths_AcceptsCatalogEfforts_WithCanonicalCasing(string raw, string expected)
+        {
+            var (g, u) = MakeTempPaths();
+            File.WriteAllText(g, "<Config><ReasoningEffort>" + raw + "</ReasoningEffort></Config>");
+
+            Config.LoadConfigFromPaths(g, u);
+
+            Assert.Equal(expected, Config.ReasoningEffort);
+        }
+
+        [Theory]
+        [InlineData("Ultra")]     // Codex client-only mode; the server rejects it
+        [InlineData("Minimal")]   // no current model accepts it
+        public void LoadConfigFromPaths_IgnoresEffortsNoModelOffers(string raw)
+        {
+            var (g, u) = MakeTempPaths();
+            File.WriteAllText(g, "<Config><ReasoningEffort>" + raw + "</ReasoningEffort></Config>");
+
+            Config.LoadConfigFromPaths(g, u);
+
+            Assert.Equal("None", Config.ReasoningEffort);
+        }
+
+        [Fact]
+        public void LoadConfigFromPaths_ModelCatalogClientVersion_IsServerAuthoritative()
+        {
+            var (g, u) = MakeTempPaths();
+            File.WriteAllText(g, "<Config><ModelCatalogClientVersion> 0.160.0 </ModelCatalogClientVersion></Config>");
+            File.WriteAllText(u, "<Config><ModelCatalogClientVersion>0.170.0</ModelCatalogClientVersion></Config>");
+
+            Config.LoadConfigFromPaths(g, u);
+
+            Assert.Equal("0.160.0", Config.ModelCatalogClientVersion);
+        }
+
+        [Fact]
+        public void EffectiveModel_SwitchesToTheUpgradeTarget_OnceTheModelRetires()
+        {
+            Config.Model = "gpt-5.5";
+            var retirement = new DateTimeOffset(2026, 10, 14, 19, 0, 0, TimeSpan.Zero);
+
+            Config.Clock = () => retirement.AddMinutes(-1);
+            Assert.Equal("gpt-5.5", Config.EffectiveModel);
+
+            Config.Clock = () => retirement;
+            Assert.Equal("gpt-5.6-sol", Config.EffectiveModel);
+            Assert.Equal("gpt-5.5", Config.Model);   // the saved choice is untouched
+        }
+
+        [Fact]
+        public void EffectiveModel_UsesTheDefault_WhenTheModelLeavesTheCatalog()
+        {
+            Config.Model = "gpt-5.5";
+            Config.ModelCatalog = TestCatalogs.Catalog(
+                TestCatalogs.Entry("gpt-7", 1, new[] { "low" }),
+                TestCatalogs.Entry("gpt-6-sol", 2, new[] { "low" }));
+
+            Assert.Equal("gpt-7", Config.EffectiveModel);
+            Assert.Equal("gpt-7", Config.DefaultModel);
+        }
+
+        [Fact]
+        public void ResetDefaults_KeepsTheLoadedCatalog()
+        {
+            var refreshed = TestCatalogs.Catalog(TestCatalogs.Entry("gpt-7", 1, new[] { "low" }));
+            Config.ModelCatalog = refreshed;
+
+            Config.ResetDefaults();
+
+            Assert.Same(refreshed, Config.ModelCatalog);
+            Assert.Equal("gpt-7", Config.Model);
         }
 
         [Fact]

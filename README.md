@@ -126,8 +126,13 @@ API key.
 The gear icon opens a password-gated Settings dialog with:
 
 - ChatGPT account: Sign In / Sign Out / Refresh.
-- Model picker: 7 options (`gpt-5.5`, `gpt-5.5-pro`, `gpt-5.4`,
-  `gpt-5.4-mini`, `gpt-4.1-mini`, `gpt-4.1-nano`, `gpt-5.3-codex`).
+- Model picker driven by the model catalog ChatGPT publishes for your
+  account. **Update Models** fetches the current list and each model's
+  supported reasoning efforts, so new OpenAI models (and new effort levels
+  such as `Max`) show up without an OutlookAI release. The list is cached in
+  `C:\ProgramData\OutlookAI\models.json` and shared with every user on the
+  machine; retirement dates from the catalog are shown next to the model, and
+  a retired model automatically falls back to its announced replacement.
 - Reasoning effort dropdown, filtered per model.
 - 4 checkboxes for the safe-write tools (each can be individually enabled).
 - Admin password rotation.
@@ -255,10 +260,18 @@ Key components:
 - **OAuth via ChatGPT.** Tokens stored at:
   - `C:\ProgramData\OutlookAI\auth.json` (machine, RDS-shared by design).
   - `%APPDATA%\OutlookAI\config.xml` (per-user settings).
-- **No telemetry.** Outbound traffic is exactly two endpoints from inside
-  `Outlook.exe`:
+- **No telemetry.** In normal use, outbound traffic is two endpoints from
+  inside `Outlook.exe`:
   - `https://chatgpt.com/backend-api/codex/responses` (text inference).
   - `wss://api.openai.com/v1/realtime` (voice transcription).
+
+  Admin actions in Settings add, only when clicked:
+  - **Check Now / Install Update:** `api.github.com` and the release download
+    for `kirklandsig/OutlookAI`.
+  - **Update Models:** `https://chatgpt.com/backend-api/codex/models` (the
+    model catalog), one rejected `/responses` call that reports the server's
+    reasoning-effort values, and `api.github.com` for the latest `openai/codex`
+    release number. Only the ChatGPT calls carry the sign-in token.
 - **Path policy on file actions.**
   `IExportPathPolicy.RequireInsideReportsDir(...)` rejects any open/reveal
   path that escapes `Documents\OutlookAI\Reports\`. Path traversal attempts
@@ -301,13 +314,16 @@ require a separate Office.js add-in; that is on the long-term roadmap.
 
 ### What model does it use?
 
-Default `gpt-5.5` for text and `gpt-realtime-1.5` for voice. Admin can change
-the model from Settings.
+For text, whatever the admin picks in Settings from the models ChatGPT offers
+your account (the default is the catalog's top model; `gpt-6-astra` as of
+September 2026). Voice uses `gpt-realtime-1.5`. Settings → **Update Models**
+refreshes the list.
 
 ### Where does my data go?
 
-Two endpoints, both directly from `Outlook.exe`. No third-party proxy, no
-telemetry, no analytics. See the **Security model** section above.
+Two endpoints in normal use, both directly from `Outlook.exe`, plus the
+update and model-list checks an admin runs from Settings. No third-party
+proxy, no telemetry, no analytics. See the **Security model** section above.
 
 ### Does it work on Windows Server / RDS?
 
