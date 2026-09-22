@@ -339,6 +339,15 @@
     <Compile Include="Services\Export\UnauthorizedExportPathException.cs" />
     <Compile Include="Services\IdResolver.cs" />
     <Compile Include="Services\IToolHost.cs" />
+    <Compile Include="Services\Models\BuiltInModelCatalog.cs" />
+    <Compile Include="Services\Models\CodexClientVersion.cs" />
+    <Compile Include="Services\Models\CodexModelsClient.cs" />
+    <Compile Include="Services\Models\ModelCatalog.cs" />
+    <Compile Include="Services\Models\ModelCatalogEntry.cs" />
+    <Compile Include="Services\Models\ModelCatalogJson.cs" />
+    <Compile Include="Services\Models\ModelCatalogStore.cs" />
+    <Compile Include="Services\Models\ModelCatalogUpdater.cs" />
+    <Compile Include="Services\Models\ReasoningEffortNames.cs" />
     <Compile Include="Services\OutlookThreadMarshaller.cs" />
     <Compile Include="Services\OutlookToolHost.cs" />
     <Compile Include="Services\RealtimeVoiceService.cs" />
