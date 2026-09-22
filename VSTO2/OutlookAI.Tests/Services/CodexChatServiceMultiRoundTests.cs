@@ -15,8 +15,15 @@ using Xunit;
 namespace OutlookAI.Tests.Services
 {
     [Collection("Config")]
-    public class CodexChatServiceMultiRoundTests
+    public class CodexChatServiceMultiRoundTests : IDisposable
     {
+        private readonly ConfigStateScope _scope = new ConfigStateScope();
+
+        public void Dispose()
+        {
+            _scope.Dispose();
+        }
+
         private static (CodexAuthService Auth, HttpClient AuthHttp, string TmpDir) MakeAuth()
         {
             var tmp = Path.Combine(Path.GetTempPath(), "outlookai-mr", Path.GetRandomFileName());
@@ -34,6 +41,7 @@ namespace OutlookAI.Tests.Services
         [Fact]
         public async Task RunTurnAsync_SingleRound_NoToolCalls_ReturnsCompleted()
         {
+            Config.Model = "gpt-5.5";
             var fixt = MakeAuth();
             var fake = new FakeHttpMessageHandler();
             fake.QueueSse(HttpStatusCode.OK,
@@ -90,8 +98,12 @@ namespace OutlookAI.Tests.Services
         [InlineData("High",    "\"effort\":\"high\"")]
         [InlineData("XHigh",   "\"effort\":\"xhigh\"")]
         [InlineData("Minimal", "\"effort\":\"minimal\"")]
+        [InlineData("Max",     "\"effort\":\"max\"")]
         public async Task RunTurnAsync_PerTurnEffortOverride_LowercasedOnWire(string uiValue, string expectedJson)
         {
+            // A model that takes every effort, so this pins only the casing contract.
+            Config.ModelCatalog = TestCatalogs.AllEfforts("test-model");
+            Config.Model = "test-model";
             var fixt = MakeAuth();
             var fake = new FakeHttpMessageHandler();
             fake.QueueSse(HttpStatusCode.OK,
@@ -152,6 +164,56 @@ namespace OutlookAI.Tests.Services
                     var body = fake.RequestBodies[0];
                     Assert.Contains("\"reasoning\":null", body);
                     Assert.DoesNotContain("\"effort\":", body);
+                }
+            }
+            finally { try { Directory.Delete(fixt.TmpDir, recursive: true); } catch { } }
+        }
+
+        /// <summary>
+        /// A stale selection (e.g. 'Max' picked while gpt-6-astra was configured,
+        /// then the admin switched to gpt-5.5) is omitted instead of sent, so the
+        /// turn runs at the server default rather than failing with a 400.
+        /// </summary>
+        [Theory]
+        [InlineData("Max")]
+        [InlineData("Ultra")]
+        public async Task RunTurnAsync_EffortTheModelDoesNotTake_OmitsReasoning(string uiValue)
+        {
+            Config.Model = "gpt-5.5";
+            var body = await CaptureFirstRequestBodyAsync(new ConversationContext { ReasoningEffortOverride = uiValue });
+
+            Assert.Contains("\"model\":\"gpt-5.5\"", body);
+            Assert.Contains("\"reasoning\":null", body);
+        }
+
+        [Fact]
+        public async Task RunTurnAsync_RetiredModel_SendsItsUpgradeTarget()
+        {
+            Config.Model = "gpt-5.5";
+            Config.Clock = () => new DateTimeOffset(2026, 10, 15, 0, 0, 0, TimeSpan.Zero);
+
+            var body = await CaptureFirstRequestBodyAsync(new ConversationContext { ReasoningEffortOverride = "XHigh" });
+
+            Assert.Contains("\"model\":\"gpt-5.6-sol\"", body);
+            Assert.Contains("\"effort\":\"xhigh\"", body);
+        }
+
+        private static async Task<string> CaptureFirstRequestBodyAsync(ConversationContext ctx)
+        {
+            var fixt = MakeAuth();
+            var fake = new FakeHttpMessageHandler();
+            fake.QueueSse(HttpStatusCode.OK,
+                "data: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n"
+                + "data: {\"type\":\"response.completed\"}\n\n");
+            try
+            {
+                using (fixt.AuthHttp)
+                using (fixt.Auth)
+                using (var chatHttp = new HttpClient(fake))
+                using (var chat = new CodexChatService(fixt.Auth, chatHttp))
+                {
+                    await chat.RunTurnAsync(ctx, "hi", new FakeToolHost(), new CapturingChatEventSink(), CancellationToken.None);
+                    return fake.RequestBodies[0];
                 }
             }
             finally { try { Directory.Delete(fixt.TmpDir, recursive: true); } catch { } }

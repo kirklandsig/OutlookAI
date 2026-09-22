@@ -79,10 +79,10 @@ a clean Outlook session (close Outlook → run the installer → reopen Outlook)
 ## Settings + admin
 
 20. [ ] Open Settings (gear icon on Actions tab) → enter admin password.
-21. [ ] Change Model dropdown to `gpt-5.5-pro`. Reasoning dropdown re-filters
-    (`None`, `Minimal`, `Low`, `Medium`, `High` all visible).
-22. [ ] Switch Model to `gpt-4.1-mini`. Reasoning dropdown collapses to `None`
-    only.
+21. [ ] Change Model dropdown to `gpt-6-astra`. Reasoning dropdown re-filters
+    (`None`, `Low`, `Medium`, `High`, `XHigh`, `Max`; never `Ultra`).
+22. [ ] Switch Model to `gpt-5.5`. Reasoning dropdown drops `Max`, and the line
+    under the model shows its retirement date (2026-10-14).
 23. [ ] Uncheck `outlook_mark_as_read` in the write-tools checklist.
     Click **Save AI Settings**. `Saved.` indicator appears, auto-hides ~2.5 s.
 24. [ ] Switch back to Chat tab → type "Mark this as read". The tool card
@@ -185,11 +185,11 @@ passes.
 
 ## Settings / model awareness
 
-15. [ ] Open Settings → change Model to `gpt-5.4` → save. Close the
-    pane (X). Reopen via the ribbon button. The reasoning dropdown now
-    includes `Minimal` (gpt-5.4 supports it; gpt-5.5 does not).
-16. [ ] Change Model back to `gpt-5.5` and confirm the dropdown drops
-    `Minimal` on the next pane open.
+15. [ ] Open Settings → change Model to `gpt-6-astra` → save. Without
+    reopening the pane, its reasoning dropdown now includes `Max`
+    (gpt-6-astra supports it; gpt-5.5 does not).
+16. [ ] Change Model back to `gpt-5.5` and save; the pane's dropdown drops
+    `Max` right away.
 
 ## Lifecycle / cleanup
 

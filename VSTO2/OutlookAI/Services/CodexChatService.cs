@@ -485,24 +485,28 @@ namespace OutlookAI.Services
 
         private JObject BuildRunTurnRequest(ConversationContext context)
         {
-            JToken reasoning = JValue.CreateNull();
+            // One catalog snapshot for the whole request: Update Models can swap
+            // Config.ModelCatalog on the UI thread mid-build.
+            var catalog = Config.ModelCatalog;
+            var model = catalog.ResolveEffectiveModel(Config.Model, Config.Clock());
             // Per-turn override beats global default. "None" => omit reasoning.
             var effort = !string.IsNullOrEmpty(context.ReasoningEffortOverride)
                 ? context.ReasoningEffortOverride
                 : Config.ReasoningEffort;
-            string wireEffort = null;
-            if (!string.IsNullOrEmpty(effort)
-                && !string.Equals(effort, "None", StringComparison.OrdinalIgnoreCase))
-            {
-                wireEffort = effort.ToLowerInvariant();
-                reasoning = new JObject(new JProperty("effort", wireEffort));
-            }
+            // Efforts the catalog says this model doesn't take (a dropdown left
+            // stale by a model switch, or a retired model's replacement) are
+            // omitted rather than sent, so the turn doesn't fail with a 400.
+            var wireEffort = catalog.ResolveWireEffort(model, effort);
+            JToken reasoning = wireEffort != null
+                ? (JToken)new JObject(new JProperty("effort", wireEffort))
+                : JValue.CreateNull();
             // One-line trace so we can verify end-to-end what reached the
             // wire on each turn (UI dropdown selection -> override -> wire).
             try
             {
                 OutlookAI.Diagnostics.TraceLog.Write(
-                    "BuildRunTurnRequest: model=" + Config.Model
+                    "BuildRunTurnRequest: model=" + model
+                    + (string.Equals(model, Config.Model, StringComparison.Ordinal) ? "" : " (configured " + Config.Model + ")")
                     + " override=" + (context.ReasoningEffortOverride ?? "<null>")
                     + " globalDefault=" + Config.ReasoningEffort
                     + " resolved=" + (effort ?? "<null>")
@@ -512,7 +516,7 @@ namespace OutlookAI.Services
             catch { /* tracing must never break the request */ }
 
             return new JObject(
-                new JProperty("model", Config.Model),
+                new JProperty("model", model),
                 new JProperty("instructions", context.SystemInstructions ?? ""),
                 new JProperty("input", new JArray(context.History)),
                 new JProperty("tools", ToolCatalogSchema.BuildResponsesToolsArray(context.IncludeWriteTools)),
@@ -573,7 +577,7 @@ namespace OutlookAI.Services
         {
             // Mirrors codex-rs/codex-api/src/common.rs::ResponsesApiRequest.
             return new JObject(
-                new JProperty("model", Config.Model),
+                new JProperty("model", Config.EffectiveModel),
                 new JProperty("instructions", instructions ?? ""),
                 new JProperty("input", new JArray(
                     new JObject(

@@ -58,6 +58,14 @@ namespace OutlookAI.TaskPane.InboxCopilot
             {
                 _exportBridge = new ExportBridge(_surface, CreateExportPathPolicy(), RunScript);
             }
+            Config.AiSettingsChanged += OnAiSettingsChanged;
+        }
+
+        // Settings switched model or refreshed the catalog: offer what the model
+        // takes now (the WebUI keeps the user's pick when it still exists).
+        private void OnAiSettingsChanged(object sender, EventArgs e)
+        {
+            if (_isReady && !_isDisposed) PushReasoningOptions();
         }
 
         public async Task InitializeAsync()
@@ -193,7 +201,7 @@ namespace OutlookAI.TaskPane.InboxCopilot
         {
             try
             {
-                var efforts = Config.ReasoningEffortsForModel(Config.Model);
+                var efforts = Config.ReasoningEffortsForModel(Config.EffectiveModel);
                 var arr = new JArray();
                 foreach (var e in efforts) arr.Add(e);
                 _ = RunScript("outlookai.setReasoningOptions(" +
@@ -380,6 +388,7 @@ namespace OutlookAI.TaskPane.InboxCopilot
         {
             if (_isDisposed) return;
             _isDisposed = true;
+            Config.AiSettingsChanged -= OnAiSettingsChanged;
             try { _activeCts?.Cancel(); } catch { }
             try
             {

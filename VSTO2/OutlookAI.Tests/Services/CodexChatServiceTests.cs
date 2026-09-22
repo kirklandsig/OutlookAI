@@ -10,10 +10,12 @@ using Xunit;
 
 namespace OutlookAI.Tests.Services
 {
+    [Collection("Config")]
     public class CodexChatServiceTests : IDisposable
     {
         private readonly string _tmpDir;
         private readonly string _authPath;
+        private readonly ConfigStateScope _scope = new ConfigStateScope();
 
         public CodexChatServiceTests()
         {
@@ -30,12 +32,14 @@ namespace OutlookAI.Tests.Services
 
         public void Dispose()
         {
+            _scope.Dispose();
             try { Directory.Delete(_tmpDir, recursive: true); } catch { }
         }
 
         [Fact]
         public async Task ProcessEmailAsync_SendsResponsesRequestWithBearer()
         {
+            Config.Model = "gpt-5.5";
             var fake = new FakeHttpMessageHandler();
             fake.QueueSse(HttpStatusCode.OK,
                 "data: {\"type\":\"response.output_text.delta\",\"delta\":\"Hello\"}\n\n"

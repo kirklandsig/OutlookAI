@@ -14,26 +14,26 @@ namespace OutlookAI.Tests.Helpers
     /// </summary>
     public sealed class FakeHttpMessageHandler : HttpMessageHandler
     {
-        private readonly Queue<Func<HttpRequestMessage, HttpResponseMessage>> _responses =
-            new Queue<Func<HttpRequestMessage, HttpResponseMessage>>();
+        private readonly Queue<Func<HttpRequestMessage, Task<HttpResponseMessage>>> _responses =
+            new Queue<Func<HttpRequestMessage, Task<HttpResponseMessage>>>();
 
         public List<HttpRequestMessage> Requests { get; } = new List<HttpRequestMessage>();
         public List<string> RequestBodies { get; } = new List<string>();
 
         public void QueueJson(HttpStatusCode status, string json) =>
-            _responses.Enqueue(_ => new HttpResponseMessage(status)
+            Enqueue(_ => new HttpResponseMessage(status)
             {
                 Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json"),
             });
 
         public void QueueSse(HttpStatusCode status, string sseBody) =>
-            _responses.Enqueue(_ => new HttpResponseMessage(status)
+            Enqueue(_ => new HttpResponseMessage(status)
             {
                 Content = new StringContent(sseBody, System.Text.Encoding.UTF8, "text/event-stream"),
             });
 
         public void QueueText(HttpStatusCode status, string text) =>
-            _responses.Enqueue(_ => new HttpResponseMessage(status)
+            Enqueue(_ => new HttpResponseMessage(status)
             {
                 Content = new StringContent(text),
             });
@@ -47,7 +47,28 @@ namespace OutlookAI.Tests.Helpers
         /// <c>Content-Type</c>).
         /// </summary>
         public void QueueRaw(HttpStatusCode status, HttpContent content) =>
-            _responses.Enqueue(_ => new HttpResponseMessage(status) { Content = content });
+            Enqueue(_ => new HttpResponseMessage(status) { Content = content });
+
+        /// <summary>Simulate a transport failure (DNS, TLS, proxy, reset).</summary>
+        public void QueueException(Exception ex) =>
+            Enqueue(_ => { throw ex; });
+
+        /// <summary>
+        /// Custom responder, e.g. to change shared state (another session saving)
+        /// at the exact moment a request is in flight.
+        /// </summary>
+        public void Queue(Func<HttpRequestMessage, HttpResponseMessage> respond) =>
+            Enqueue(respond);
+
+        /// <summary>
+        /// Never answers and ignores cancellation, like a proxy that accepts the
+        /// connection and then stalls.
+        /// </summary>
+        public void QueueHang() =>
+            _responses.Enqueue(_ => new TaskCompletionSource<HttpResponseMessage>().Task);
+
+        private void Enqueue(Func<HttpRequestMessage, HttpResponseMessage> respond) =>
+            _responses.Enqueue(request => Task.FromResult(respond(request)));
 
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
@@ -69,7 +90,7 @@ namespace OutlookAI.Tests.Helpers
                     Content = new StringContent("{\"error\":\"no fake response queued\"}"),
                 };
             }
-            return _responses.Dequeue()(request);
+            return await _responses.Dequeue()(request).ConfigureAwait(false);
         }
     }
 }

@@ -36,8 +36,12 @@ WHAT THE INSTALLER DOES
 3. Closes any running Outlook.exe.
 4. Copies the published build to:
      C:\Program Files\OutlookAI
-5. Writes a fresh v2 config.xml at C:\Program Files\OutlookAI\config.xml
-   if none exists. Server-authoritative defaults: Model, CodexAuthPath.
+5. Rewrites C:\Program Files\OutlookAI\config.xml on every install or
+   update (the previous file is backed up first). Server-authoritative
+   values: CodexAuthPath, VoiceModel. AdminPassword, Model and any
+   ModelCatalogClientVersion carry over from the previous file; a fresh
+   install writes no Model, so the default is the top model in the ChatGPT
+   model list.
 6. Creates the shared OAuth credential directory at:
      C:\ProgramData\OutlookAI
    with Authenticated Users: Modify (RDS shared-credential model).
@@ -114,9 +118,43 @@ Modify. Any signed-in interactive user on this server can:
   - Replace auth.json with their own ChatGPT tokens (other users'
     traffic then bills to the attacker's ChatGPT account and the
     attacker can observe every call).
+  - Edit the shared models.json / config.xml there (changes the model
+    list and defaults other users on the server get).
 
 Only deploy this build to RDS servers where every interactive user is
 trusted with the ChatGPT account that signs in.
+
+
+MODEL LIST (models.json)
+------------------------
+The model dropdown and each model's reasoning efforts come from the model
+catalog ChatGPT publishes for the signed-in account. Settings -> AI
+Behavior -> Update Models fetches it and caches it to:
+
+  C:\ProgramData\OutlookAI\models.json        (shared, every user)
+  %LOCALAPPDATA%\OutlookAI\models.json        (per-user fallback)
+
+Other users pick it up the next time Outlook starts; open task panes on
+this machine refresh their effort lists right away. Until the first
+refresh, and whenever a newer OutlookAI build ships a newer list than the
+cached one, OutlookAI uses the list it shipped with. New OpenAI models and
+effort levels appear after an Update Models; no reinstall needed.
+
+When the catalog announces a retirement (e.g. gpt-5.5 on 2026-10-14),
+Settings shows it and requests move to the announced replacement once the
+date passes, even after the retired model drops out of the list (for up to
+a year). The saved choice in config.xml is not rewritten; Settings opens on
+the replacement so the next Save makes it permanent. A model that is merely
+missing from the list (ChatGPT filters it by Codex version and plan) is not
+treated as retired: if config names it, requests keep using it and Settings
+says it isn't in the list.
+
+The catalog request identifies as the latest Codex CLI release (looked up
+on api.github.com/repos/openai/codex), because ChatGPT only lists models
+that release supports. If that lookup is blocked, pin a version in
+C:\Program Files\OutlookAI\config.xml:
+
+  <ModelCatalogClientVersion>0.156.0</ModelCatalogClientVersion>
 
 
 ROTATING CREDENTIALS
@@ -128,6 +166,9 @@ Phase 1 has no remote revocation; rotation is a manual two-step:
    - Enter the OutlookAI admin password.
    - Click "Sign Out" in the ChatGPT Account section.
    - Click "Sign In" and authenticate with the new ChatGPT account.
+   - If the new account is on a different plan, click AI Behavior ->
+     Update Models so the model list matches it (Settings flags a list
+     fetched for a different account).
 
 2. From the OpenAI side (recommended after any suspected leak):
    - Sign the previous account out at https://chatgpt.com/#settings

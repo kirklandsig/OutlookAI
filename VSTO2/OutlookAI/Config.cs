@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Xml.Linq;
+using OutlookAI.Services.Models;
 
 namespace OutlookAI
 {
@@ -17,10 +18,9 @@ namespace OutlookAI
         // and Claude model names) are ignored if encountered.
         // ============================================================
 
-        public const string DefaultModel = "gpt-5.5";
         public const string DefaultVoiceModel = "gpt-realtime-1.5";
         public const string DefaultCodexAuthPath = @"C:\ProgramData\OutlookAI\auth.json";
-        public const string DefaultReasoningEffort = "None";
+        public const string DefaultReasoningEffort = ReasoningEffortNames.None;
         public const bool DefaultWriteToolsEnabled = true;
         public const int DefaultMaxBulkExportRows = 2000;
         private const int MinBulkExportRows = 1;
@@ -28,14 +28,43 @@ namespace OutlookAI
         // can never produce workbooks of differing maximum size (#12.1).
         private const int MaxBulkExportRowsCeiling = Services.Tools.BulkExportRowCap.Max;
 
+        /// <summary>
+        /// Models and their reasoning efforts. Built-in until an admin runs
+        /// Settings → Update Models, then the cached models.json, loaded by
+        /// <see cref="LoadConfig"/> before the config layers (which validate
+        /// against it). <see cref="ResetDefaults"/> leaves it alone.
+        /// </summary>
+        public static ModelCatalog ModelCatalog { get; set; } = BuiltInModelCatalog.Instance;
+
+        // Test seam for retirement-date resolution.
+        internal static Func<DateTimeOffset> Clock { get; set; } = () => DateTimeOffset.UtcNow;
+
         public static string AdminPassword { get; set; } = "admin";
         public static string CodexAuthPath { get; set; } = DefaultCodexAuthPath;
+        // After ModelCatalog/Clock: static initializers run in textual order.
         public static string Model { get; set; } = DefaultModel;
         public static string VoiceModel { get; set; } = DefaultVoiceModel;
 
+        /// <summary>The catalog's first listed model that hasn't retired.</summary>
+        public static string DefaultModel => ModelCatalog.DefaultModelAt(Clock());
+
         /// <summary>
-        /// Default reasoning effort sent to the Codex backend on each turn.
-        /// One of <see cref="AvailableReasoningEfforts"/>. "None" means omit the
+        /// The model requests are sent with: <see cref="Model"/>, unless the
+        /// catalog says it has retired (then its upgrade target) or no longer
+        /// offers it (then <see cref="DefaultModel"/>). The saved
+        /// <see cref="Model"/> is never rewritten.
+        /// </summary>
+        public static string EffectiveModel => ModelCatalog.ResolveEffectiveModel(Model, Clock());
+
+        /// <summary>
+        /// Optional client_version for the model-catalog request (Program Files
+        /// config.xml only). Blank = track the latest Codex CLI release.
+        /// </summary>
+        public static string ModelCatalogClientVersion { get; set; } = "";
+
+        /// <summary>
+        /// Default reasoning effort sent to the Codex backend on each turn:
+        /// "None" or an effort some catalog model offers. "None" means omit the
         /// reasoning block entirely. Per-turn overrides via
         /// <c>ConversationContext.ReasoningEffortOverride</c>.
         /// </summary>
@@ -80,58 +109,39 @@ namespace OutlookAI
         public static HashSet<string> EnabledWriteTools { get; set; } =
             new HashSet<string>(AllWriteTools, StringComparer.Ordinal);
 
-        public static readonly string[] AvailableModels =
-        {
-            "gpt-5.5",
-            "gpt-5.5-pro",
-            "gpt-5.4",
-            "gpt-5.4-mini",
-            "gpt-4.1-mini",
-            "gpt-4.1-nano",
-            "gpt-5.3-codex"
-        };
+        /// <summary>
+        /// Raised on the UI thread after Settings saves AI settings or refreshes
+        /// the model catalog, so open panes re-read their reasoning options.
+        /// </summary>
+        public static event EventHandler AiSettingsChanged;
 
-        // Authoritative source: OpenAI docs (Reasoning models guide) +
-        // confirmed by Codex backend error messages on production traffic:
-        //   "Supported values are model-dependent and can include
-        //    'none', 'minimal', 'low', 'medium', 'high', and 'xhigh'."
-        public static readonly string[] AvailableReasoningEfforts =
+        public static void NotifyAiSettingsChanged()
         {
-            "None",
-            "Minimal",
-            "Low",
-            "Medium",
-            "High",
-            "XHigh"
-        };
+            var handlers = AiSettingsChanged;
+            if (handlers == null) return;
+            // One pane failing (e.g. mid-dispose) must not starve the others.
+            foreach (EventHandler handler in handlers.GetInvocationList())
+            {
+                try
+                {
+                    handler(null, EventArgs.Empty);
+                }
+                catch (Exception ex)
+                {
+                    OutlookAI.Diagnostics.TraceLog.Write("AiSettingsChanged handler failed: " + ex.Message, "Config");
+                }
+            }
+        }
 
         /// <summary>
-        /// Returns the reasoning-effort options that are valid for a given
-        /// model. Per-model overrides because not every model supports every
-        /// value:
-        ///   - gpt-5.5 family rejects 'minimal' (confirmed via backend error).
-        ///   - gpt-4.1-mini / nano are non-reasoning - only 'none' is valid.
-        ///   - gpt-5.4 family supports the full set including 'minimal'.
-        /// Wire format is the lowercased value; see
-        /// <c>CodexChatService.BuildRunTurnRequest</c>.
+        /// Reasoning-effort options for <paramref name="model"/> from the
+        /// catalog: <c>None</c> first, then the efforts that model accepts
+        /// (e.g. gpt-5.5 has neither Minimal nor Max). The wire value comes
+        /// from <see cref="ModelCatalog.ResolveWireEffort"/>.
         /// </summary>
         public static string[] ReasoningEffortsForModel(string model)
         {
-            if (model == "gpt-4.1-mini" || model == "gpt-4.1-nano")
-            {
-                return new[] { "None" };
-            }
-            if (model == "gpt-5.5" || model == "gpt-5.5-pro" || model == "gpt-5.3-codex")
-            {
-                // 'Minimal' is unsupported on gpt-5.5 per the backend error
-                // message: "'minimal' is not supported with the 'gpt-5.5' model.
-                // Supported values are: 'none', 'low', 'medium', 'high', and
-                // 'xhigh'."
-                return new[] { "None", "Low", "Medium", "High", "XHigh" };
-            }
-            // gpt-5.4, gpt-5.4-mini, and any future model default to the
-            // full enum.
-            return AvailableReasoningEfforts;
+            return ModelCatalog.EffortsFor(model);
         }
 
         // ============================================================
@@ -170,17 +180,55 @@ namespace OutlookAI
 
         public static void LoadConfig()
         {
+            ModelCatalog = LoadModelCatalog();
+            ReloadConfigFiles();
+        }
+
+        /// <summary>
+        /// Re-applies the three config.xml layers against the current
+        /// <see cref="ModelCatalog"/>. Settings calls it after Update Models so
+        /// values the previous catalog rejected (e.g. a new model named in
+        /// config.xml) take effect instead of being overwritten by the next Save.
+        /// </summary>
+        public static void ReloadConfigFiles()
+        {
             LoadConfigFromPaths(GlobalConfigFilePath, SharedConfigFilePath, UserConfigFilePath);
         }
 
+        // The cached models.json, unless this build's own list is newer (e.g.
+        // an update shipped retirement dates the cache predates).
+        private static ModelCatalog LoadModelCatalog()
+        {
+            ModelCatalog cached = null;
+            try
+            {
+                cached = new ModelCatalogStore().Load();
+            }
+            catch (Exception ex)
+            {
+                OutlookAI.Diagnostics.TraceLog.Write("Model catalog load failed: " + ex.Message, "Config");
+            }
+            var chosen = ModelCatalog.Newest(cached, BuiltInModelCatalog.Instance);
+            OutlookAI.Diagnostics.TraceLog.Write(
+                "Model catalog: " + (chosen.IsBuiltIn ? "built-in" : "models.json") + ", "
+                + chosen.ListedSlugs.Count + " listed models as of "
+                + (chosen.FetchedAt.HasValue ? chosen.FetchedAt.Value.ToString("o") : "?")
+                + " (client_version " + chosen.ClientVersion + ")",
+                "Config");
+            return chosen;
+        }
+
         // Test seam: explicit paths so we don't touch Program Files /
-        // ProgramData / AppData during unit tests.
+        // ProgramData / AppData during unit tests. The layers merge into a
+        // scratch copy that is published at the end, so a request built while
+        // Update Models reloads the files never sees transient defaults.
         public static void LoadConfigFromPaths(string globalConfigPath, string sharedConfigPath, string userConfigPath)
         {
-            ResetDefaults();
-            LoadFromFile(globalConfigPath, allowServerFields: true);
-            LoadFromFile(sharedConfigPath, allowServerFields: false);
-            LoadFromFile(userConfigPath, allowServerFields: false);
+            var values = Values.Defaults();
+            LoadFromFile(globalConfigPath, values, allowServerFields: true);
+            LoadFromFile(sharedConfigPath, values, allowServerFields: false);
+            LoadFromFile(userConfigPath, values, allowServerFields: false);
+            Apply(values);
         }
 
         // Back-compat overload for existing tests that don't care about the
@@ -193,17 +241,62 @@ namespace OutlookAI
 
         public static void ResetDefaults()
         {
-            AdminPassword = "admin";
-            CodexAuthPath = DefaultCodexAuthPath;
-            Model = DefaultModel;
-            VoiceModel = DefaultVoiceModel;
-            ReasoningEffort = DefaultReasoningEffort;
-            WriteToolsEnabled = DefaultWriteToolsEnabled;
-            MaxBulkExportRows = DefaultMaxBulkExportRows;
-            EnabledWriteTools = new HashSet<string>(AllWriteTools, StringComparer.Ordinal);
+            Apply(Values.Defaults());
         }
 
-        private static void LoadFromFile(string filePath, bool allowServerFields)
+        /// <summary>
+        /// Every &lt;Model&gt; the config layers named at the last load, in load
+        /// order, including ones the catalog rejected. Update Models keeps these
+        /// alive when a filtered model list leaves them out.
+        /// </summary>
+        public static IReadOnlyList<string> ModelsNamedInConfig { get; private set; } = new string[0];
+
+        // Scratch copy of the loadable settings (see LoadConfigFromPaths).
+        private sealed class Values
+        {
+            public string AdminPassword;
+            public string CodexAuthPath;
+            public string Model;
+            public string VoiceModel;
+            public string ModelCatalogClientVersion;
+            public string ReasoningEffort;
+            public bool WriteToolsEnabled;
+            public int MaxBulkExportRows;
+            public HashSet<string> EnabledWriteTools;
+            public readonly List<string> ModelsNamed = new List<string>();
+
+            public static Values Defaults()
+            {
+                return new Values
+                {
+                    AdminPassword = "admin",
+                    CodexAuthPath = DefaultCodexAuthPath,
+                    Model = DefaultModel,
+                    VoiceModel = DefaultVoiceModel,
+                    ModelCatalogClientVersion = "",
+                    ReasoningEffort = DefaultReasoningEffort,
+                    WriteToolsEnabled = DefaultWriteToolsEnabled,
+                    MaxBulkExportRows = DefaultMaxBulkExportRows,
+                    EnabledWriteTools = new HashSet<string>(AllWriteTools, StringComparer.Ordinal),
+                };
+            }
+        }
+
+        private static void Apply(Values values)
+        {
+            AdminPassword = values.AdminPassword;
+            CodexAuthPath = values.CodexAuthPath;
+            Model = values.Model;
+            VoiceModel = values.VoiceModel;
+            ModelCatalogClientVersion = values.ModelCatalogClientVersion;
+            ReasoningEffort = values.ReasoningEffort;
+            WriteToolsEnabled = values.WriteToolsEnabled;
+            MaxBulkExportRows = values.MaxBulkExportRows;
+            EnabledWriteTools = values.EnabledWriteTools;
+            ModelsNamedInConfig = values.ModelsNamed.AsReadOnly();
+        }
+
+        private static void LoadFromFile(string filePath, Values values, bool allowServerFields)
         {
             try
             {
@@ -226,26 +319,29 @@ namespace OutlookAI
                 var adminPassword = root.Element("AdminPassword");
                 if (adminPassword != null && !string.IsNullOrEmpty(adminPassword.Value))
                 {
-                    AdminPassword = adminPassword.Value;
+                    values.AdminPassword = adminPassword.Value;
                 }
 
+                // "None" or any effort some catalog model accepts (e.g. "Max"),
+                // stored in canonical casing; anything else keeps the prior value.
                 var reasoningEffort = root.Element("ReasoningEffort");
                 if (reasoningEffort != null && !string.IsNullOrWhiteSpace(reasoningEffort.Value))
                 {
-                    foreach (var allowed in AvailableReasoningEfforts)
+                    var normalized = ModelCatalog.NormalizeEffort(reasoningEffort.Value);
+                    if (normalized != null)
                     {
-                        if (string.Equals(allowed, reasoningEffort.Value, StringComparison.OrdinalIgnoreCase))
-                        {
-                            ReasoningEffort = allowed;
-                            break;
-                        }
+                        values.ReasoningEffort = normalized;
+                    }
+                    else
+                    {
+                        TraceIgnored("ReasoningEffort", reasoningEffort.Value, filePath);
                     }
                 }
 
                 var writeToolsEnabled = root.Element("WriteToolsEnabled");
                 if (writeToolsEnabled != null && bool.TryParse(writeToolsEnabled.Value, out var wte))
                 {
-                    WriteToolsEnabled = wte;
+                    values.WriteToolsEnabled = wte;
                 }
 
                 var enabledWriteTools = root.Element("EnabledWriteTools");
@@ -258,20 +354,29 @@ namespace OutlookAI
                         .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
                         .Select(x => x.Trim());
                     var canonical = new HashSet<string>(AllWriteTools, StringComparer.Ordinal);
-                    EnabledWriteTools = new HashSet<string>(
+                    values.EnabledWriteTools = new HashSet<string>(
                         requested.Where(canonical.Contains),
                         StringComparer.Ordinal);
                 }
 
-                // Model is user-tunable in Phase 2 (Settings UI lets the admin
-                // pick from AvailableModels). Server provides the default, but
-                // per-user override beats it on load. Unknown model names fall
-                // back to whatever was already set.
+                // Model is user-tunable (Settings UI). Server provides the
+                // default, but per-user override beats it on load. Names the
+                // model catalog doesn't know (typos, Claude-era v1 values,
+                // retired models) fall back to whatever was already set;
+                // hidden catalog models are accepted when set explicitly.
                 var model = root.Element("Model");
-                if (model != null && !string.IsNullOrWhiteSpace(model.Value)
-                    && AvailableModels.Contains(model.Value))
+                if (model != null && !string.IsNullOrWhiteSpace(model.Value))
                 {
-                    Model = model.Value;
+                    values.ModelsNamed.Add(model.Value.Trim());
+                    var entry = ModelCatalog.Find(model.Value);
+                    if (entry != null)
+                    {
+                        values.Model = entry.Slug;
+                    }
+                    else
+                    {
+                        TraceIgnored("Model", model.Value, filePath);
+                    }
                 }
 
                 if (!allowServerFields)
@@ -282,13 +387,19 @@ namespace OutlookAI
                 var codexAuthPath = root.Element("CodexAuthPath");
                 if (codexAuthPath != null && !string.IsNullOrWhiteSpace(codexAuthPath.Value))
                 {
-                    CodexAuthPath = codexAuthPath.Value;
+                    values.CodexAuthPath = codexAuthPath.Value;
                 }
 
                 var voiceModel = root.Element("VoiceModel");
                 if (voiceModel != null && !string.IsNullOrWhiteSpace(voiceModel.Value))
                 {
-                    VoiceModel = voiceModel.Value;
+                    values.VoiceModel = voiceModel.Value;
+                }
+
+                var catalogClientVersion = root.Element("ModelCatalogClientVersion");
+                if (catalogClientVersion != null && !string.IsNullOrWhiteSpace(catalogClientVersion.Value))
+                {
+                    values.ModelCatalogClientVersion = catalogClientVersion.Value.Trim();
                 }
 
                 var maxBulkExportRows = root.Element("MaxBulkExportRows");
@@ -296,13 +407,23 @@ namespace OutlookAI
                 {
                     if (mber < MinBulkExportRows) mber = MinBulkExportRows;
                     if (mber > MaxBulkExportRowsCeiling) mber = MaxBulkExportRowsCeiling;
-                    MaxBulkExportRows = mber;
+                    values.MaxBulkExportRows = mber;
                 }
             }
             catch
             {
                 // Skip if file is missing or invalid; defaults stay in place.
             }
+        }
+
+        // Values from a config.xml the model catalog doesn't know are dropped;
+        // leave a trail so a "my setting didn't stick" report is diagnosable.
+        private static void TraceIgnored(string element, string value, string filePath)
+        {
+            OutlookAI.Diagnostics.TraceLog.Write(
+                "Config: ignoring <" + element + ">" + value.Trim() + "</" + element + "> in " + filePath
+                + " (not offered by the " + (ModelCatalog.IsBuiltIn ? "built-in" : "cached") + " model list)",
+                "Config");
         }
 
         public static void SaveConfig()
