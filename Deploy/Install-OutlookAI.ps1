@@ -346,9 +346,14 @@ Write-Host "  Done." -ForegroundColor Green
 # --- 5. Write v2 config --------------------------------------------------
 Write-Host "[5/10] Writing v2 config.xml..." -ForegroundColor Yellow
 
-# Carry over only the AdminPassword from any v1 file (everything else is
-# server-authoritative under v2).
+# Carry over the AdminPassword, Model and an admin-pinned
+# ModelCatalogClientVersion from the previous file (everything else is
+# server-authoritative under v2). An upgrade keeps the installed model; OutlookAI
+# follows its announced retirement itself. A fresh install writes no <Model>, so
+# the default comes from the ChatGPT model catalog (Settings -> Update Models).
 $preservedAdminPassword = "admin"
+$preservedModel = $null
+$preservedCatalogClientVersion = $null
 $latestBackup = Get-ChildItem -Path $BackupRoot -Filter "config.xml.v1.backup.*" -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if ($latestBackup) {
@@ -361,17 +366,41 @@ if ($latestBackup) {
                 Write-Host "  Preserved AdminPassword from previous config." -ForegroundColor Gray
             }
         }
+        if ($oldXml.Config -and $oldXml.Config.Model) {
+            $candidate = ([string]$oldXml.Config.Model).Trim()
+            # The slug shape OutlookAI accepts; also keeps the value XML-safe.
+            if ($candidate -match '^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$') {
+                $preservedModel = $candidate
+                Write-Host "  Preserved Model $candidate from previous config." -ForegroundColor Gray
+            }
+        }
+        if ($oldXml.Config -and $oldXml.Config.ModelCatalogClientVersion) {
+            $candidate = ([string]$oldXml.Config.ModelCatalogClientVersion).Trim()
+            # Same shape OutlookAI accepts; also keeps the value XML-safe.
+            if ($candidate -match '^(rust-)?v?\d{1,9}\.\d{1,9}\.\d{1,9}([-+][0-9A-Za-z.+-]*)?$') {
+                $preservedCatalogClientVersion = $candidate
+                Write-Host "  Preserved ModelCatalogClientVersion $candidate from previous config." -ForegroundColor Gray
+            }
+        }
     } catch {
         Write-Host "  Could not parse previous config; using default AdminPassword." -ForegroundColor Yellow
     }
 }
 
+$modelLine = ""
+if ($preservedModel) {
+    $modelLine = "`r`n  <Model>$preservedModel</Model>"
+}
+$catalogVersionLine = ""
+if ($preservedCatalogClientVersion) {
+    $catalogVersionLine = "`r`n  <ModelCatalogClientVersion>$preservedCatalogClientVersion</ModelCatalogClientVersion>"
+}
+
 $v2Config = @"
 <Config>
   <AdminPassword>$preservedAdminPassword</AdminPassword>
-  <CodexAuthPath>C:\ProgramData\OutlookAI\auth.json</CodexAuthPath>
-  <Model>gpt-5.5</Model>
-  <VoiceModel>gpt-realtime-1.5</VoiceModel>
+  <CodexAuthPath>C:\ProgramData\OutlookAI\auth.json</CodexAuthPath>$modelLine
+  <VoiceModel>gpt-realtime-1.5</VoiceModel>$catalogVersionLine
 </Config>
 "@
 

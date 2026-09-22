@@ -695,9 +695,11 @@
      *
      *  opts   - array of strings, e.g. ['None','Low','Medium','High','XHigh']
      *  selected - optional. Pre-selects the matching option (case-insensitive).
-     *             Pass '' to keep the default.
+     *             Pass '' to keep the current pick when it is still offered
+     *             (options are re-pushed when Settings changes the model).
      */
     setReasoningOptions: function(opts, selected) {
+      var previous = $reasoning.value;
       while ($reasoning.firstChild) $reasoning.removeChild($reasoning.firstChild);
       var def = document.createElement('option');
       def.value = '';
@@ -709,9 +711,10 @@
         el.textContent = name;
         $reasoning.appendChild(el);
       });
-      if (selected) {
+      var wanted = selected || previous;
+      if (wanted) {
         for (var i = 0; i < $reasoning.options.length; i++) {
-          if ($reasoning.options[i].value.toLowerCase() === String(selected).toLowerCase()) {
+          if ($reasoning.options[i].value.toLowerCase() === String(wanted).toLowerCase()) {
             $reasoning.selectedIndex = i;
             break;
           }

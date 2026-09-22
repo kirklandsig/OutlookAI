@@ -59,6 +59,7 @@ namespace OutlookAI.TaskPane.Variants
             _surface = surface;
             _insertCallback = insertCallback;
             _replaceCallback = replaceCallback;
+            Config.AiSettingsChanged += OnAiSettingsChanged;
         }
 
         public void BuildUi()
@@ -117,19 +118,10 @@ namespace OutlookAI.TaskPane.Variants
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 Font = new Font("Segoe UI", 9F)
             };
-            // Populate the model-aware effort enum: rejects 'Minimal' on
-            // gpt-5.5, includes 'XHigh' when supported, etc.
-            // Leading "" is "(default)" - inherit Config.ReasoningEffort.
-            _cmbReasoning.Items.Add(""); // "(default)" placeholder
-            foreach (var effort in Config.ReasoningEffortsForModel(Config.Model))
-            {
-                _cmbReasoning.Items.Add(effort);
-            }
             // Variants is a drafting task that rarely benefits from heavy
             // reasoning; default the dropdown to 'Low' (if supported) to
             // keep latency reasonable. Falls back to "(default)" otherwise.
-            int lowIdx = _cmbReasoning.Items.IndexOf("Low");
-            _cmbReasoning.SelectedIndex = lowIdx >= 0 ? lowIdx : 0;
+            PopulateReasoningChoices("Low");
 
             _btnGenerate = new Button
             {
@@ -194,6 +186,35 @@ namespace OutlookAI.TaskPane.Variants
             _host.Controls.Add(_cardsPanel);
 
             _host.ResumeLayout();
+        }
+
+        // Model-aware effort list (e.g. no 'Max' on gpt-5.5). Leading "" is
+        // "(default)" - inherit Config.ReasoningEffort.
+        private void PopulateReasoningChoices(string prefer)
+        {
+            _cmbReasoning.BeginUpdate();
+            _cmbReasoning.Items.Clear();
+            _cmbReasoning.Items.Add(""); // "(default)" placeholder
+            foreach (var effort in Config.ReasoningEffortsForModel(Config.EffectiveModel))
+            {
+                _cmbReasoning.Items.Add(effort);
+            }
+            _cmbReasoning.EndUpdate();
+            int index = string.IsNullOrEmpty(prefer) ? -1 : _cmbReasoning.Items.IndexOf(prefer);
+            _cmbReasoning.SelectedIndex = index >= 0 ? index : 0;
+        }
+
+        // Settings switched model or refreshed the catalog: rebuild the list,
+        // keeping the current pick when the model still takes it.
+        private void OnAiSettingsChanged(object sender, EventArgs e)
+        {
+            if (_isDisposed || _cmbReasoning == null || _cmbReasoning.IsDisposed) return;
+            if (_cmbReasoning.InvokeRequired)
+            {
+                _cmbReasoning.BeginInvoke(new Action(() => OnAiSettingsChanged(sender, e)));
+                return;
+            }
+            PopulateReasoningChoices(_cmbReasoning.SelectedItem as string);
         }
 
         private void OnGenerateClick(object sender, EventArgs e)
@@ -573,6 +594,7 @@ namespace OutlookAI.TaskPane.Variants
         {
             if (_isDisposed) return;
             _isDisposed = true;
+            Config.AiSettingsChanged -= OnAiSettingsChanged;
             try { _activeCts?.Cancel(); } catch { }
         }
     }

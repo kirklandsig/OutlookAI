@@ -61,6 +61,7 @@ namespace OutlookAI.TaskPane.Chat
                 + "You have mailbox tools available for context (read other messages, search, "
                 + "list folders). Prefer one focused tool call over many. Reply concisely; "
                 + "the user is busy.";
+            Config.AiSettingsChanged += OnAiSettingsChanged;
         }
 
         /// <summary>
@@ -196,7 +197,7 @@ namespace OutlookAI.TaskPane.Chat
 
         /// <summary>
         /// Push the model-aware reasoning-effort options to the WebUI.
-        /// Computed from Config.ReasoningEffortsForModel(Config.Model) so the
+        /// Computed from Config.ReasoningEffortsForModel(Config.EffectiveModel) so the
         /// dropdown matches what the current model actually accepts (e.g.
         /// gpt-5.5 rejects 'minimal'; gpt-4.1-mini accepts only 'none').
         /// </summary>
@@ -204,10 +205,10 @@ namespace OutlookAI.TaskPane.Chat
         {
             try
             {
-                var efforts = Config.ReasoningEffortsForModel(Config.Model);
+                var efforts = Config.ReasoningEffortsForModel(Config.EffectiveModel);
                 var arr = new JArray();
                 foreach (var e in efforts) arr.Add(e);
-                TraceLog.Write("Push reasoning options for " + Config.Model + ": " + string.Join(",", efforts), "ChatController");
+                TraceLog.Write("Push reasoning options for " + Config.EffectiveModel + ": " + string.Join(",", efforts), "ChatController");
                 _ = RunScript("outlookai.setReasoningOptions(" +
                     arr.ToString(Newtonsoft.Json.Formatting.None) + ", '');");
             }
@@ -215,6 +216,13 @@ namespace OutlookAI.TaskPane.Chat
             {
                 TraceLog.Write("PushReasoningOptions error: " + ex.Message, "ChatController");
             }
+        }
+
+        // Settings switched model or refreshed the catalog: offer what the model
+        // takes now (the WebUI keeps the user's pick when it still exists).
+        private void OnAiSettingsChanged(object sender, EventArgs e)
+        {
+            if (_isReady && !_isDisposed) PushReasoningOptions();
         }
 
         private void PushContextStripFromSurface()
@@ -394,6 +402,7 @@ namespace OutlookAI.TaskPane.Chat
         {
             if (_isDisposed) return;
             _isDisposed = true;
+            Config.AiSettingsChanged -= OnAiSettingsChanged;
             try { _activeCts?.Cancel(); } catch { }
             try { _webView?.Dispose(); } catch { }
         }
