@@ -72,15 +72,18 @@ namespace OutlookAI.Services.Models
             var accepted = new HashSet<string>(ServerEfforts ?? KnownServerEfforts, StringComparer.Ordinal);
 
             _offered = new Dictionary<string, List<KeyValuePair<string, string>>>(StringComparer.OrdinalIgnoreCase);
-            var all = new List<string> { ReasoningEffortNames.None };
+            var all = new List<string> { ReasoningEffortNames.Auto };
             foreach (var model in Models)
             {
                 var offered = new List<KeyValuePair<string, string>>();
                 foreach (var raw in model.Efforts)
                 {
                     var wire = ModelCatalogJson.NormalizeEffortValue(raw);
-                    // The app's own "None" option already means "no reasoning field".
-                    if (wire == null || wire == "none") continue;
+                    // Left out: "none" (no reasoning at all) is a different setting
+                    // from the app's Auto (omit the field), no current model lists
+                    // it, and "None" was Auto's old name in config files. An "auto"
+                    // level would show as a second Auto that could never be sent.
+                    if (wire == null || wire == "none" || wire == "auto") continue;
                     // Catalog-only modes the server rejects (Codex's client-side "ultra").
                     if (!accepted.Contains(wire)) continue;
                     var display = ReasoningEffortNames.ToDisplay(wire);
@@ -127,7 +130,7 @@ namespace OutlookAI.Services.Models
         /// <summary>The server's global effort set as probed at refresh time; null when not probed.</summary>
         public IReadOnlyList<string> ServerEfforts { get; }
 
-        /// <summary><c>None</c> plus every effort any model offers, display-cased, first-seen order.</summary>
+        /// <summary><c>Auto</c> plus every effort any model offers, display-cased, first-seen order.</summary>
         public IReadOnlyList<string> AllOfferedEfforts { get; }
 
         public string Source { get; }
@@ -154,25 +157,27 @@ namespace OutlookAI.Services.Models
         }
 
         /// <summary>
-        /// Dropdown options for a model: <c>None</c> first, then the efforts the
-        /// model accepts. An unknown model gets only <c>None</c>, which is always
+        /// Dropdown options for a model: <c>Auto</c> first, then the efforts the
+        /// model accepts. An unknown model gets only <c>Auto</c>, which is always
         /// safe on the wire.
         /// </summary>
         public string[] EffortsFor(string slug)
         {
             var entry = Find(slug);
-            var result = new List<string> { ReasoningEffortNames.None };
+            var result = new List<string> { ReasoningEffortNames.Auto };
             if (entry != null) result.AddRange(_offered[entry.Slug].Select(p => p.Key));
             return result.ToArray();
         }
 
         /// <summary>
         /// Canonical display spelling of <paramref name="effort"/> when it is
-        /// <c>None</c> or offered by some model; otherwise null.
+        /// <c>Auto</c> (or its legacy name <c>None</c>) or offered by some model;
+        /// otherwise null.
         /// </summary>
         public string NormalizeEffort(string effort)
         {
             if (string.IsNullOrWhiteSpace(effort)) return null;
+            if (ReasoningEffortNames.IsAuto(effort)) return ReasoningEffortNames.Auto;
             var trimmed = effort.Trim();
             foreach (var display in AllOfferedEfforts)
             {
@@ -221,7 +226,7 @@ namespace OutlookAI.Services.Models
         /// </summary>
         public string ResolveWireEffort(string slug, string effort)
         {
-            if (ReasoningEffortNames.IsNone(effort)) return null;
+            if (ReasoningEffortNames.IsAuto(effort)) return null;
             var trimmed = effort.Trim();
             var entry = Find(slug);
             if (entry == null) return trimmed.ToLowerInvariant();

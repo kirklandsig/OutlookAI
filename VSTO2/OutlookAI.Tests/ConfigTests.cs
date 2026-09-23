@@ -118,15 +118,15 @@ namespace OutlookAI.Tests
 
             Config.LoadConfigFromPaths(g, u);
 
-            // Unknown value -> fall back to default "None".
-            Assert.Equal("None", Config.ReasoningEffort);
+            // Unknown value -> fall back to the default, Auto.
+            Assert.Equal("Auto", Config.ReasoningEffort);
         }
 
         [Fact]
-        public void ReasoningEffortsForModel_ModelOutsideTheCatalog_OffersOnlyNone()
+        public void ReasoningEffortsForModel_ModelOutsideTheCatalog_OffersOnlyAuto()
         {
-            Assert.Equal(new[] { "None" }, Config.ReasoningEffortsForModel("gpt-4.1-nano"));
-            Assert.Equal(new[] { "None" }, Config.ReasoningEffortsForModel("gpt-5.5-pro"));
+            Assert.Equal(new[] { "Auto" }, Config.ReasoningEffortsForModel("gpt-4.1-nano"));
+            Assert.Equal(new[] { "Auto" }, Config.ReasoningEffortsForModel("gpt-5.5-pro"));
             Assert.Contains("High", Config.ReasoningEffortsForModel("gpt-5.5"));
         }
 
@@ -137,7 +137,7 @@ namespace OutlookAI.Tests
             var efforts = Config.ReasoningEffortsForModel("gpt-5.5");
             Assert.DoesNotContain("Minimal", efforts);
             Assert.Contains("XHigh", efforts);
-            Assert.Equal(new[] { "None", "Low", "Medium", "High", "XHigh" }, efforts);
+            Assert.Equal(new[] { "Auto", "Low", "Medium", "High", "XHigh" }, efforts);
         }
 
         [Fact]
@@ -154,10 +154,10 @@ namespace OutlookAI.Tests
             Config.ModelCatalog = TestCatalogs.Catalog(
                 TestCatalogs.Entry("gpt-7", 1, new[] { "low", "extreme" }));
 
-            Assert.Equal(new[] { "None", "Low" }, Config.ReasoningEffortsForModel("gpt-7"));
+            Assert.Equal(new[] { "Auto", "Low" }, Config.ReasoningEffortsForModel("gpt-7"));
             Config.ModelCatalog = new ModelCatalog(Config.ModelCatalog.Models, new[] { "low", "extreme" },
                 ModelCatalog.SourceChatGpt, TestCatalogs.FixedNow, "0.160.0");
-            Assert.Equal(new[] { "None", "Low", "Extreme" }, Config.ReasoningEffortsForModel("gpt-7"));
+            Assert.Equal(new[] { "Auto", "Low", "Extreme" }, Config.ReasoningEffortsForModel("gpt-7"));
         }
 
         [Fact]
@@ -211,7 +211,7 @@ namespace OutlookAI.Tests
             var (g, u) = MakeTempPaths();
             Config.LoadConfigFromPaths(g, u);
 
-            Assert.Equal("None", Config.ReasoningEffort);
+            Assert.Equal("Auto", Config.ReasoningEffort);
             Assert.True(Config.WriteToolsEnabled);
             // Default: all four write tools enabled.
             Assert.Equal(4, Config.EnabledWriteTools.Count);
@@ -337,7 +337,47 @@ namespace OutlookAI.Tests
 
             Config.LoadConfigFromPaths(g, u);
 
-            Assert.Equal("None", Config.ReasoningEffort);
+            Assert.Equal("Auto", Config.ReasoningEffort);
+        }
+
+        [Theory]
+        [InlineData("None")]   // what Auto was called before v2.2.1; configs still say it
+        [InlineData("none")]
+        [InlineData("auto")]
+        public void LoadConfigFromPaths_ReadsTheLegacyNoneAsAuto(string raw)
+        {
+            var (g, u) = MakeTempPaths();
+            File.WriteAllText(g, "<Config><ReasoningEffort>High</ReasoningEffort></Config>");
+            File.WriteAllText(u, "<Config><ReasoningEffort>" + raw + "</ReasoningEffort></Config>");
+
+            Config.LoadConfigFromPaths(g, u);
+
+            Assert.Equal("Auto", Config.ReasoningEffort);
+        }
+
+        [Theory]
+        [InlineData("Auto", "None")]   // the name v2.2.0 and older read as "omit"
+        [InlineData("High", "High")]
+        public void BuildSavedConfig_StoresAutoAsNone_SoOlderVersionsReadItTheSame(string effort, string stored)
+        {
+            Config.ReasoningEffort = effort;
+
+            var saved = Config.BuildSavedConfig();
+
+            Assert.Equal(stored, saved.Root.Element("ReasoningEffort").Value);
+        }
+
+        [Fact]
+        public void BuildSavedConfig_AutoRoundTripsOverAHigherSharedDefault()
+        {
+            var (g, u) = MakeTempPaths();
+            File.WriteAllText(g, "<Config><ReasoningEffort>High</ReasoningEffort></Config>");
+            Config.ReasoningEffort = "Auto";
+            Config.BuildSavedConfig().Save(u);
+
+            Config.LoadConfigFromPaths(g, u);
+
+            Assert.Equal("Auto", Config.ReasoningEffort);
         }
 
         [Fact]

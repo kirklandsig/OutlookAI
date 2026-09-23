@@ -132,20 +132,22 @@ namespace OutlookAI.Tests.Services
         }
 
         /// <summary>
-        /// When override is "None" (or null and Config.ReasoningEffort is
-        /// "None"), the wire body sends "reasoning":null - no effort key.
+        /// When override is "Auto" (or its legacy spelling "None", or null with
+        /// Config.ReasoningEffort at its default Auto), the wire body sends
+        /// "reasoning":null - no effort key, so the model's default applies.
         /// </summary>
         [Theory]
+        [InlineData("Auto")]
         [InlineData("None")]
         [InlineData(null)]
-        public async Task RunTurnAsync_NoneEffort_OmitsReasoningField(string uiValue)
+        public async Task RunTurnAsync_AutoEffort_OmitsReasoningField(string uiValue)
         {
             var fixt = MakeAuth();
             var fake = new FakeHttpMessageHandler();
             fake.QueueSse(HttpStatusCode.OK,
                 "data: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n"
                 + "data: {\"type\":\"response.completed\"}\n\n");
-            // Config.ReasoningEffort defaults to "None"; explicitly reset
+            // Config.ReasoningEffort defaults to "Auto"; explicitly reset
             // so the test doesn't pick up state from another test.
             Config.ResetDefaults();
             try
