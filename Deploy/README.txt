@@ -27,7 +27,7 @@ PREREQUISITES (all shapes)
 
 WHAT THE INSTALLER DOES
 -----------------------
-1. Backs up any v1 config to:
+1. Backs up the existing config.xml to:
      C:\ProgramData\OutlookAI\Backups\config.xml.v1.backup.<timestamp>
 2. Cleans up stale Outlook add-in registrations for every user profile on
    the machine (ClickOnce subscription, VSTA, VSTO SolutionMetadata,
@@ -36,17 +36,24 @@ WHAT THE INSTALLER DOES
 3. Closes any running Outlook.exe.
 4. Copies the published build to:
      C:\Program Files\OutlookAI
-5. Rewrites C:\Program Files\OutlookAI\config.xml on every install or
-   update (the previous file is backed up first). Server-authoritative
-   values: CodexAuthPath, VoiceModel. AdminPassword, Model and any
-   ModelCatalogClientVersion carry over from the previous file; a fresh
-   install writes no Model, so the default is the top model in the ChatGPT
-   model list.
+5. Keeps C:\Program Files\OutlookAI\config.xml as it is on an update, so
+   hand-set values (Model, VoiceModel, MaxBulkExportRows,
+   ModelCatalogClientVersion, ...) survive; a missing CodexAuthPath is
+   added. The file is never removed along with the old build, so an install
+   that stops partway leaves it in place for the next run. A file that
+   isn't valid XML is left for you to fix (the installer warns). A fresh
+   install, or a v1 (Claude-era) file, gets the v2 template: the
+   AdminPassword carried over, plus CodexAuthPath. It sets no Model, so the
+   default is the top model in the ChatGPT model list.
 6. Creates the shared OAuth credential directory at:
      C:\ProgramData\OutlookAI
    with Authenticated Users: Modify (RDS shared-credential model).
-7. Renames any per-user %APPDATA%\OutlookAI\config.xml that lacks the v2
-   CodexAuthPath element to <name>.v1.backup.<timestamp>.
+7. Renames any per-user v1 (Claude-era) %APPDATA%\OutlookAI\config.xml to
+   <name>.v1.backup.<timestamp>. Per-user files that v2's Settings saves
+   are kept. They override the server defaults for that user, including
+   the admin password in effect when the file was saved; delete one to put
+   its user back on the server defaults (for example after changing the
+   admin password).
 8. Configures VSTO trust + Inclusion list (HKLM, 64-bit + WOW6432Node).
 9. Registers OutlookAI for all users.
 10. Configures the Default User profile so new RDS users auto-load it.
