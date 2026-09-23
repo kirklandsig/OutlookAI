@@ -20,7 +20,7 @@ namespace OutlookAI
 
         public const string DefaultVoiceModel = "gpt-realtime-1.5";
         public const string DefaultCodexAuthPath = @"C:\ProgramData\OutlookAI\auth.json";
-        public const string DefaultReasoningEffort = ReasoningEffortNames.None;
+        public const string DefaultReasoningEffort = ReasoningEffortNames.Auto;
         public const bool DefaultWriteToolsEnabled = true;
         public const int DefaultMaxBulkExportRows = 2000;
         private const int MinBulkExportRows = 1;
@@ -64,9 +64,9 @@ namespace OutlookAI
 
         /// <summary>
         /// Default reasoning effort sent to the Codex backend on each turn:
-        /// "None" or an effort some catalog model offers. "None" means omit the
-        /// reasoning block entirely. Per-turn overrides via
-        /// <c>ConversationContext.ReasoningEffortOverride</c>.
+        /// "Auto" or an effort some catalog model offers. "Auto" (formerly
+        /// "None") omits the reasoning block so the model's default applies.
+        /// Per-turn overrides via <c>ConversationContext.ReasoningEffortOverride</c>.
         /// </summary>
         public static string ReasoningEffort { get; set; } = DefaultReasoningEffort;
 
@@ -135,7 +135,7 @@ namespace OutlookAI
 
         /// <summary>
         /// Reasoning-effort options for <paramref name="model"/> from the
-        /// catalog: <c>None</c> first, then the efforts that model accepts
+        /// catalog: <c>Auto</c> first, then the efforts that model accepts
         /// (e.g. gpt-5.5 has neither Minimal nor Max). The wire value comes
         /// from <see cref="ModelCatalog.ResolveWireEffort"/>.
         /// </summary>
@@ -322,8 +322,9 @@ namespace OutlookAI
                     values.AdminPassword = adminPassword.Value;
                 }
 
-                // "None" or any effort some catalog model accepts (e.g. "Max"),
-                // stored in canonical casing; anything else keeps the prior value.
+                // "Auto" (or its old name "None") or any effort some catalog
+                // model accepts (e.g. "Max"), stored in canonical casing;
+                // anything else keeps the prior value.
                 var reasoningEffort = root.Element("ReasoningEffort");
                 if (reasoningEffort != null && !string.IsNullOrWhiteSpace(reasoningEffort.Value))
                 {
@@ -432,16 +433,7 @@ namespace OutlookAI
             // behavior fields. Shared config persists the same fields so
             // admins on an RDS host can set server-wide defaults that
             // propagate to every user.
-            var doc = new XDocument(
-                new XElement("Config",
-                    new XElement("AdminPassword", AdminPassword),
-                    new XElement("Model", Model),
-                    new XElement("ReasoningEffort", ReasoningEffort),
-                    new XElement("WriteToolsEnabled", WriteToolsEnabled),
-                    new XElement("EnabledWriteTools",
-                        string.Join(",", EnabledWriteTools ?? new HashSet<string>()))
-                )
-            );
+            var doc = BuildSavedConfig();
 
             // 1) Per-user override (always attempted; failures silently
             //    swallowed so a read-only AppData doesn't block the workflow).
@@ -453,6 +445,20 @@ namespace OutlookAI
             //    here, which is the intended behavior: a non-admin can't
             //    change server-wide defaults).
             TrySaveTo(SharedConfigFilePath, doc);
+        }
+
+        internal static XDocument BuildSavedConfig()
+        {
+            return new XDocument(
+                new XElement("Config",
+                    new XElement("AdminPassword", AdminPassword),
+                    new XElement("Model", Model),
+                    new XElement("ReasoningEffort", ReasoningEffortNames.ToConfigValue(ReasoningEffort)),
+                    new XElement("WriteToolsEnabled", WriteToolsEnabled),
+                    new XElement("EnabledWriteTools",
+                        string.Join(",", EnabledWriteTools ?? new HashSet<string>()))
+                )
+            );
         }
 
         private static void TrySaveTo(string filePath, XDocument doc)

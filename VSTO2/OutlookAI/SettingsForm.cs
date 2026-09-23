@@ -391,7 +391,7 @@ namespace OutlookAI
             var model = _cmbModel.SelectedItem as string;
             if (string.IsNullOrEmpty(model)) return;
             // Keep the intended effort if this model takes it; otherwise show
-            // None without forgetting it for the next model.
+            // Auto without forgetting it for the next model.
             RefreshReasoningEffortChoices(model, _intendedEffort);
             ShowModelInfo(model);
         }

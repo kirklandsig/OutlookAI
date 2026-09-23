@@ -85,7 +85,7 @@ namespace OutlookAI.Tests.Services.Models
                     Assert.Equal("Max", effort.SelectedItem);
 
                     model.SelectedItem = "gpt-5.5";
-                    Assert.Equal("None", effort.SelectedItem);
+                    Assert.Equal("Auto", effort.SelectedItem);
 
                     model.SelectedItem = "gpt-6-sol";
                     Assert.Equal("Max", effort.SelectedItem);
