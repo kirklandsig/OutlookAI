@@ -582,14 +582,21 @@ if (!(Test-Path $ProgramDataPath)) {
 
 # Shared per-server OAuth: any signed-in user on this server can read/write
 # auth.json. This is the accepted Phase 1 trade-off; if trust changes,
-# rotate the credential via Settings -> Sign Out + Sign In.
-& icacls.exe $ProgramDataPath /grant "Authenticated Users:(OI)(CI)M" /T | Out-Null
-Write-Host "  Granted Authenticated Users: Modify on $ProgramDataPath" -ForegroundColor Gray
+# rotate the credential via Settings -> Sign Out + Sign In. The same folder
+# holds config.xml, where Settings saves for every user.
+# By SID (S-1-5-11 = Authenticated Users): the name differs on non-English Windows.
+& icacls.exe $ProgramDataPath /grant "*S-1-5-11:(OI)(CI)M" /T | Out-Null
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "  Granted Authenticated Users: Modify on $ProgramDataPath" -ForegroundColor Gray
+} else {
+    Write-Host "  WARNING: could not grant Authenticated Users Modify on $ProgramDataPath (icacls exit $LASTEXITCODE). Sign-in and Settings will fail for users who can't write there." -ForegroundColor Yellow
+}
 Write-Host "  Done." -ForegroundColor Green
 
 # --- 7. Per-user v1 AppData cleanup --------------------------------------
-# Only v1 (Claude-era) files are retired. Settings in v2 saves a per-user
-# config.xml as well, and those must survive updates.
+# Only v1 (Claude-era) files are retired. Per-user files that Settings saved
+# before v2.2.2 are kept: OutlookAI still reads them for anything the
+# server-wide C:\ProgramData\OutlookAI\config.xml doesn't set.
 Write-Host "[7/10] Renaming per-user v1 AppData configs..." -ForegroundColor Yellow
 $userProfiles = Get-ChildItem -Path $UsersRoot -Directory -ErrorAction SilentlyContinue |
     Where-Object { $_.Name -notin @("Public", "Default", "Default User", "All Users") }

@@ -123,7 +123,8 @@ API key.
 
 ### ⚙️ Settings
 
-The gear icon opens a password-gated Settings dialog with:
+The gear icon opens a password-gated Settings dialog. Its choices apply to
+every user on the machine (saved in `C:\ProgramData\OutlookAI\config.xml`):
 
 - ChatGPT account: Sign In / Sign Out / Refresh.
 - Model picker driven by the model catalog ChatGPT publishes for your
@@ -138,8 +139,6 @@ The gear icon opens a password-gated Settings dialog with:
   `config.xml` still stores it as `None`, which older versions read the same way.
 - 4 checkboxes for the safe-write tools (each can be individually enabled).
 - Admin password rotation.
-
-Per-user settings persist to `%APPDATA%\OutlookAI\config.xml`.
 
 ## How it compares
 
@@ -259,9 +258,11 @@ Key components:
 
 ## Security model
 
-- **OAuth via ChatGPT.** Tokens stored at:
-  - `C:\ProgramData\OutlookAI\auth.json` (machine, RDS-shared by design).
-  - `%APPDATA%\OutlookAI\config.xml` (per-user settings).
+- **OAuth via ChatGPT.** Tokens stored at
+  `C:\ProgramData\OutlookAI\auth.json` (machine, RDS-shared by design).
+- **Settings** (model, effort, write tools and the admin password, in plain
+  text) live in `C:\ProgramData\OutlookAI\config.xml`, which every signed-in
+  user on the machine can read and change, like `auth.json`.
 - **No telemetry.** In normal use, outbound traffic is two endpoints from
   inside `Outlook.exe`:
   - `https://chatgpt.com/backend-api/codex/responses` (text inference).
