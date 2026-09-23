@@ -489,7 +489,7 @@ namespace OutlookAI.Services
             // Config.ModelCatalog on the UI thread mid-build.
             var catalog = Config.ModelCatalog;
             var model = catalog.ResolveEffectiveModel(Config.Model, Config.Clock());
-            // Per-turn override beats global default. "None" => omit reasoning.
+            // Per-turn override beats global default. "Auto" => omit reasoning.
             var effort = !string.IsNullOrEmpty(context.ReasoningEffortOverride)
                 ? context.ReasoningEffortOverride
                 : Config.ReasoningEffort;

@@ -691,9 +691,10 @@
      * Populate the reasoning-effort dropdown based on the model the host
      * is currently configured for. C# computes the list via
      * Config.ReasoningEffortsForModel and pushes it here. Always keeps
-     * a leading "(default)" option mapped to value="".
+     * a leading "(from Settings)" option mapped to value="".
      *
-     *  opts   - array of strings, e.g. ['None','Low','Medium','High','XHigh']
+     *  opts   - array of strings, e.g. ['Auto','Low','Medium','High','XHigh']
+     *           ('Auto' = let the model use its default reasoning).
      *  selected - optional. Pre-selects the matching option (case-insensitive).
      *             Pass '' to keep the current pick when it is still offered
      *             (options are re-pushed when Settings changes the model).
@@ -703,7 +704,7 @@
       while ($reasoning.firstChild) $reasoning.removeChild($reasoning.firstChild);
       var def = document.createElement('option');
       def.value = '';
-      def.textContent = '(default)';
+      def.textContent = '(from Settings)';
       $reasoning.appendChild(def);
       (opts || []).forEach(function(name) {
         var el = document.createElement('option');

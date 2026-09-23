@@ -267,7 +267,7 @@ namespace OutlookAI.Tests.Services.Models
             var catalog = result.Catalog;
             Assert.False(catalog.Find("gpt-6-sol").Listed);
             Assert.Equal("gpt-6-sol", catalog.ResolveEffectiveModel("gpt-6-sol", FixedNow));
-            Assert.Equal(new[] { "None", "Low", "Max" }, catalog.EffortsFor("gpt-6-sol"));
+            Assert.Equal(new[] { "Auto", "Low", "Max" }, catalog.EffortsFor("gpt-6-sol"));
             Assert.Equal("gpt-soft", catalog.ResolveEffectiveModel("gpt-soft", FixedNow));
             Assert.Null(catalog.Find("gpt-unused"));   // not configured, no retirement date
             Assert.Equal(new[] { "gpt-6-sol", "gpt-soft" }, result.KeptUnlisted);
@@ -466,7 +466,7 @@ namespace OutlookAI.Tests.Services.Models
 
             Assert.True(result.SupersededByNewer);
             Assert.Equal("gpt-new", result.Catalog.ResolveEffectiveModel("gpt-new", FixedNow));
-            Assert.Equal(new[] { "None", "High" }, result.Catalog.EffortsFor("gpt-new"));
+            Assert.Equal(new[] { "Auto", "High" }, result.Catalog.EffortsFor("gpt-new"));
         }
 
         [Fact]
@@ -554,7 +554,7 @@ namespace OutlookAI.Tests.Services.Models
             Assert.True(result.Succeeded, result.Error);
             Assert.False(result.ServerEffortsProbed);
             Assert.Equal(probedBefore.ServerEfforts, result.Catalog.ServerEfforts);
-            Assert.Equal(new[] { "None", "Low", "Extreme" }, result.Catalog.EffortsFor("gpt-6-astra"));
+            Assert.Equal(new[] { "Auto", "Low", "Extreme" }, result.Catalog.EffortsFor("gpt-6-astra"));
         }
 
         [Fact]
@@ -569,7 +569,7 @@ namespace OutlookAI.Tests.Services.Models
             var result = await RunAsync(fake, Current("0.155.1"));
 
             Assert.False(result.ServerEffortsProbed);
-            Assert.Equal(new[] { "None", "Low", "Medium", "High", "XHigh", "Max" }, result.Catalog.EffortsFor("gpt-6-astra"));
+            Assert.Equal(new[] { "Auto", "Low", "Medium", "High", "XHigh", "Max" }, result.Catalog.EffortsFor("gpt-6-astra"));
         }
 
         [Fact]
@@ -585,7 +585,7 @@ namespace OutlookAI.Tests.Services.Models
             Assert.True(result.Succeeded, result.Error);
             Assert.False(result.ServerEffortsProbed);
             Assert.Null(result.Catalog.ServerEfforts);
-            Assert.Equal(new[] { "None", "Low", "Medium", "High", "XHigh", "Max" }, result.Catalog.EffortsFor("gpt-6-astra"));
+            Assert.Equal(new[] { "Auto", "Low", "Medium", "High", "XHigh", "Max" }, result.Catalog.EffortsFor("gpt-6-astra"));
         }
     }
 }

@@ -80,7 +80,8 @@ a clean Outlook session (close Outlook → run the installer → reopen Outlook)
 
 20. [ ] Open Settings (gear icon on Actions tab) → enter admin password.
 21. [ ] Change Model dropdown to `gpt-6-astra`. Reasoning dropdown re-filters
-    (`None`, `Low`, `Medium`, `High`, `XHigh`, `Max`; never `Ultra`).
+    (`Auto`, `Low`, `Medium`, `High`, `XHigh`, `Max`; never `Ultra`). The chat
+    pane's effort list starts with `(from Settings)`, then the same entries.
 22. [ ] Switch Model to `gpt-5.5`. Reasoning dropdown drops `Max`, and the line
     under the model shows its retirement date (2026-10-14).
 23. [ ] Uncheck `outlook_mark_as_read` in the write-tools checklist.
