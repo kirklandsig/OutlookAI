@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Text;
-using System.Threading;
 using OutlookAI.Diagnostics;
 
 namespace OutlookAI.Services.Models
@@ -165,7 +164,7 @@ namespace OutlookAI.Services.Models
             {
                 var dir = Path.GetDirectoryName(path);
                 if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-                using (AcquireLock(path + ".lock"))
+                using (FileLock.Acquire(path + ".lock", _lockTimeout))
                 {
                     var existing = TryLoad(path);
                     var catalog = build(existing);
@@ -199,29 +198,6 @@ namespace OutlookAI.Services.Models
                 try { if (File.Exists(temp)) File.Delete(temp); } catch { }
                 Trace("could not write '" + path + "': " + ex.Message);
                 return ex.Message;
-            }
-        }
-
-        // Exclusive, delete-on-close lock file: released even if the holder's
-        // process dies, so it can never go stale.
-        private FileStream AcquireLock(string lockPath)
-        {
-            var deadline = DateTime.UtcNow + _lockTimeout;
-            while (true)
-            {
-                try
-                {
-                    return new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.DeleteOnClose);
-                }
-                catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
-                {
-                    // Held by another writer, or its delete still pending (which
-                    // surfaces as access denied). A missing file that we may not
-                    // create is a real permission problem: report it.
-                    if (ex is UnauthorizedAccessException && !File.Exists(lockPath)) throw;
-                    if (DateTime.UtcNow >= deadline) throw new TimeoutException("Timed out waiting for " + lockPath, ex);
-                    Thread.Sleep(50);
-                }
             }
         }
 

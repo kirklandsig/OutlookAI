@@ -85,7 +85,8 @@ a clean Outlook session (close Outlook → run the installer → reopen Outlook)
 22. [ ] Switch Model to `gpt-5.5`. Reasoning dropdown drops `Max`, and the line
     under the model shows its retirement date (2026-10-14).
 23. [ ] Uncheck `outlook_mark_as_read` in the write-tools checklist.
-    Click **Save AI Settings**. `Saved.` indicator appears, auto-hides ~2.5 s.
+    Click **Save AI Settings**. `Saved for all users on this machine.` indicator
+    appears, auto-hides ~2.5 s.
 24. [ ] Switch back to Chat tab → type "Mark this as read". The tool card
     should NOT include `outlook_mark_as_read` (model gets a tool error or
     works around it).
@@ -98,7 +99,7 @@ a clean Outlook session (close Outlook → run the installer → reopen Outlook)
     per-Inspector and clears on close).
 28. [ ] Variants tab: cards are **empty**.
 29. [ ] Settings (Model, Reasoning, EnabledWriteTools) **still persisted** via
-    `%APPDATA%\OutlookAI\config.xml`.
+    `C:\ProgramData\OutlookAI\config.xml` (every user on the machine).
 
 ## Voice (still wired from Phase 1)
 
