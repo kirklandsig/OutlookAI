@@ -20,9 +20,11 @@ PREREQUISITES (all shapes)
 - .NET Framework 4.7.2 or later.
 - Visual Studio Tools for Office Runtime:
   https://aka.ms/VSTORuntime
-- Microsoft Edge WebView2 Evergreen Runtime. The installer will install it
-  silently if missing. To pre-stage offline, vendor the bootstrapper:
-    .\Deploy\Fetch-WebView2Bootstrapper.ps1
+- Microsoft Edge WebView2 Evergreen Runtime. If it is missing, the
+  installer runs the WebView2 bootstrapper from the bundle, which downloads
+  the runtime from Microsoft. On a machine without internet access,
+  install the runtime first with Microsoft's Evergreen Standalone
+  Installer.
 
 
 WHAT THE INSTALLER DOES
@@ -45,9 +47,10 @@ WHAT THE INSTALLER DOES
    install, or a v1 (Claude-era) file, gets the v2 template: the
    AdminPassword carried over, plus CodexAuthPath. It sets no Model, so the
    default is the top model in the ChatGPT model list.
-6. Creates the shared OAuth credential directory at:
+6. Creates the shared folder for the sign-in, Settings and model list:
      C:\ProgramData\OutlookAI
-   with Authenticated Users: Modify (RDS shared-credential model).
+   with Authenticated Users: Modify (RDS shared-credential model), and
+   warns if that permission can't be set.
 7. Renames any per-user v1 (Claude-era) %APPDATA%\OutlookAI\config.xml to
    <name>.v1.backup.<timestamp>. Per-user files that Settings saved before
    v2.2.2 are kept, but the server-wide C:\ProgramData\OutlookAI\config.xml
@@ -57,37 +60,50 @@ WHAT THE INSTALLER DOES
 10. Configures the Default User profile so new RDS users auto-load it.
 
 
+GET THE INSTALL BUNDLE
+----------------------
+Every release on https://github.com/kirklandsig/OutlookAI/releases has an
+install bundle, OutlookAI-vX.Y.Z-RDS-Deploy.zip, and its .sha256. The zip
+holds the published add-in, Install-OutlookAI.ps1, Uninstall-OutlookAI.ps1,
+the WebView2 bootstrapper, this guide and version.json. Download both
+files, then in PowerShell, in the download folder:
+
+   $zip = ".\OutlookAI-vX.Y.Z-RDS-Deploy.zip"
+   (Get-FileHash $zip -Algorithm SHA256).Hash -eq (Get-Content "$zip.sha256").Trim()
+   Unblock-File $zip
+   Expand-Archive $zip -DestinationPath C:\OutlookAI
+
+The hash check must print True. The steps below assume C:\OutlookAI.
+
+To build the bundle from source instead, see "Contributing" in the
+repository's README.md (Deploy\Make-ReleaseZip.ps1 writes the same zip).
+
+
 SHAPE A - SINGLE WORKSTATION
 -----------------------------
 Use case: developer machine, power user, single-user laptop or desktop.
 
 Steps:
 
-1. Clone the repo or download the latest Release zip.
+1. Get the install bundle (above) into C:\OutlookAI.
 
-2. Publish a Release build:
-
-   & "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe" `
-     "VSTO2\OutlookAI.sln" /target:Publish /p:Configuration=Release `
-     /p:Platform="Any CPU" /p:PublishDir="C:\OutlookAI\"
-
-3. Run the installer elevated:
+2. Run the installer elevated:
 
    Set-ExecutionPolicy -Scope LocalMachine -ExecutionPolicy RemoteSigned
-   .\Deploy\Install-OutlookAI.ps1 -SourcePath "C:\OutlookAI"
+   C:\OutlookAI\Install-OutlookAI.ps1 -SourcePath C:\OutlookAI
 
-4. Open Outlook -> click AI Assistant on the ribbon.
+3. Open Outlook -> click AI Assistant on the ribbon.
 
-5. Open a compose window or use the taskpane button -> click any action ->
+4. Open a compose window or use the taskpane button -> click any action ->
    the default browser opens the ChatGPT OAuth consent page (the consent
    screen says "Codex CLI" because OutlookAI reuses the public Codex
    client_id; this is expected).
 
-6. Sign in. The browser confirms and OutlookAI returns to its taskpane.
+5. Sign in. The browser confirms and OutlookAI returns to its taskpane.
 
-7. Verification:
+6. Verification:
      SHA256 of C:\Program Files\OutlookAI\OutlookAI.dll matches the
-     SHA256 of the staged C:\OutlookAI\OutlookAI.dll.
+     SHA256 of C:\OutlookAI\OutlookAI.dll from the bundle.
 
 
 SHAPE B - MULTI-USER RDS / TERMINAL SERVER
@@ -98,8 +114,8 @@ them.
 
 Steps:
 
-1. From an admin workstation, build a Release publish bundle and copy it
-   to the RDS server, e.g. to C:\OutlookAI on the server.
+1. Get the install bundle (above) onto the RDS server, e.g. into
+   C:\OutlookAI on the server.
 
 2. On the RDS server, in an elevated PowerShell:
 
@@ -111,6 +127,12 @@ Steps:
    open Outlook, open AI Assistant, and click any action. The OAuth
    browser flow runs once; the resulting auth.json is shared with every
    user on this server.
+
+Exports: where Folder Redirection points Documents at a network share,
+Excel/PDF exports go to %LOCALAPPDATA%\OutlookAI\Reports\ instead of
+Documents\OutlookAI\Reports\.
+
+Later versions install from Settings -> Updates (see UPDATES below).
 
 
 ACCEPTED RISK - SHARED OAuth CREDENTIAL
@@ -146,7 +168,8 @@ After the first Settings save that file holds all five of these settings,
 so to change one by hand, edit it there: the same setting in
 C:\Program Files\OutlookAI\config.xml only applies while the ProgramData
 file doesn't have it. The Program Files file is the only place for
-CodexAuthPath, VoiceModel, MaxBulkExportRows and ModelCatalogClientVersion.
+CodexAuthPath, VoiceModel, MaxBulkExportRows and ModelCatalogClientVersion
+(see SERVER SETTINGS below).
 
 Before v2.2.2, Settings also saved a copy per user in
 %APPDATA%\OutlookAI\config.xml, which kept overriding later changes for
@@ -157,6 +180,24 @@ C:\ProgramData\OutlookAI\config.xml.
 
 Going back to a version before v2.2.2 makes the per-user copies override
 again: delete them first (%APPDATA%\OutlookAI\config.xml for each user).
+
+
+SERVER SETTINGS (Program Files config.xml)
+------------------------------------------
+C:\Program Files\OutlookAI\config.xml is only edited by hand; updates keep
+it. Besides fallbacks for the Settings above, it holds settings the
+Settings dialog doesn't show:
+
+  CodexAuthPath              where the shared ChatGPT sign-in is stored
+                             (default C:\ProgramData\OutlookAI\auth.json)
+  VoiceModel                 the voice transcription model
+                             (default gpt-realtime-1.5)
+  MaxBulkExportRows          the most messages one complete-list Excel
+                             export collects (default 2000, at most 10000)
+  ModelCatalogClientVersion  the Codex version the model list request
+                             identifies as (blank = latest; see MODEL LIST)
+
+Each user's Outlook reads it the next time it starts.
 
 
 MODEL LIST (models.json)
@@ -192,9 +233,29 @@ C:\Program Files\OutlookAI\config.xml:
   <ModelCatalogClientVersion>0.156.0</ModelCatalogClientVersion>
 
 
+UPDATES
+-------
+Admins update OutlookAI from inside Outlook: Settings (gear icon, admin
+password) -> Updates. Check Now looks up the latest release on GitHub;
+Install Update, offered when that release is newer, downloads its zip,
+checks the SHA256 and runs its installer with administrator rights (UAC
+prompt). The installer closes Outlook for every user on the machine and
+leaves it closed, so warn RDS users first; everyone reopens Outlook when
+it finishes. Updates keep C:\Program Files\OutlookAI\config.xml and the
+Settings in C:\ProgramData\OutlookAI.
+
+The updater needs HTTPS access to api.github.com, github.com and the
+*.githubusercontent.com hosts GitHub redirects release downloads to.
+Downloads go to %LOCALAPPDATA%\OutlookAI\Updates\<tag>\ and each attempt
+is logged in %LOCALAPPDATA%\OutlookAI\update-history.json.
+
+To update without the updater, get the new install bundle and run its
+installer as for a fresh install; it upgrades in place.
+
+
 ROTATING CREDENTIALS
 --------------------
-Phase 1 has no remote revocation; rotation is a manual two-step:
+OutlookAI can't revoke tokens remotely; rotation is a manual two-step:
 
 1. On the RDS server, as any user who knows the OutlookAI admin password:
    - Open Outlook -> AI Assistant -> gear icon (Settings).
@@ -215,15 +276,14 @@ SHAPE C - IT-MANAGED IMAGE / SILENT INSTALL
 Use case: corporate Windows image, MDT/SCCM rollout, or any deployment
 where the install must complete without operator interaction.
 
-Pre-stage the WebView2 runtime so the installer has no internet dependency
-during image build:
-
-   .\Deploy\Fetch-WebView2Bootstrapper.ps1
+If the image is built without internet access, install the WebView2
+runtime into it first (Microsoft's Evergreen Standalone Installer); the
+bootstrapper in the bundle downloads the runtime.
 
 Then bake the installer into the image:
 
-1. Copy the published OutlookAI bundle (the contents of the PublishDir)
-   to a known location on the gold image, e.g. C:\OutlookAI.
+1. Copy the extracted install bundle (see GET THE INSTALL BUNDLE) to a
+   known location on the gold image, e.g. C:\OutlookAI.
 
 2. Add a run-once install task (Group Policy startup script, SCCM task
    sequence, MDT package, or Task Scheduler "At startup") that calls:
@@ -258,6 +318,12 @@ VERIFICATION (all shapes)
 
 TROUBLESHOOTING
 ---------------
+
+Install or update fails, or OutlookAI.dll goes missing afterwards:
+  - Antivirus may be quarantining the add-in's files. Exclude
+    C:\Program Files\OutlookAI\ and %LOCALAPPDATA%\OutlookAI\Updates\
+    (all scan engines, including behavior monitoring), then run the
+    installer again.
 
 Add-in shows in list but won't load / keeps unchecking:
   1. Confirm VSTO Runtime is installed (Programs and Features:
@@ -302,15 +368,21 @@ Search takes very long on large mailboxes:
 UNINSTALL
 ---------
 1. Open PowerShell as Administrator.
-2. Run: .\Uninstall-OutlookAI.ps1
+2. Run Uninstall-OutlookAI.ps1 from the install bundle (or from Deploy\
+   in a clone of the repository), e.g.:
+     C:\OutlookAI\Uninstall-OutlookAI.ps1
 
 This removes:
   - HKLM Outlook add-in registration (64-bit + WOW6432Node).
   - C:\Program Files\OutlookAI install directory.
   - C:\ProgramData\OutlookAI\auth.json + sidecar refresh lock.
 
-Backups under C:\ProgramData\OutlookAI\Backups are intentionally preserved
-for rollback.
+It keeps, on purpose, so a reinstall picks them up:
+  - C:\ProgramData\OutlookAI\config.xml (the Settings for every user,
+    including the admin password) and models.json.
+  - C:\ProgramData\OutlookAI\Backups, for rollback.
+Delete C:\ProgramData\OutlookAI as well to remove everything. Each user's
+%LOCALAPPDATA%\OutlookAI and %APPDATA%\OutlookAI stay in their profile.
 
 
 ROLLBACK TO v1

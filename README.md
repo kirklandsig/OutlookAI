@@ -1,14 +1,8 @@
 # OutlookAI — Free Open-Source Outlook AI Add-in
 
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-[![Build](https://img.shields.io/badge/build-passing-brightgreen)]()
-[![Tests](https://img.shields.io/badge/tests-546%2F546-brightgreen)]()
-[![Branch](https://img.shields.io/badge/branch-feature%2Fcodex--oauth--migration-orange)]()
-
-> ⚠️ **Still in active development.** Chat, Inbox Copilot, Inbox Reports, and
-> Excel/PDF exports are live on the `feature/codex-oauth-migration` branch and
-> are being merged to `master`. Track the current state in the
-> [open pull requests](https://github.com/kirklandsig/OutlookAI/pulls).
+[![Release](https://img.shields.io/github/v/release/kirklandsig/OutlookAI)](https://github.com/kirklandsig/OutlookAI/releases/latest)
+[![Tests](https://img.shields.io/badge/tests-898%2F898-brightgreen)](#contributing)
 
 The free open-source alternative to **GPT for Outlook**, **Mailbutler**,
 **Lavender**, **Compose AI**, **OtterMail**, **Boomerang Respondable**,
@@ -33,9 +27,11 @@ SaaS middleware, no telemetry. You get:
 - **Excel and PDF exports**: model-callable export tools plus a per-message
   Save as PDF button. Files land in `Documents\OutlookAI\Reports\` with
   `Open` / `Show in folder`.
-- **15 Outlook tools** the model can call (11 always on + 4 admin-gated
+- **16 Outlook tools** the model can call (12 always on + 4 admin-gated
   safe writes; no send / delete / move tools by design).
 - **Voice transcription** from the same ChatGPT credential.
+- **In-app updates and a live model list**: admins install new releases and
+  refresh the models ChatGPT offers from Settings, no reinstall needed.
 - Open source under MIT, fork-friendly, auditable end-to-end.
 
 ## What you get
@@ -54,7 +50,7 @@ Open the AI Assistant taskpane on any Outlook explorer window and the same
 chat surface attaches to your inbox. Highlighting one or more messages feeds
 them into the context. Quick-action chips for common workflows ("summarize
 this thread", "draft a reply") and full freeform chat with the entire
-15-tool mailbox surface.
+16-tool mailbox surface.
 
 ### 📊 Inbox Reports (taskpane)
 
@@ -66,7 +62,7 @@ response inline. Save the report as PDF, or export underlying data as Excel.
 
 ### 📑 Excel and PDF exports
 
-Two model-callable export tools:
+Three model-callable export tools:
 
 - `outlook_export_excel` produces a styled `.xlsx` with bold/frozen header
   row, autofilter, and per-column formatting (text / number / currency /
@@ -74,9 +70,15 @@ Two model-callable export tools:
 - `outlook_export_pdf` renders polished markdown through an isolated
   off-screen WebView2 instance into A4 PDF with header bar and no chat-UI
   chrome.
+- `outlook_export_search_results` exports the complete list of messages
+  matching a search to Excel, not just the first page of results: it counts
+  the true total, collects up to a server-set ceiling (2,000 rows by default,
+  10,000 at most), and reports how many it exported out of how many matched.
 
-Both save to `~\Documents\OutlookAI\Reports\` with auto-generated,
-timestamped, collision-safe filenames. Tool results surface as inline file
+All three save to `~\Documents\OutlookAI\Reports\` (or
+`%LOCALAPPDATA%\OutlookAI\Reports\` when Documents is redirected to a network
+share, as on many RDS servers) with auto-generated, timestamped,
+collision-safe filenames. Tool results surface as inline file
 cards with `Open` and `Show in folder` buttons. Every file action goes
 through a path-policy gate that rejects any path outside the Reports
 directory.
@@ -87,9 +89,9 @@ Every assistant message gets a small button that exports just that message —
 the markdown the chat is showing, not the rendered HTML — to PDF. One click,
 no model round-trip.
 
-### 🛠 15 model-callable Outlook tools
+### 🛠 16 model-callable Outlook tools
 
-**Always on (11):**
+**Always on (12):**
 
 - `outlook_get_current_compose_state`
 - `outlook_get_current_selection`
@@ -102,6 +104,7 @@ no model round-trip.
 - `outlook_list_recent_threads_with`
 - `outlook_export_excel`
 - `outlook_export_pdf`
+- `outlook_export_search_results` (complete list to Excel)
 
 **Admin-gated safe writes (4):**
 
@@ -139,6 +142,8 @@ every user on the machine (saved in `C:\ProgramData\OutlookAI\config.xml`):
   `config.xml` still stores it as `None`, which older versions read the same way.
 - 4 checkboxes for the safe-write tools (each can be individually enabled).
 - Admin password rotation.
+- Updates: **Check Now** / **Install Update** for new OutlookAI releases (see
+  [Updating](#updating)).
 
 ## How it compares
 
@@ -147,7 +152,7 @@ every user on the machine (saved in `C:\ProgramData\OutlookAI\config.xml`):
 | Price | **$0** (BYO ChatGPT sub) | $7-$15/user/mo | $9.95-$32.95/mo | $29-$89/mo | $10-$20/mo | $9.99-$29/mo | $4.99-$22.99/mo | $19-$39/mo | enterprise (POA) | $7-$36/mo |
 | Source code | **MIT, public** | closed | closed | closed | closed | closed | closed | closed | closed | closed |
 | OAuth via your own ChatGPT sub | **yes** | no | no | no | no | no | no | no | no | no |
-| Tool calling on real mailbox data | **15 tools** | partial | partial | no | partial | no | no | no | yes (proprietary) | partial |
+| Tool calling on real mailbox data | **16 tools** | partial | partial | no | partial | no | no | no | yes (proprietary) | partial |
 | Runs entirely in-process (no proxy) | **yes** | no | no | no | no | no | no | no | no | no |
 | Inbox Copilot taskpane | **yes** | no | no | no | no | no | no | partial | partial | no |
 | Inbox Reports + Excel/PDF export | **yes** | no | no | no | no | no | no | no | partial | no |
@@ -185,31 +190,37 @@ inference against your existing ChatGPT subscription.*
 
 ## Install
 
-For a single workstation:
+Each [release](https://github.com/kirklandsig/OutlookAI/releases/latest)
+has an install bundle, `OutlookAI-vX.Y.Z-RDS-Deploy.zip`, and its `.sha256`.
+Download both, then in an elevated PowerShell in the download folder:
 
 ```powershell
-# 1. Clone the repo or download the latest Release zip
-git clone https://github.com/kirklandsig/OutlookAI.git
-cd OutlookAI
+# 1. Check the download (must print True) and extract it
+$zip = ".\OutlookAI-vX.Y.Z-RDS-Deploy.zip"
+(Get-FileHash $zip -Algorithm SHA256).Hash -eq (Get-Content "$zip.sha256").Trim()
+Unblock-File $zip
+Expand-Archive $zip -DestinationPath C:\OutlookAI
 
-# 2. (Optional) Refresh the vendored WebView2 bootstrapper
-.\Deploy\Fetch-WebView2Bootstrapper.ps1
-
-# 3. Publish Release
-& "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe" `
-  "VSTO2\OutlookAI.sln" /target:Publish /p:Configuration=Release /p:Platform="Any CPU" `
-  /p:PublishDir="C:\OutlookAI\"
-
-# 4. Install (elevated)
+# 2. Install
 Set-ExecutionPolicy -Scope LocalMachine -ExecutionPolicy RemoteSigned
-.\Deploy\Install-OutlookAI.ps1 -SourcePath "C:\OutlookAI"
+C:\OutlookAI\Install-OutlookAI.ps1 -SourcePath C:\OutlookAI
 
-# 5. Open Outlook → AI Assistant → sign in with your ChatGPT account.
+# 3. Open Outlook → AI Assistant → sign in with your ChatGPT account.
 ```
 
-For multi-user RDS / Terminal Server installs and IT-managed images, see
-[`Deploy/README.txt`](Deploy/README.txt) (and the short
-[`docs/Install.md`](docs/Install.md) summary).
+The same bundle covers single workstations, multi-user RDS / Terminal Server
+and IT-managed images; see [`Deploy/README.txt`](Deploy/README.txt), which
+is also inside the zip. To build the bundle from source instead, see
+[Contributing](#contributing).
+
+### Updating
+
+Admins update from inside Outlook: Settings → **Updates** → **Check Now**,
+then **Install Update** when a newer release is out. It downloads the
+release, checks its SHA256 and runs the installer with administrator rights.
+The installer closes Outlook for every user on the machine and leaves it
+closed, so warn RDS users first; everyone reopens Outlook afterwards.
+Updates keep the settings.
 
 ## Architecture
 
@@ -222,7 +233,7 @@ Outlook.exe
 
 CodexChatService
   └── OutlookToolHost / ToolDispatcher
-        └── 15 IOutlookTool implementations
+        └── 16 IOutlookTool implementations
               ├── LiveOutlookSurface (Outlook COM)
               └── Services/Export
                     ├── ExcelWorkbookBuilder       (ClosedXML)
@@ -239,7 +250,7 @@ Key components:
 
 - `Services/CodexChatService.cs` — Codex Responses request/streaming,
   multi-round tool dispatch, parallel tool calls, cancellation.
-- `Services/Tools/OutlookToolHost.cs` — tool catalog construction and
+- `Services/OutlookToolHost.cs` — tool catalog construction and
   per-tool admin-write gating.
 - `Services/Tools/LiveOutlookSurface.cs` — Outlook COM surface for
   read/write/search; AdvancedSearch + iterative-folder fallback; budgeted
@@ -255,6 +266,13 @@ Key components:
 - `WebUI/*` — `chat.js`, `markdown.js`, `styles.css`, `print-template.html`,
   `print-styles.css`. Extracted from `chat.js` so the same markdown renderer
   drives chat and PDF.
+- `Services/Models/` — the model catalog behind **Update Models**: fetch,
+  cache (`models.json`), per-model reasoning efforts, retirement routing.
+- `Services/Updates/` — the in-app updater: GitHub Releases lookup, download
+  and SHA256 check, elevated install, update history.
+- `Config.cs`, `SettingsForm.cs` — the config layers and the Settings dialog;
+  saves are merged into the ProgramData `config.xml` under a cross-process
+  lock (`Services/FileLock.cs`).
 
 ## Security model
 
@@ -277,8 +295,9 @@ Key components:
     release number. Only the ChatGPT calls carry the sign-in token.
 - **Path policy on file actions.**
   `IExportPathPolicy.RequireInsideReportsDir(...)` rejects any open/reveal
-  path that escapes `Documents\OutlookAI\Reports\`. Path traversal attempts
-  are logged and never launched.
+  path that escapes the Reports folder (`Documents\OutlookAI\Reports\`, or
+  `%LOCALAPPDATA%\OutlookAI\Reports\` when Documents is on a network share).
+  Path traversal attempts are logged and never launched.
 - **No destructive tools.** No `outlook_send_message`,
   `outlook_delete_message`, or `outlook_move_to_deleted`. The admin can
   additionally disable any safe-write tool from Settings.
@@ -335,27 +354,40 @@ Yes — that is the primary deployment target. See
 
 ### How do I uninstall?
 
+In an elevated PowerShell, run the uninstaller from the install bundle (or
+from `Deploy\` in a clone):
+
 ```powershell
-.\Deploy\Uninstall-OutlookAI.ps1
+C:\OutlookAI\Uninstall-OutlookAI.ps1
 ```
 
-Removes the add-in registration, the install folder, and the local OAuth
-artifacts. The `Backups/` subfolder is preserved.
+It removes the add-in registration, the install folder and the shared
+ChatGPT sign-in (`C:\ProgramData\OutlookAI\auth.json`). It keeps the rest of
+`C:\ProgramData\OutlookAI` — the Settings in `config.xml` (including the
+admin password), `models.json` and `Backups\` — so a reinstall picks them
+up; delete that folder too to remove everything.
 
 ## Status and roadmap
 
-**Shipped on `feature/codex-oauth-migration` (merging to `master` now):**
+**Shipped** (details on the
+[Releases](https://github.com/kirklandsig/OutlookAI/releases) page):
 
-- Chat tab in compose pane.
-- Inbox Copilot taskpane.
-- Inbox Reports taskpane with six templated chips.
-- Excel export tool with typed columns and per-column formatting.
-- PDF export tool with off-screen WebView2 renderer.
-- Per-message Save as PDF in chat and reports.
-- File cards with Open / Show in folder, guarded by path policy.
-- OAuth via ChatGPT (no API keys to manage).
-- Voice transcription via OpenAI Realtime.
-- RDS / Terminal Server install path.
+- **v2 (ChatGPT OAuth):** Chat tab in the compose pane, Inbox Copilot and
+  Inbox Reports taskpanes, Excel and PDF export tools, per-message Save as
+  PDF, file cards guarded by the path policy, voice transcription, and the
+  RDS / Terminal Server install path. No API keys to manage.
+- **v2.1.0:** in-app updater (Settings → Updates).
+- **v2.1.1:** exports work when Documents is redirected to a network share;
+  admin Settings are shared through `C:\ProgramData\OutlookAI\config.xml`.
+- **v2.1.2 / v2.1.3:** `outlook_export_search_results` for complete-list
+  Excel exports (with a `folder` column); searches report the true total
+  when they truncate.
+- **v2.2.0:** Update Models — the model list and reasoning efforts come from
+  ChatGPT's catalog, and retired models route to their replacement.
+- **v2.2.1:** updates keep `config.xml` and per-user settings; the `None`
+  effort is now called `Auto`.
+- **v2.2.2:** Settings saves for every user, and the ProgramData file wins
+  over old per-user copies.
 
 **Known gaps / explicit follow-ups:**
 
@@ -363,29 +395,46 @@ artifacts. The `Backups/` subfolder is preserved.
 - PDF page numbers, footer, table of contents, embedded images.
 - Settings UI for picking a custom Reports folder.
 - CSV, `.docx`, and other export formats.
+- Automatic model-list refresh (Update Models is a manual button).
 - Mac / OWA support (would require an Office.js add-in).
 
 ## Contributing
 
 ```powershell
-# Clone and restore
+# Clone
 git clone https://github.com/kirklandsig/OutlookAI.git
 cd OutlookAI
 
-# Build (Debug)
-& "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe" `
-  "VSTO2\OutlookAI.sln" /p:Configuration=Debug /p:Platform="Any CPU"
+# One-time: a certificate to sign the add-in's manifests. The maintainer's
+# isn't in the repo, and installs trust the add-in by location, so any will do.
+$cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=OutlookAI dev" `
+  -CertStoreLocation Cert:\CurrentUser\My
 
-# Test (current branch: 546/546 passing)
+# Restore and build (Debug)
+& "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe" `
+  "VSTO2\OutlookAI.sln" /restore /p:RestorePackagesConfig=true /p:Configuration=Debug `
+  /p:Platform="Any CPU" /p:ManifestCertificateThumbprint=$($cert.Thumbprint)
+
+# Test (898 tests, all passing)
 & "C:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe" `
   "VSTO2\OutlookAI.Tests\bin\Debug\net472\OutlookAI.Tests.dll"
+
+# Build an install bundle (the same zip a release has) into out\
+.\Deploy\Make-ReleaseZip.ps1 -Tag v0.0.0-dev -OutDir out -CertThumbprint $cert.Thumbprint
 ```
+
+Building needs Visual Studio with the Office/SharePoint development
+workload. To install your build, run
+`out\staging-v0.0.0-dev\Install-OutlookAI.ps1 -SourcePath out\staging-v0.0.0-dev`
+elevated. In a later session, find the certificate again with
+`Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert`.
 
 Branch model:
 
-- `master` — released code.
-- `feature/<feature-name>` — feature branches with their own spec under
-  `docs/superpowers/specs/` and plan under `docs/superpowers/plans/`.
+- `master` — released code; each release is tagged `vX.Y.Z`.
+- `feature/<name>` and `fix/<name>` — work branches, merged with `--no-ff`.
+  Larger features get a spec under `docs/superpowers/specs/` and a plan under
+  `docs/superpowers/plans/`.
 
 Spec / plan workflow: see `docs/superpowers/` for the spec → plan →
 implementation cycle that drove every phase of OutlookAI development.
