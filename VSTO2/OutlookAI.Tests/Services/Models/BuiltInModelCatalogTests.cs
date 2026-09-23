@@ -58,9 +58,9 @@ namespace OutlookAI.Tests.Services.Models
         [Fact]
         public void BuiltIn_EffortsMatchTheLiveProbe()
         {
-            Assert.Equal(new[] { "None", "Low", "Medium", "High", "XHigh", "Max" }, BuiltIn.EffortsFor("gpt-6-astra"));
-            Assert.Equal(new[] { "None", "Low", "Medium", "High", "XHigh" }, BuiltIn.EffortsFor("gpt-5.5"));
-            Assert.Equal(new[] { "None", "Low", "Medium", "High", "XHigh", "Max" }, BuiltIn.AllOfferedEfforts);
+            Assert.Equal(new[] { "Auto", "Low", "Medium", "High", "XHigh", "Max" }, BuiltIn.EffortsFor("gpt-6-astra"));
+            Assert.Equal(new[] { "Auto", "Low", "Medium", "High", "XHigh" }, BuiltIn.EffortsFor("gpt-5.5"));
+            Assert.Equal(new[] { "Auto", "Low", "Medium", "High", "XHigh", "Max" }, BuiltIn.AllOfferedEfforts);
         }
 
         [Fact]

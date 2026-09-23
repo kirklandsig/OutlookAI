@@ -133,7 +133,9 @@ The gear icon opens a password-gated Settings dialog with:
   `C:\ProgramData\OutlookAI\models.json` and shared with every user on the
   machine; retirement dates from the catalog are shown next to the model, and
   a retired model automatically falls back to its announced replacement.
-- Reasoning effort dropdown, filtered per model.
+- Reasoning effort dropdown, filtered per model. `Auto` (called `None` before
+  v2.2.1) sends no effort, so the model's own default applies (medium today).
+  `config.xml` still stores it as `None`, which older versions read the same way.
 - 4 checkboxes for the safe-write tools (each can be individually enabled).
 - Admin password rotation.
 

@@ -5,12 +5,21 @@ namespace OutlookAI.Services.Models
     /// <summary>
     /// Spelling of reasoning efforts. The Codex backend and model catalog use
     /// lowercase wire values ("xhigh"); dropdowns and config.xml use the display
-    /// spelling ("XHigh"). <see cref="None"/> is the app's own option meaning
-    /// "omit the reasoning field" (the server then applies its default).
+    /// spelling ("XHigh"). <see cref="Auto"/> is the app's own option meaning
+    /// "omit the reasoning field": the model then uses its default (medium on
+    /// current models).
     /// </summary>
     public static class ReasoningEffortNames
     {
-        public const string None = "None";
+        public const string Auto = "Auto";
+
+        /// <summary>
+        /// What <see cref="Auto"/> was called before v2.2.1. It read like "no
+        /// reasoning" but always meant "omit the field". It is accepted as a
+        /// synonym, and config.xml still stores Auto under this name
+        /// (<see cref="ToConfigValue"/>).
+        /// </summary>
+        public const string LegacyNone = "None";
 
         public static string ToDisplay(string wire)
         {
@@ -28,10 +37,23 @@ namespace OutlookAI.Services.Models
             }
         }
 
-        public static bool IsNone(string effort)
+        /// <summary>True for "omit the reasoning field": blank, Auto or the legacy None.</summary>
+        public static bool IsAuto(string effort)
         {
-            return string.IsNullOrWhiteSpace(effort)
-                || string.Equals(effort.Trim(), None, StringComparison.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(effort)) return true;
+            var trimmed = effort.Trim();
+            return string.Equals(trimmed, Auto, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(trimmed, LegacyNone, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// The spelling config.xml stores. Auto is saved as "None", which every
+        /// OutlookAI version reads as "omit the field"; v2.2.0 and older would
+        /// ignore "Auto", e.g. in a roaming profile on a server not yet updated.
+        /// </summary>
+        public static string ToConfigValue(string effort)
+        {
+            return IsAuto(effort) ? LegacyNone : effort;
         }
     }
 }

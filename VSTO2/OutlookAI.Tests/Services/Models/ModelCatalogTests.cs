@@ -53,11 +53,11 @@ namespace OutlookAI.Tests.Services.Models
         }
 
         [Fact]
-        public void EffortsFor_PutsNoneFirst_AndDisplayCasesKnownEfforts()
+        public void EffortsFor_PutsAutoFirst_AndDisplayCasesKnownEfforts()
         {
             var catalog = Catalog(Entry("m", 1, new[] { "low", "medium", "high", "xhigh", "max" }));
 
-            Assert.Equal(new[] { "None", "Low", "Medium", "High", "XHigh", "Max" }, catalog.EffortsFor("m"));
+            Assert.Equal(new[] { "Auto", "Low", "Medium", "High", "XHigh", "Max" }, catalog.EffortsFor("m"));
         }
 
         [Fact]
@@ -69,7 +69,7 @@ namespace OutlookAI.Tests.Services.Models
                 new[] { "none", "minimal", "low", "medium", "high", "xhigh", "max" },
                 ModelCatalog.SourceChatGpt, FixedNow, "0.155.1");
 
-            Assert.Equal(new[] { "None", "Low", "Max" }, catalog.EffortsFor("m"));
+            Assert.Equal(new[] { "Auto", "Low", "Max" }, catalog.EffortsFor("m"));
         }
 
         [Fact]
@@ -78,7 +78,7 @@ namespace OutlookAI.Tests.Services.Models
             var catalog = Catalog(Entry("m", 1, new[] { "low", "max", "ultra" }));
 
             Assert.Null(catalog.ServerEfforts);
-            Assert.Equal(new[] { "None", "Low", "Max" }, catalog.EffortsFor("m"));
+            Assert.Equal(new[] { "Auto", "Low", "Max" }, catalog.EffortsFor("m"));
         }
 
         [Fact]
@@ -89,24 +89,37 @@ namespace OutlookAI.Tests.Services.Models
                 new[] { "high", "extreme" },
                 ModelCatalog.SourceChatGpt, FixedNow, "0.160.0");
 
-            Assert.Equal(new[] { "None", "High", "Extreme" }, catalog.EffortsFor("m"));
+            Assert.Equal(new[] { "Auto", "High", "Extreme" }, catalog.EffortsFor("m"));
         }
 
         [Fact]
-        public void EffortsFor_FoldsCatalogNoneIntoTheAppNoneOption()
+        public void EffortsFor_LeavesCatalogNoneOut_AutoCoversOmitting()
         {
             var catalog = Catalog(Entry("m", 1, new[] { "none", "low" }));
 
-            Assert.Equal(new[] { "None", "Low" }, catalog.EffortsFor("m"));
+            Assert.Equal(new[] { "Auto", "Low" }, catalog.EffortsFor("m"));
         }
 
         [Fact]
-        public void EffortsFor_UnknownModel_OffersOnlyNone()
+        public void EffortsFor_LeavesACatalogAutoLevelOut_SoAutoAppearsOnce()
+        {
+            // A server that someday accepts "auto" must not add a second Auto that can't be sent.
+            var catalog = new ModelCatalog(
+                new[] { Entry("m", 1, new[] { "auto", "low" }) },
+                new[] { "auto", "low", "medium" },
+                ModelCatalog.SourceChatGpt, FixedNow, "0.155.1");
+
+            Assert.Equal(new[] { "Auto", "Low" }, catalog.EffortsFor("m"));
+            Assert.Equal(new[] { "Auto", "Low" }, catalog.AllOfferedEfforts);
+        }
+
+        [Fact]
+        public void EffortsFor_UnknownModel_OffersOnlyAuto()
         {
             var catalog = Catalog(Entry("m", 1, Standard));
 
-            Assert.Equal(new[] { "None" }, catalog.EffortsFor("gpt-4.1-nano"));
-            Assert.Equal(new[] { "None" }, catalog.EffortsFor(null));
+            Assert.Equal(new[] { "Auto" }, catalog.EffortsFor("gpt-4.1-nano"));
+            Assert.Equal(new[] { "Auto" }, catalog.EffortsFor(null));
         }
 
         [Fact]
@@ -116,30 +129,32 @@ namespace OutlookAI.Tests.Services.Models
 
             catalog.EffortsFor("m")[0] = "tampered";
 
-            Assert.Equal("None", catalog.EffortsFor("m")[0]);
+            Assert.Equal("Auto", catalog.EffortsFor("m")[0]);
         }
 
         [Fact]
-        public void AllOfferedEfforts_IsNoneThenUnionInFirstSeenOrder()
+        public void AllOfferedEfforts_IsAutoThenUnionInFirstSeenOrder()
         {
             var catalog = Catalog(
                 Entry("a", 1, new[] { "low", "medium" }),
                 Entry("b", 2, new[] { "medium", "max", "ultra" }));
 
-            Assert.Equal(new[] { "None", "Low", "Medium", "Max" }, catalog.AllOfferedEfforts);
+            Assert.Equal(new[] { "Auto", "Low", "Medium", "Max" }, catalog.AllOfferedEfforts);
         }
 
         [Theory]
         [InlineData("max", "Max")]
         [InlineData("XHIGH", "XHigh")]
         [InlineData(" Low ", "Low")]
-        [InlineData("none", "None")]
+        [InlineData("auto", "Auto")]
+        [InlineData("None", "Auto")]   // legacy spelling of Auto
+        [InlineData("none", "Auto")]
         [InlineData("Ultra", null)]
         [InlineData("Extreme", null)]
         [InlineData("Minimal", null)]
         [InlineData("", null)]
         [InlineData(null, null)]
-        public void NormalizeEffort_AcceptsNoneAndEffortsSomeModelOffers(string raw, string expected)
+        public void NormalizeEffort_AcceptsAutoAndEffortsSomeModelOffers(string raw, string expected)
         {
             var catalog = Catalog(
                 Entry("a", 1, Standard),
@@ -242,7 +257,8 @@ namespace OutlookAI.Tests.Services.Models
         }
 
         [Theory]
-        [InlineData("None", null)]
+        [InlineData("Auto", null)]
+        [InlineData("None", null)]    // legacy spelling of Auto
         [InlineData("none", null)]
         [InlineData("", null)]
         [InlineData(null, null)]

@@ -6,13 +6,13 @@
 .DESCRIPTION
     Phase 1 v2 install:
       - Hardcoded install path: C:\Program Files\OutlookAI
-      - Backs up any v1 config to C:\ProgramData\OutlookAI\Backups
-      - Writes a fresh v2 config when one is missing
+      - Backs up the existing config.xml to C:\ProgramData\OutlookAI\Backups
+      - Keeps an existing v2 config.xml as it is; writes the v2 template on a
+        fresh install or over a v1 (Claude-era) file
       - Creates the shared OAuth auth directory at C:\ProgramData\OutlookAI
         with Authenticated Users: Modify (accepted shared-credential risk)
-      - Renames any per-user v1 %APPDATA%\OutlookAI\config.xml to a backup
-        so per-user files don't override the new server-authoritative
-        Model / CodexAuthPath settings
+      - Renames any per-user v1 (Claude-era) %APPDATA%\OutlookAI\config.xml
+        to a backup; per-user v2 settings are kept
 
     Run as Administrator.
 
@@ -34,7 +34,9 @@ $ProgramDataPath    = "C:\ProgramData\OutlookAI"
 $BackupRoot         = Join-Path $ProgramDataPath "Backups"
 $ConfigFilePath     = Join-Path $InstallPath "config.xml"
 $AuthFilePath       = Join-Path $ProgramDataPath "auth.json"
-$Timestamp          = Get-Date -Format "yyyyMMdd-HHmmss"
+# Invariant, so backup names are Gregorian whatever calendar the admin uses.
+$Timestamp          = (Get-Date).ToString("yyyyMMdd-HHmmss", [System.Globalization.CultureInfo]::InvariantCulture)
+$UsersRoot          = "C:\Users"
 
 # Cleans every known OutlookAI registration for one Windows user. Designed
 # to be called once per user hive (offline-loaded for non-logged-in users,
@@ -175,6 +177,139 @@ function Clean-StaleOutlookAIRegistrations {
     }
 }
 
+# True for a config.xml written by OutlookAI v1 (Claude era): API keys,
+# WhisperModel/TranscribeModel or a Claude model, and nothing only v2 writes.
+# A file with both kinds counts as v2, so its settings are kept. MaxTokens
+# proves nothing: early v2 installers wrote it too. The per-user file v2's
+# Settings saves (AdminPassword, Model, ReasoningEffort, ...) is not v1.
+function Test-OutlookAIV1Config {
+    param([xml]$Xml)
+    if ($null -eq $Xml -or $null -eq $Xml.DocumentElement -or $Xml.DocumentElement.Name -ne "Config") {
+        return $false
+    }
+    $root = $Xml.DocumentElement
+    foreach ($name in @("CodexAuthPath", "VoiceModel", "ReasoningEffort", "WriteToolsEnabled",
+                        "EnabledWriteTools", "MaxBulkExportRows", "ModelCatalogClientVersion")) {
+        if ($null -ne $root.SelectSingleNode($name)) { return $false }
+    }
+    foreach ($name in @("ApiKey", "OpenAIApiKey", "WhisperModel", "TranscribeModel")) {
+        if ($null -ne $root.SelectSingleNode($name)) { return $true }
+    }
+    $model = $root.SelectSingleNode("Model")
+    return ($null -ne $model -and $model.InnerText.Trim().StartsWith("claude", [StringComparison]::OrdinalIgnoreCase))
+}
+
+# config.xml bytes parsed the way OutlookAI reads the file: its BOM or
+# encoding declaration decides the encoding. Throws if it isn't valid XML.
+function Read-OutlookAIConfigXml {
+    param([byte[]]$Bytes)
+    $doc = New-Object System.Xml.XmlDocument
+    $doc.XmlResolver = $null
+    $doc.Load((New-Object System.IO.MemoryStream -ArgumentList (,$Bytes)))
+    return $doc
+}
+
+# The Program Files config.xml to write, or $null to keep the existing file
+# exactly as it is. An update keeps the admin's v2 file (Model, VoiceModel,
+# MaxBulkExportRows, ModelCatalogClientVersion, ...), only adding a missing
+# CodexAuthPath, and leaves a file that isn't valid XML alone. A v1 file gets
+# the v2 template with its AdminPassword. With no config.xml, the template
+# takes what earlier installers carried over from the newest backup
+# (-BackupBytes): the AdminPassword and, from a v2 file, Model and
+# ModelCatalogClientVersion. Nothing else comes from Backups, which any
+# signed-in user can write to.
+function Get-OutlookAIGlobalConfig {
+    param(
+        [AllowNull()][byte[]]$PreviousBytes,
+        [AllowNull()][byte[]]$BackupBytes,
+        [string]$AuthPath = "C:\ProgramData\OutlookAI\auth.json"
+    )
+    $carryFrom = $null
+    $carryModel = $false
+    if ($null -ne $PreviousBytes -and $PreviousBytes.Length -gt 0) {
+        try {
+            $previous = Read-OutlookAIConfigXml $PreviousBytes
+        } catch {
+            # OutlookAI can't read it either and runs on its defaults until
+            # the admin fixes it, so there is nothing to gain by replacing it.
+            Write-Warning "config.xml is not valid XML ($($_.Exception.Message)); leaving it as it is."
+            return $null
+        }
+        if (-not (Test-OutlookAIV1Config $previous)) {
+            if ($null -ne $previous.DocumentElement.SelectSingleNode("CodexAuthPath")) {
+                return $null
+            }
+            $node = $previous.CreateElement("CodexAuthPath")
+            $node.InnerText = $AuthPath
+            [void]$previous.DocumentElement.AppendChild($node)
+            return (Format-OutlookAIConfigXml $previous)
+        }
+        $carryFrom = $previous
+    } elseif ($null -ne $BackupBytes -and $BackupBytes.Length -gt 0) {
+        try { $carryFrom = Read-OutlookAIConfigXml $BackupBytes } catch { $carryFrom = $null }
+        $carryModel = $null -ne $carryFrom -and -not (Test-OutlookAIV1Config $carryFrom)
+    }
+
+    $values = [ordered]@{ AdminPassword = "admin"; CodexAuthPath = $AuthPath }
+    if ($null -ne $carryFrom -and $carryFrom.DocumentElement.Name -eq "Config") {
+        $root = $carryFrom.DocumentElement
+        $node = $root.SelectSingleNode("AdminPassword")
+        if ($null -ne $node -and -not [string]::IsNullOrWhiteSpace($node.InnerText)) { $values["AdminPassword"] = $node.InnerText }
+        if ($carryModel) {
+            # Only in the shapes OutlookAI accepts.
+            $node = $root.SelectSingleNode("Model")
+            if ($null -ne $node -and $node.InnerText.Trim() -match '^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$') {
+                $values["Model"] = $node.InnerText.Trim()
+            }
+            $node = $root.SelectSingleNode("ModelCatalogClientVersion")
+            if ($null -ne $node -and $node.InnerText.Trim() -match '^(rust-)?v?\d{1,9}\.\d{1,9}\.\d{1,9}([-+][0-9A-Za-z.+-]*)?$') {
+                $values["ModelCatalogClientVersion"] = $node.InnerText.Trim()
+            }
+        }
+    }
+
+    # Built as a document so every value is escaped, whatever it contains.
+    $doc = New-Object System.Xml.XmlDocument
+    $configNode = $doc.AppendChild($doc.CreateElement("Config"))
+    foreach ($name in $values.Keys) {
+        $node = $doc.CreateElement($name)
+        $node.InnerText = $values[$name]
+        [void]$configNode.AppendChild($node)
+    }
+    return (Format-OutlookAIConfigXml $doc)
+}
+
+# Puts config.xml back when a run stopped while step 5 was swapping in a new
+# one: the new file if it is there and complete, otherwise the file it was
+# replacing.
+function Restore-OutlookAIConfigFile {
+    param([string]$Path)
+    if (Test-Path -LiteralPath $Path) { return }
+    foreach ($candidate in @(($Path + ".new"), ($Path + ".old"))) {
+        if (-not (Test-Path -LiteralPath $candidate)) { continue }
+        try {
+            [void](Read-OutlookAIConfigXml ([System.IO.File]::ReadAllBytes($candidate)))
+        } catch {
+            continue
+        }
+        [System.IO.File]::Move($candidate, $Path)
+        Write-Host "  Restored $Path from $candidate" -ForegroundColor Yellow
+        return
+    }
+}
+
+# Indented XML text without a declaration, the shape this file always had.
+function Format-OutlookAIConfigXml {
+    param([xml]$Document)
+    $settings = New-Object System.Xml.XmlWriterSettings
+    $settings.Indent = $true
+    $settings.OmitXmlDeclaration = $true
+    $text = New-Object System.IO.StringWriter
+    $writer = [System.Xml.XmlWriter]::Create($text, $settings)
+    try { $Document.Save($writer) } finally { $writer.Close() }
+    return $text.ToString()
+}
+
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  OutlookAI v2 Installer (ChatGPT OAuth)" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
@@ -239,7 +374,7 @@ $vstoInstallerCandidates = @(
 $vstoInstaller = $vstoInstallerCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 
 # Iterate every loadable user hive. Load offline hives, clean, unload.
-$userProfiles = Get-ChildItem -Path "C:\Users" -Directory -ErrorAction SilentlyContinue |
+$userProfiles = Get-ChildItem -Path $UsersRoot -Directory -ErrorAction SilentlyContinue |
     Where-Object { $_.Name -notin @("Public", "Default", "Default User", "All Users") }
 
 foreach ($profile in $userProfiles) {
@@ -297,11 +432,23 @@ Get-ChildItem "Registry::HKEY_USERS" -ErrorAction SilentlyContinue | Where-Objec
 Write-Host "  Done." -ForegroundColor Green
 
 # --- 1. External config backup BEFORE we touch the install dir -----------
-Write-Host "[1/10] Backing up any existing v1 config..." -ForegroundColor Yellow
+Write-Host "[1/10] Backing up any existing config..." -ForegroundColor Yellow
 if (!(Test-Path $BackupRoot)) {
     New-Item -ItemType Directory -Path $BackupRoot -Force | Out-Null
 }
+Restore-OutlookAIConfigFile $ConfigFilePath
+$backupTarget = $null
+$previousConfigBytes = $null
 if (Test-Path $ConfigFilePath) {
+    # Read before anything is copied or removed, so a failure stops the
+    # install with nothing changed. Step 5 works from these bytes, not from
+    # the copy in Backups, which any signed-in user can write to.
+    try {
+        $previousConfigBytes = [System.IO.File]::ReadAllBytes($ConfigFilePath)
+    } catch {
+        Write-Host "ERROR: Could not read $ConfigFilePath ($($_.Exception.Message)). Nothing has been changed; run the installer again." -ForegroundColor Red
+        exit 1
+    }
     $backupTarget = Join-Path $BackupRoot ("config.xml.v1.backup." + $Timestamp)
     Copy-Item -Path $ConfigFilePath -Destination $backupTarget -Force
     Write-Host "  Backed up to $backupTarget" -ForegroundColor Gray
@@ -311,9 +458,14 @@ if (Test-Path $ConfigFilePath) {
 Write-Host "  Done." -ForegroundColor Green
 
 # --- 2. Replace install directory ----------------------------------------
+# config.xml stays in place (step 5 changes it only when needed), so an
+# install that stops partway leaves the admin's settings where they were
+# and running the installer again keeps them.
 Write-Host "[2/10] Preparing install directory..." -ForegroundColor Yellow
 if (Test-Path $InstallPath) {
-    Remove-Item -Path $InstallPath -Recurse -Force
+    Get-ChildItem -LiteralPath $InstallPath -Force |
+        Where-Object { $_.Name -ne "config.xml" } |
+        Remove-Item -Recurse -Force
 }
 New-Item -Path $InstallPath -ItemType Directory -Force | Out-Null
 Write-Host "  Done." -ForegroundColor Green
@@ -346,66 +498,67 @@ Write-Host "  Done." -ForegroundColor Green
 # --- 5. Write v2 config --------------------------------------------------
 Write-Host "[5/10] Writing v2 config.xml..." -ForegroundColor Yellow
 
-# Carry over the AdminPassword, Model and an admin-pinned
-# ModelCatalogClientVersion from the previous file (everything else is
-# server-authoritative under v2). An upgrade keeps the installed model; OutlookAI
-# follows its announced retirement itself. A fresh install writes no <Model>, so
-# the default comes from the ChatGPT model catalog (Settings -> Update Models).
-$preservedAdminPassword = "admin"
-$preservedModel = $null
-$preservedCatalogClientVersion = $null
-$latestBackup = Get-ChildItem -Path $BackupRoot -Filter "config.xml.v1.backup.*" -ErrorAction SilentlyContinue |
-    Sort-Object LastWriteTime -Descending | Select-Object -First 1
-if ($latestBackup) {
-    try {
-        [xml]$oldXml = Get-Content -Path $latestBackup.FullName -Raw
-        if ($oldXml.Config -and $oldXml.Config.AdminPassword) {
-            $candidate = [string]$oldXml.Config.AdminPassword
-            if (-not [string]::IsNullOrWhiteSpace($candidate)) {
-                $preservedAdminPassword = $candidate
-                Write-Host "  Preserved AdminPassword from previous config." -ForegroundColor Gray
-            }
+# An update keeps the admin's config.xml as it is; a fresh install or a v1
+# (Claude-era) file gets the v2 template. See Get-OutlookAIGlobalConfig.
+$latestBackup = $null
+$latestBackupBytes = $null
+if ($null -eq $previousConfigBytes) {
+    # No config.xml (fresh install, or a reinstall after an uninstall): the
+    # newest backup supplies what earlier installers carried over. Newest by
+    # write time (a backup keeps config.xml's), not by name: names from
+    # before v2.2.1 may use the admin's non-Gregorian calendar.
+    $latestBackup = Get-ChildItem -Path $BackupRoot -Filter "config.xml.v1.backup.*" -File -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime, Name -Descending | Select-Object -First 1
+    if ($latestBackup) {
+        try {
+            $latestBackupBytes = [System.IO.File]::ReadAllBytes($latestBackup.FullName)
+            Write-Host "  Carrying over settings from $($latestBackup.Name)." -ForegroundColor Gray
+        } catch {
+            Write-Host "  Could not read $($latestBackup.Name); using the defaults." -ForegroundColor Yellow
         }
-        if ($oldXml.Config -and $oldXml.Config.Model) {
-            $candidate = ([string]$oldXml.Config.Model).Trim()
-            # The slug shape OutlookAI accepts; also keeps the value XML-safe.
-            if ($candidate -match '^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$') {
-                $preservedModel = $candidate
-                Write-Host "  Preserved Model $candidate from previous config." -ForegroundColor Gray
-            }
-        }
-        if ($oldXml.Config -and $oldXml.Config.ModelCatalogClientVersion) {
-            $candidate = ([string]$oldXml.Config.ModelCatalogClientVersion).Trim()
-            # Same shape OutlookAI accepts; also keeps the value XML-safe.
-            if ($candidate -match '^(rust-)?v?\d{1,9}\.\d{1,9}\.\d{1,9}([-+][0-9A-Za-z.+-]*)?$') {
-                $preservedCatalogClientVersion = $candidate
-                Write-Host "  Preserved ModelCatalogClientVersion $candidate from previous config." -ForegroundColor Gray
-            }
-        }
-    } catch {
-        Write-Host "  Could not parse previous config; using default AdminPassword." -ForegroundColor Yellow
     }
 }
 
-$modelLine = ""
-if ($preservedModel) {
-    $modelLine = "`r`n  <Model>$preservedModel</Model>"
-}
-$catalogVersionLine = ""
-if ($preservedCatalogClientVersion) {
-    $catalogVersionLine = "`r`n  <ModelCatalogClientVersion>$preservedCatalogClientVersion</ModelCatalogClientVersion>"
+try {
+    $v2Config = Get-OutlookAIGlobalConfig -PreviousBytes $previousConfigBytes -BackupBytes $latestBackupBytes -AuthPath $AuthFilePath
+} catch {
+    if ($null -ne $previousConfigBytes) {
+        Write-Host "  Could not check config.xml ($($_.Exception.Message)); leaving it as it is." -ForegroundColor Yellow
+        $v2Config = $null
+    } else {
+        Write-Host "  Could not carry over settings from $($latestBackup.Name) ($($_.Exception.Message)); using the defaults." -ForegroundColor Yellow
+        $v2Config = Get-OutlookAIGlobalConfig -PreviousBytes $null -BackupBytes $null -AuthPath $AuthFilePath
+    }
 }
 
-$v2Config = @"
-<Config>
-  <AdminPassword>$preservedAdminPassword</AdminPassword>
-  <CodexAuthPath>C:\ProgramData\OutlookAI\auth.json</CodexAuthPath>$modelLine
-  <VoiceModel>gpt-realtime-1.5</VoiceModel>$catalogVersionLine
-</Config>
-"@
-
-Set-Content -Path $ConfigFilePath -Value $v2Config -Encoding UTF8
-Write-Host "  Wrote $ConfigFilePath" -ForegroundColor Gray
+if ($null -eq $v2Config) {
+    Write-Host "  Kept the existing $ConfigFilePath" -ForegroundColor Gray
+} else {
+    # Written beside config.xml and checked first, then swapped in whole, so
+    # a failed or interrupted write never leaves a truncated config.xml. The
+    # replaced file is kept as config.xml.old until the swap is done, and
+    # Restore-OutlookAIConfigFile recovers from a swap that stops halfway.
+    $newConfigPath = $ConfigFilePath + ".new"
+    [System.IO.File]::WriteAllText($newConfigPath, $v2Config, (New-Object System.Text.UTF8Encoding $true))
+    [void](Read-OutlookAIConfigXml ([System.IO.File]::ReadAllBytes($newConfigPath)))
+    if (Test-Path -LiteralPath $ConfigFilePath) {
+        try {
+            [System.IO.File]::Replace($newConfigPath, $ConfigFilePath, $ConfigFilePath + ".old")
+            Remove-Item -LiteralPath ($ConfigFilePath + ".old") -Force -ErrorAction SilentlyContinue
+            Write-Host "  Wrote $ConfigFilePath" -ForegroundColor Gray
+        } catch {
+            # For example a read-only config.xml. OutlookAI works with the old
+            # file too (CodexAuthPath defaults to the same path), so the
+            # install carries on.
+            Restore-OutlookAIConfigFile $ConfigFilePath
+            Remove-Item -LiteralPath $newConfigPath -Force -ErrorAction SilentlyContinue
+            Write-Host "  Could not update $ConfigFilePath ($($_.Exception.Message)); left it in place." -ForegroundColor Yellow
+        }
+    } else {
+        [System.IO.File]::Move($newConfigPath, $ConfigFilePath)
+        Write-Host "  Wrote $ConfigFilePath" -ForegroundColor Gray
+    }
+}
 # v2.1+ release packages ship a version.json alongside Install-OutlookAI.ps1.
 # Copy it into the install dir so the in-app updater knows what is installed.
 $stagedVersionJson = Join-Path $SourcePath "version.json"
@@ -435,16 +588,18 @@ Write-Host "  Granted Authenticated Users: Modify on $ProgramDataPath" -Foregrou
 Write-Host "  Done." -ForegroundColor Green
 
 # --- 7. Per-user v1 AppData cleanup --------------------------------------
+# Only v1 (Claude-era) files are retired. Settings in v2 saves a per-user
+# config.xml as well, and those must survive updates.
 Write-Host "[7/10] Renaming per-user v1 AppData configs..." -ForegroundColor Yellow
-$userProfiles = Get-ChildItem -Path "C:\Users" -Directory -ErrorAction SilentlyContinue |
+$userProfiles = Get-ChildItem -Path $UsersRoot -Directory -ErrorAction SilentlyContinue |
     Where-Object { $_.Name -notin @("Public", "Default", "Default User", "All Users") }
 $renamed = 0
 foreach ($profile in $userProfiles) {
     $userConfig = Join-Path $profile.FullName "AppData\Roaming\OutlookAI\config.xml"
     if (Test-Path $userConfig) {
         try {
-            [xml]$xml = Get-Content -Path $userConfig -Raw
-            if ($xml.Config -and -not $xml.Config.CodexAuthPath) {
+            $xml = Read-OutlookAIConfigXml ([System.IO.File]::ReadAllBytes($userConfig))
+            if (Test-OutlookAIV1Config $xml) {
                 $renamed++
                 $renamedTarget = "$userConfig.v1.backup.$Timestamp"
                 Move-Item -Path $userConfig -Destination $renamedTarget -Force

@@ -61,7 +61,9 @@ probed server effort set (nullable), `fetched_at`, `client_version`.
   the server effort set (probed, else the built-in known set
   `none/minimal/low/medium/high/xhigh/max`), display-cased (`XHigh`, `Max`, else
   capitalized). Catalog `none` is folded into the app's `None`. Unknown model →
-  `["None"]`.
+  `["None"]`. **v2.2.1:** the app's `None` is shown as `Auto` (same meaning: omit
+  the field). `None` is still accepted, and config.xml still stores it, so older
+  versions read it the same way. Catalog `none` and `auto` levels are left out.
 - `ResolveEffectiveModel(configured, now)` — configured model if in the catalog
   and not past `retirement_at`; else follow `upgrade.model` (≤ 5 hops, cycle-safe);
   else the default (first listed, non-retired model).
