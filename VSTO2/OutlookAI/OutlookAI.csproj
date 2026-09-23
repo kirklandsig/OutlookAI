@@ -337,6 +337,7 @@
     <Compile Include="Services\Export\PdfRenderer.cs" />
     <Compile Include="Services\Export\PrintTemplateRenderer.cs" />
     <Compile Include="Services\Export\UnauthorizedExportPathException.cs" />
+    <Compile Include="Services\FileLock.cs" />
     <Compile Include="Services\IdResolver.cs" />
     <Compile Include="Services\IToolHost.cs" />
     <Compile Include="Services\Models\BuiltInModelCatalog.cs" />

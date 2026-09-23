@@ -49,11 +49,9 @@ WHAT THE INSTALLER DOES
      C:\ProgramData\OutlookAI
    with Authenticated Users: Modify (RDS shared-credential model).
 7. Renames any per-user v1 (Claude-era) %APPDATA%\OutlookAI\config.xml to
-   <name>.v1.backup.<timestamp>. Per-user files that v2's Settings saves
-   are kept. They override the server defaults for that user, including
-   the admin password in effect when the file was saved; delete one to put
-   its user back on the server defaults (for example after changing the
-   admin password).
+   <name>.v1.backup.<timestamp>. Per-user files that Settings saved before
+   v2.2.2 are kept, but the server-wide C:\ProgramData\OutlookAI\config.xml
+   wins over them (see SETTINGS below).
 8. Configures VSTO trust + Inclusion list (HKLM, 64-bit + WOW6432Node).
 9. Registers OutlookAI for all users.
 10. Configures the Default User profile so new RDS users auto-load it.
@@ -125,11 +123,40 @@ Modify. Any signed-in interactive user on this server can:
   - Replace auth.json with their own ChatGPT tokens (other users'
     traffic then bills to the attacker's ChatGPT account and the
     attacker can observe every call).
-  - Edit the shared models.json / config.xml there (changes the model
-    list and defaults other users on the server get).
+  - Edit models.json or config.xml there. config.xml holds the Settings
+    every user gets, including the admin password (in plain text), the
+    model and which write tools are on.
 
 Only deploy this build to RDS servers where every interactive user is
 trusted with the ChatGPT account that signs in.
+
+
+SETTINGS (ALL USERS)
+--------------------
+Settings (gear icon, admin password) saves the model, reasoning effort,
+write tools and admin password for every user on the machine, in:
+
+  C:\ProgramData\OutlookAI\config.xml
+
+Each user's Outlook reads it the next time it starts. Settings opens on
+what is saved there now and saves only what you change, so two admins
+don't overwrite each other's changes.
+
+After the first Settings save that file holds all five of these settings,
+so to change one by hand, edit it there: the same setting in
+C:\Program Files\OutlookAI\config.xml only applies while the ProgramData
+file doesn't have it. The Program Files file is the only place for
+CodexAuthPath, VoiceModel, MaxBulkExportRows and ModelCatalogClientVersion.
+
+Before v2.2.2, Settings also saved a copy per user in
+%APPDATA%\OutlookAI\config.xml, which kept overriding later changes for
+that user. Now the ProgramData file wins over those copies; a copy only
+fills in a setting the ProgramData file doesn't have. If Settings rejects
+your admin password after updating, use the one in
+C:\ProgramData\OutlookAI\config.xml.
+
+Going back to a version before v2.2.2 makes the per-user copies override
+again: delete them first (%APPDATA%\OutlookAI\config.xml for each user).
 
 
 MODEL LIST (models.json)
@@ -151,7 +178,8 @@ When the catalog announces a retirement (e.g. gpt-5.5 on 2026-10-14),
 Settings shows it and requests move to the announced replacement once the
 date passes, even after the retired model drops out of the list (for up to
 a year). The saved choice in config.xml is not rewritten; Settings opens on
-the replacement so the next Save makes it permanent. A model that is merely
+the replacement, and picking a model there and saving makes it permanent. A
+model that is merely
 missing from the list (ChatGPT filters it by Codex version and plan) is not
 treated as retired: if config names it, requests keep using it and Settings
 says it isn't in the list.

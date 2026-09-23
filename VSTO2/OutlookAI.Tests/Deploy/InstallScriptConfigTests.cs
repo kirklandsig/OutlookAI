@@ -112,6 +112,7 @@ namespace OutlookAI.Tests.Deploy
             public string BackupRoot => Path.Combine(Root, "Backups");
             public string SourcePath => Path.Combine(Root, "Source");
             public string UsersRoot => Path.Combine(Root, "Users");
+            public string ProgramDataPath => Path.Combine(Root, "ProgramData");
 
             public string UserConfigPath(string user) => Path.Combine(UsersRoot, user, "AppData", "Roaming", "OutlookAI", "config.xml");
 
@@ -132,6 +133,7 @@ namespace OutlookAI.Tests.Deploy
                     .AppendLine("$BackupRoot = " + PsQuote(BackupRoot))
                     .AppendLine("$SourcePath = " + PsQuote(SourcePath))
                     .AppendLine("$UsersRoot = " + PsQuote(UsersRoot))
+                    .AppendLine("$ProgramDataPath = " + PsQuote(ProgramDataPath))
                     .AppendLine("$AuthFilePath = " + PsQuote(AuthPath))
                     .AppendLine("$Timestamp = '20260922-120000'");
                 foreach (var item in stepsAndCode)
@@ -509,6 +511,26 @@ namespace OutlookAI.Tests.Deploy
                     Assert.Equal(files[kept], File.ReadAllText(sandbox.UserConfigPath(kept)));
                 }
             }
+        }
+
+        [Fact]
+        public void SharedFolderStep_GrantsAuthenticatedUsersModify_ByTheirSid()
+        {
+            // By SID, so it also works where the group's name is localized.
+            using (var sandbox = new InstallSandbox())
+            {
+                var r = sandbox.Run("6",
+                    "$rule = (Get-Acl -LiteralPath $ProgramDataPath).Access | Where-Object { -not $_.IsInherited -and $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value -eq 'S-1-5-11' } | Select-Object -First 1",
+                    "'rights=' + $rule.FileSystemRights",
+                    "'inherits=' + $rule.InheritanceFlags");
+
+                Assert.Contains("Modify", r["rights"]);
+                Assert.Contains("ContainerInherit", r["inherits"]);
+                Assert.Contains("ObjectInherit", r["inherits"]);
+            }
+            var src = File.ReadAllText(RepoFiles.Find("Deploy", "Install-OutlookAI.ps1"));
+            var step6 = src.Substring(src.IndexOf("# --- 6.", StringComparison.Ordinal));
+            Assert.Contains("/grant \"*S-1-5-11:(OI)(CI)M\"", step6.Substring(0, step6.IndexOf("# --- 7.", StringComparison.Ordinal)));
         }
 
         [Fact]

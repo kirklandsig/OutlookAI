@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Xml;
 using System.Xml.Linq;
 using OutlookAI.Services.Models;
 
@@ -11,11 +13,12 @@ namespace OutlookAI
     {
         // ============================================================
         // CONFIGURATION DEFAULTS (v2 - ChatGPT OAuth)
-        // Server-authoritative fields (CodexAuthPath, Model) load from
-        // defaults -> global config (Program Files). Per-user AppData
-        // config may override only AdminPassword. Legacy v1 elements
-        // (ApiKey, OpenAIApiKey, WhisperModel, TranscribeModel, MaxTokens,
-        // and Claude model names) are ignored if encountered.
+        // Loaded as defaults -> global config (Program Files; the only
+        // source of server fields such as CodexAuthPath) -> a per-user
+        // AppData config -> the settings Settings saves for every user
+        // (ProgramData), later layers winning setting by setting. Legacy v1
+        // elements (ApiKey, OpenAIApiKey, WhisperModel, TranscribeModel,
+        // MaxTokens, and Claude model names) are ignored if encountered.
         // ============================================================
 
         public const string DefaultVoiceModel = "gpt-realtime-1.5";
@@ -148,25 +151,27 @@ namespace OutlookAI
         // END CONFIGURATION
         // ============================================================
 
-        // Global config: admin-controlled, applies to all users on this server
+        // Global config: admin-controlled, applies to all users on this server.
+        // %ProgramW6432% so a 32-bit Outlook still finds the installer's
+        // C:\Program Files\OutlookAI, not Program Files (x86).
         private static readonly string GlobalConfigFilePath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            Environment.GetEnvironmentVariable("ProgramW6432")
+                ?? Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
             "OutlookAI",
             "config.xml"
         );
 
-        // Per-user config: may override AdminPassword only
+        // Per-user config, which Settings also wrote before v2.2.2. Loaded
+        // before SharedConfigFilePath, so it only fills in what that doesn't set.
         private static readonly string UserConfigFilePath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "OutlookAI",
             "config.xml"
         );
 
-        // Shared admin defaults: writable by Admins (RDS scenario), readable by
-        // all users on the box. Loaded between the server-authoritative global
-        // config and the per-user AppData override. SettingsForm-driven Save
-        // writes here AND to AppData so the admin's preference becomes the
-        // default for every user on the server.
+        // Server-wide settings: what Settings saves, for every user on the
+        // machine (the installer grants Authenticated Users Modify on this
+        // folder). Loaded last.
         private static readonly string SharedConfigFilePath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
             "OutlookAI",
@@ -181,18 +186,37 @@ namespace OutlookAI
         public static void LoadConfig()
         {
             ModelCatalog = LoadModelCatalog();
-            ReloadConfigFiles();
+            LoadConfigFromPaths(GlobalConfigFilePath, SharedConfigFilePath, UserConfigFilePath);
         }
 
         /// <summary>
         /// Re-applies the three config.xml layers against the current
-        /// <see cref="ModelCatalog"/>. Settings calls it after Update Models so
-        /// values the previous catalog rejected (e.g. a new model named in
-        /// config.xml) take effect instead of being overwritten by the next Save.
+        /// <see cref="ModelCatalog"/>. Called when Settings opens (so it starts
+        /// from what is saved now), after a failed save, and after Update Models
+        /// (values the previous catalog rejected, e.g. a new model named in
+        /// config.xml, may be valid now).
         /// </summary>
         public static void ReloadConfigFiles()
         {
-            LoadConfigFromPaths(GlobalConfigFilePath, SharedConfigFilePath, UserConfigFilePath);
+            ReloadConfigFilesFrom(GlobalConfigFilePath, SharedConfigFilePath, UserConfigFilePath);
+        }
+
+        // Test seam for ReloadConfigFiles. Unlike loading at startup, it keeps
+        // the settings this session has when a config.xml that exists can't be
+        // read (e.g. another program holds it): what the other layers say isn't
+        // what was saved.
+        internal static void ReloadConfigFilesFrom(string globalConfigPath, string sharedConfigPath, string userConfigPath)
+        {
+            bool complete;
+            var values = ReadLayers(globalConfigPath, sharedConfigPath, userConfigPath, out complete);
+            if (complete)
+            {
+                Apply(values);
+            }
+            else
+            {
+                OutlookAI.Diagnostics.TraceLog.Write("Config: keeping the current settings; a config file could not be read", "Config");
+            }
         }
 
         // The cached models.json, unless this build's own list is newer (e.g.
@@ -224,11 +248,21 @@ namespace OutlookAI
         // Update Models reloads the files never sees transient defaults.
         public static void LoadConfigFromPaths(string globalConfigPath, string sharedConfigPath, string userConfigPath)
         {
+            bool complete;
+            Apply(ReadLayers(globalConfigPath, sharedConfigPath, userConfigPath, out complete));
+        }
+
+        // Settings saves for every user (the shared file), so that is read last
+        // and wins. A per-user file, which Settings also wrote before v2.2.2,
+        // only fills in what the shared file doesn't set. complete is false when
+        // a file that exists couldn't be read.
+        private static Values ReadLayers(string globalConfigPath, string sharedConfigPath, string userConfigPath, out bool complete)
+        {
             var values = Values.Defaults();
-            LoadFromFile(globalConfigPath, values, allowServerFields: true);
-            LoadFromFile(sharedConfigPath, values, allowServerFields: false);
-            LoadFromFile(userConfigPath, values, allowServerFields: false);
-            Apply(values);
+            complete = LoadFromFile(globalConfigPath, values, allowServerFields: true);
+            complete &= LoadFromFile(userConfigPath, values, allowServerFields: false);
+            complete &= LoadFromFile(sharedConfigPath, values, allowServerFields: false);
+            return values;
         }
 
         // Back-compat overload for existing tests that don't care about the
@@ -296,26 +330,31 @@ namespace OutlookAI
             ModelsNamedInConfig = values.ModelsNamed.AsReadOnly();
         }
 
-        private static void LoadFromFile(string filePath, Values values, bool allowServerFields)
+        // False when the file may exist but couldn't be read. Only "not found"
+        // counts as no file: File.Exists also says false when access is denied.
+        private static bool LoadFromFile(string filePath, Values values, bool allowServerFields)
         {
+            if (string.IsNullOrEmpty(filePath)) return true;
             try
             {
-                if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+                XDocument doc;
+                try
                 {
-                    return;
+                    doc = LoadXmlWhenFree(filePath);
                 }
-
-                var doc = XDocument.Load(filePath);
+                catch (Exception ex) when (ex is FileNotFoundException || ex is DirectoryNotFoundException)
+                {
+                    return true;
+                }
                 var root = doc.Root;
                 if (root == null)
                 {
-                    return;
+                    return true;
                 }
 
-                // User-tunable fields (AdminPassword, ReasoningEffort,
-                // WriteToolsEnabled) are read from both global and per-user
-                // config. Per-user takes precedence because it's loaded
-                // second. Settings UI persists them via SaveConfig.
+                // User-tunable fields (AdminPassword, ReasoningEffort, write
+                // tools, Model) are read from every layer; a later layer wins.
+                // Settings saves them via SaveSettings.
                 var adminPassword = root.Element("AdminPassword");
                 if (adminPassword != null && !string.IsNullOrEmpty(adminPassword.Value))
                 {
@@ -346,25 +385,16 @@ namespace OutlookAI
                 }
 
                 var enabledWriteTools = root.Element("EnabledWriteTools");
-                if (enabledWriteTools != null && !string.IsNullOrWhiteSpace(enabledWriteTools.Value))
+                if (enabledWriteTools != null)
                 {
-                    // Comma-separated list; intersect with the canonical set
-                    // so unknown tool names (typo / future tool removed) are
-                    // silently dropped instead of breaking the dispatcher.
-                    var requested = enabledWriteTools.Value
-                        .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
-                        .Select(x => x.Trim());
-                    var canonical = new HashSet<string>(AllWriteTools, StringComparer.Ordinal);
-                    values.EnabledWriteTools = new HashSet<string>(
-                        requested.Where(canonical.Contains),
-                        StringComparer.Ordinal);
+                    values.EnabledWriteTools = ParseWriteTools(enabledWriteTools.Value);
                 }
 
-                // Model is user-tunable (Settings UI). Server provides the
-                // default, but per-user override beats it on load. Names the
-                // model catalog doesn't know (typos, Claude-era v1 values,
-                // retired models) fall back to whatever was already set;
-                // hidden catalog models are accepted when set explicitly.
+                // Model is set in Settings; a later layer wins (see
+                // LoadConfigFromPaths). Names the model catalog doesn't know
+                // (typos, Claude-era v1 values, retired models) fall back to
+                // whatever was already set; hidden catalog models are accepted
+                // when set explicitly.
                 var model = root.Element("Model");
                 if (model != null && !string.IsNullOrWhiteSpace(model.Value))
                 {
@@ -382,7 +412,7 @@ namespace OutlookAI
 
                 if (!allowServerFields)
                 {
-                    return;
+                    return true;
                 }
 
                 var codexAuthPath = root.Element("CodexAuthPath");
@@ -410,11 +440,54 @@ namespace OutlookAI
                     if (mber > MaxBulkExportRowsCeiling) mber = MaxBulkExportRowsCeiling;
                     values.MaxBulkExportRows = mber;
                 }
+                return true;
             }
-            catch
+            catch (Exception ex)
             {
-                // Skip if file is missing or invalid; defaults stay in place.
+                // Skip if the file is invalid or can't be opened; the other
+                // layers stay in place.
+                OutlookAI.Diagnostics.TraceLog.Write("Config: could not read " + filePath + ": " + ex.Message, "Config");
+                return false;
             }
+        }
+
+        // A Settings save in another session swaps config.xml in, and a read
+        // that lands in that moment fails; try again briefly rather than run
+        // without the file until Outlook restarts.
+        private static XDocument LoadXmlWhenFree(string path)
+        {
+            for (var attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    return XDocument.Load(path);
+                }
+                catch (IOException ex) when (attempt < 20 && IsBusy(ex))
+                {
+                    Thread.Sleep(50);
+                }
+            }
+        }
+
+        // Another process has the file open (sharing or lock violation).
+        private static bool IsBusy(IOException ex)
+        {
+            var code = ex.HResult & 0xFFFF;
+            return code == 32 || code == 33;
+        }
+
+        // A saved EnabledWriteTools list: comma-separated (empty = every tool
+        // unchecked), intersected with the canonical set so unknown tool names
+        // (typo / future tool removed) are silently dropped instead of breaking
+        // the dispatcher.
+        private static HashSet<string> ParseWriteTools(string list)
+        {
+            var canonical = new HashSet<string>(AllWriteTools, StringComparer.Ordinal);
+            return new HashSet<string>(
+                list.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(x => x.Trim())
+                    .Where(canonical.Contains),
+                StringComparer.Ordinal);
         }
 
         // Values from a config.xml the model catalog doesn't know are dropped;
@@ -427,66 +500,210 @@ namespace OutlookAI
                 "Config");
         }
 
-        public static void SaveConfig()
+        /// <summary>The settings Settings saves, as named in config.xml.</summary>
+        internal static readonly string[] SavedSettingNames =
+            { "AdminPassword", "Model", "ReasoningEffort", "WriteToolsEnabled", "EnabledWriteTools" };
+
+        private static readonly TimeSpan SaveLockTimeout = TimeSpan.FromSeconds(5);
+
+        /// <summary>
+        /// Saves settings for every user on this machine, in the server-wide
+        /// config.xml (ProgramData): the <paramref name="changed"/> ones with this
+        /// session's values, the others as already saved there (another admin
+        /// may have changed them since this Outlook loaded them). Given
+        /// <paramref name="toolsBefore"/>, the write tools this session's change
+        /// started from, the tools it switched on or off are applied one by one
+        /// to the saved list instead, and this session takes the result.
+        /// Returns null once saved, otherwise why it wasn't.
+        /// </summary>
+        public static string SaveSettings(string[] changed, ISet<string> toolsBefore = null)
         {
-            // Per-user config persists AdminPassword + the user-tunable AI
-            // behavior fields. Shared config persists the same fields so
-            // admins on an RDS host can set server-wide defaults that
-            // propagate to every user.
-            var doc = BuildSavedConfig();
+            return SaveSettingsTo(SharedConfigFilePath, changed, toolsBefore);
+        }
 
-            // 1) Per-user override (always attempted; failures silently
-            //    swallowed so a read-only AppData doesn't block the workflow).
-            TrySaveTo(UserConfigFilePath, doc);
+        // Test seam: explicit path and lock timeout.
+        internal static string SaveSettingsTo(
+            string sharedConfigPath, IEnumerable<string> changed, ISet<string> toolsBefore = null, TimeSpan? lockTimeout = null)
+        {
+            var temp = sharedConfigPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                var dir = Path.GetDirectoryName(sharedConfigPath);
+                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                // Read, merge and replace under a cross-process lock, so two
+                // sessions saving at once can't undo each other's changes.
+                using (Services.FileLock.Acquire(sharedConfigPath + ".lock", lockTimeout ?? SaveLockTimeout))
+                {
+                    var onDisk = LoadForSave(sharedConfigPath);
+                    var changedSet = new HashSet<string>(changed ?? Enumerable.Empty<string>(), StringComparer.Ordinal);
+                    var tools = toolsBefore != null && changedSet.Contains("EnabledWriteTools")
+                        ? MergeWriteTools(onDisk, toolsBefore)
+                        : null;
+                    var doc = MergeSettings(onDisk, changedSet, tools);
+                    // Written beside config.xml, flushed and checked, then swapped
+                    // in whole, so a failed or interrupted save never leaves a
+                    // truncated file behind.
+                    using (var stream = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                    {
+                        doc.Save(stream);
+                        stream.Flush(true);
+                    }
+                    XDocument.Load(temp);
+                    for (var attempt = 1; ; attempt++)
+                    {
+                        try
+                        {
+                            if (File.Exists(sharedConfigPath))
+                            {
+                                File.Replace(temp, sharedConfigPath, null);
+                            }
+                            else
+                            {
+                                File.Move(temp, sharedConfigPath);
+                            }
+                            break;
+                        }
+                        catch (Exception) when (!File.Exists(sharedConfigPath) && !Directory.Exists(sharedConfigPath) && File.Exists(temp))
+                        {
+                            // File.Replace can fail after config.xml is already gone;
+                            // the new file is complete and checked, so finish the swap.
+                            File.Move(temp, sharedConfigPath);
+                            break;
+                        }
+                        catch (IOException ex) when (attempt < 20 && IsBusy(ex))
+                        {
+                            // Another session is reading config.xml for a moment.
+                            Thread.Sleep(50);
+                        }
+                    }
+                    if (tools != null)
+                    {
+                        EnabledWriteTools = tools;
+                        WriteToolsEnabled = tools.Count > 0;
+                    }
+                }
+                return null;
+            }
+            catch (TimeoutException)
+            {
+                TraceSave(sharedConfigPath, "timed out waiting for another session's save");
+                return "Another Outlook session is saving the settings. Try again.";
+            }
+            catch (Exception ex)
+            {
+                try { if (File.Exists(temp)) File.Delete(temp); } catch { }
+                TraceSave(sharedConfigPath, ex.Message);
+                return ex.Message;
+            }
+        }
 
-            // 2) Shared admin defaults (only succeeds if running as
-            //    Administrator on the RDS host - ProgramData ACL by default
-            //    is Admin-write, User-read. Regular users silently no-op
-            //    here, which is the intended behavior: a non-admin can't
-            //    change server-wide defaults).
-            TrySaveTo(SharedConfigFilePath, doc);
+        // What is saved on disk, with this session's values for the changed
+        // settings (and the merged write tools, when given). Settings the file
+        // doesn't set (missing, or blank where the loader skips blanks) are
+        // added from this session too, so it always holds all of them.
+        private static XDocument MergeSettings(XDocument onDisk, ISet<string> changed, HashSet<string> tools)
+        {
+            foreach (var name in changed)
+            {
+                if (Array.IndexOf(SavedSettingNames, name) < 0) throw new ArgumentException("Not a saved setting: " + name);
+            }
+            var doc = onDisk != null && onDisk.Root != null ? onDisk : new XDocument(new XElement("Config"));
+            foreach (var name in SavedSettingNames)
+            {
+                var element = tools == null ? SettingElement(name)
+                    : name == "EnabledWriteTools" ? new XElement(name, string.Join(",", tools))
+                    : name == "WriteToolsEnabled" ? new XElement(name, tools.Count > 0)
+                    : SettingElement(name);
+                var existing = doc.Root.Element(name);
+                // A blank tool list is a real value: every tool unchecked.
+                var unset = existing == null || (name != "EnabledWriteTools" && string.IsNullOrWhiteSpace(existing.Value));
+                if (existing == null)
+                {
+                    doc.Root.Add(element);
+                }
+                else if (unset || changed.Contains(name))
+                {
+                    existing.ReplaceWith(element);
+                }
+            }
+            return doc;
+        }
+
+        // The saved write tools with this session's changes since toolsBefore
+        // applied one by one, so another admin's changes to other tools stay.
+        // When the saved file doesn't settle the tools by itself, the changes
+        // apply to toolsBefore (what this session had from all the layers).
+        private static HashSet<string> MergeWriteTools(XDocument onDisk, ISet<string> toolsBefore)
+        {
+            var mine = WriteToolsEnabled
+                ? new HashSet<string>(EnabledWriteTools ?? new HashSet<string>(), StringComparer.Ordinal)
+                : new HashSet<string>(StringComparer.Ordinal);
+            var tools = SavedWriteToolsIn(onDisk) ?? new HashSet<string>(toolsBefore, StringComparer.Ordinal);
+            tools.UnionWith(mine.Where(t => !toolsBefore.Contains(t)));
+            tools.ExceptWith(toolsBefore.Where(t => !mine.Contains(t)));
+            return tools;
+        }
+
+        // The write tools in effect per a saved file: none while its switch is
+        // off, else its list. Null when it lacks the switch, or the list while
+        // on: the loader takes those from the other layers.
+        private static HashSet<string> SavedWriteToolsIn(XDocument doc)
+        {
+            var root = doc == null ? null : doc.Root;
+            var enabled = root == null ? null : root.Element("WriteToolsEnabled");
+            if (enabled == null || !bool.TryParse(enabled.Value, out var on)) return null;
+            if (!on) return new HashSet<string>(StringComparer.Ordinal);
+            var list = root.Element("EnabledWriteTools");
+            return list == null ? null : ParseWriteTools(list.Value);
+        }
+
+        // What is saved there now, or null when there is no file yet (the save
+        // then writes a complete one). A file that can't be read stops the save
+        // rather than be replaced with this session's values, which may come
+        // from an old per-user copy.
+        private static XDocument LoadForSave(string path)
+        {
+            try
+            {
+                return LoadXmlWhenFree(path);
+            }
+            catch (FileNotFoundException)
+            {
+                return null;
+            }
+            catch (XmlException ex)
+            {
+                throw new InvalidOperationException(
+                    path + " is not valid XML (" + ex.Message + "). Fix or delete it, then save again.", ex);
+            }
+        }
+
+        // One saved setting as config.xml stores it.
+        private static XElement SettingElement(string name)
+        {
+            switch (name)
+            {
+                case "AdminPassword": return new XElement(name, AdminPassword);
+                case "Model": return new XElement(name, Model);
+                case "ReasoningEffort": return new XElement(name, ReasoningEffortNames.ToConfigValue(ReasoningEffort));
+                case "WriteToolsEnabled": return new XElement(name, WriteToolsEnabled);
+                case "EnabledWriteTools": return new XElement(name, string.Join(",", EnabledWriteTools ?? new HashSet<string>()));
+                default: throw new ArgumentException("Not a saved setting: " + name);
+            }
         }
 
         internal static XDocument BuildSavedConfig()
         {
-            return new XDocument(
-                new XElement("Config",
-                    new XElement("AdminPassword", AdminPassword),
-                    new XElement("Model", Model),
-                    new XElement("ReasoningEffort", ReasoningEffortNames.ToConfigValue(ReasoningEffort)),
-                    new XElement("WriteToolsEnabled", WriteToolsEnabled),
-                    new XElement("EnabledWriteTools",
-                        string.Join(",", EnabledWriteTools ?? new HashSet<string>()))
-                )
-            );
+            return new XDocument(new XElement("Config", SavedSettingNames.Select(SettingElement)));
         }
 
-        private static void TrySaveTo(string filePath, XDocument doc)
+        private static void TraceSave(string filePath, string message)
         {
             try
             {
-                var dir = Path.GetDirectoryName(filePath);
-                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-                {
-                    Directory.CreateDirectory(dir);
-                }
-                doc.Save(filePath);
+                OutlookAI.Diagnostics.TraceLog.Write("Config: saving '" + filePath + "': " + message, "Config");
             }
-            catch (Exception ex)
-            {
-                // Silently fail (read-only target, ACL denied, etc.) but record
-                // it so the maintainer can see the failure mode without breaking
-                // the user flow. Without this trace the admin gets a "Saved"
-                // indicator and only discovers the shared write didn't take when
-                // another user's login still shows defaults.
-                try
-                {
-                    OutlookAI.Diagnostics.TraceLog.Write(
-                        "Config.TrySaveTo failed for '" + filePath + "': " + ex.Message,
-                        "Config");
-                }
-                catch { }
-            }
+            catch { }
         }
     }
 }
