@@ -43,10 +43,18 @@ namespace OutlookAI
 
         // The effort the admin last chose (initially the saved one). Kept apart
         // from the dropdown so passing through a model that lacks it (Max on
-        // gpt-5.5) doesn't lose it.
+        // gpt-5.5) doesn't lose it. The Auto shown for such a model isn't a
+        // choice: this is what counts as a change and what Save stores.
         private string _intendedEffort;
-        private bool _effortPickedByUser;
         private bool _modelPickedByUser;
+
+        // The saved settings the controls last showed (at open, after a reload
+        // or a save). Edits are measured against these, so one the admin undid
+        // (picked a model and went back, unchecked and rechecked a tool) isn't
+        // one: a reload refreshes that control and a Save leaves it alone.
+        private string _modelBaseline;
+        private string _effortBaseline;
+        private HashSet<string> _toolsBaseline = new HashSet<string>(StringComparer.Ordinal);
         private string _shownAccountId;
 
         // Updates group (Task 8)
@@ -74,6 +82,38 @@ namespace OutlookAI
         private readonly UpdateHistoryLog _history = new UpdateHistoryLog();
 
         private bool _authenticated;
+
+        // Test seam: how Save stores the changed settings for every user (with
+        // the write tools the change started from, merged tool by tool).
+        internal static Func<string[], ISet<string>, string> SaveSettings = Config.SaveSettings;
+
+        // Test seam: how a failed save is reported.
+        internal static Action<IWin32Window, string> ReportSaveFailed = (owner, reason) => MessageBox.Show(
+            owner,
+            "The settings could not be saved for all users, so nothing changed.\n\n" + reason,
+            "OutlookAI Settings",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Warning);
+
+        // This session's saved settings before a Save changes them, put back if
+        // the save fails (re-reading the file might fail the same way).
+        private sealed class SettingsBeforeSave
+        {
+            private readonly string _adminPassword = Config.AdminPassword;
+            private readonly string _model = Config.Model;
+            private readonly string _effort = Config.ReasoningEffort;
+            private readonly bool _writeToolsEnabled = Config.WriteToolsEnabled;
+            private readonly HashSet<string> _enabledWriteTools = Config.EnabledWriteTools;
+
+            public void Restore()
+            {
+                Config.AdminPassword = _adminPassword;
+                Config.Model = _model;
+                Config.ReasoningEffort = _effort;
+                Config.WriteToolsEnabled = _writeToolsEnabled;
+                Config.EnabledWriteTools = _enabledWriteTools;
+            }
+        }
 
         public SettingsForm()
             : this(Globals.ThisAddIn != null ? Globals.ThisAddIn.AuthService : null)
@@ -304,10 +344,7 @@ namespace OutlookAI
                 Font = new Font("Segoe UI", 9F, FontStyle.Regular)
             };
             _cmbReasoningEffort.SelectionChangeCommitted += (s, e) =>
-            {
-                _effortPickedByUser = true;
                 _intendedEffort = _cmbReasoningEffort.SelectedItem as string ?? _intendedEffort;
-            };
 
             // Write-tools checklist
             var lblWriteTools = new Label
@@ -346,7 +383,7 @@ namespace OutlookAI
                 ForeColor = Color.DarkGreen,
                 Font = new Font("Segoe UI", 8F, FontStyle.Italic),
                 Visible = false,
-                Text = "Saved."
+                Text = "Saved for all users on this machine."
             };
 
             grpAi.Controls.AddRange(new Control[]
@@ -367,22 +404,93 @@ namespace OutlookAI
         private void LoadAiSettingsIntoControls()
         {
             _intendedEffort = Config.ReasoningEffort;
-            _effortPickedByUser = false;
             _modelPickedByUser = false;
+            _modelBaseline = Config.Model;
+            _effortBaseline = Config.ReasoningEffort;
 
-            // Show the model requests actually use. For a retired saved model
-            // that is its replacement, so any Save keeps what is really in
-            // effect instead of the retired slug. Selecting it also refreshes
-            // the effort list and the info line.
+            // Show the model requests actually use: for a retired saved model,
+            // its replacement. It's saved only if the admin picks a model.
+            // Selecting it also refreshes the effort list and the info line.
             PopulateModelChoices(Config.EffectiveModel);
             ShowCatalogSummary();
+            ShowSavedWriteTools();
+        }
 
-            // Write tools
-            var enabled = Config.EnabledWriteTools ?? new HashSet<string>();
+        // After the settings were reloaded from disk: controls without an edit
+        // (and each write tool the admin didn't change) follow them, so a later
+        // Save doesn't write back what they showed before (maybe another
+        // admin's change since). The admin's own edits stay, and from now on
+        // count as edits while they differ from the reloaded settings.
+        private void ShowReloadedSettings()
+        {
+            // A choice the refreshed model list no longer offers is dropped; the
+            // dialog shows its own fallback instead.
+            var modelEdited = ModelEdited()
+                && ModelChoices().Contains(_cmbModel.SelectedItem as string, StringComparer.OrdinalIgnoreCase);
+            var effortEdited = EffortEdited() && Config.ModelCatalog.NormalizeEffort(_intendedEffort) != null;
+            _modelBaseline = Config.Model;
+            _effortBaseline = Config.ReasoningEffort;
+            if (!modelEdited) _modelPickedByUser = false;
+            if (!effortEdited) _intendedEffort = Config.ReasoningEffort;
+            PopulateModelChoices(modelEdited ? _cmbModel.SelectedItem as string : Config.EffectiveModel);
+
+            var reloaded = SavedWriteTools();
             for (int i = 0; i < _clbWriteTools.Items.Count; i++)
             {
-                var name = _clbWriteTools.Items[i].ToString();
-                _clbWriteTools.SetItemChecked(i, enabled.Contains(name));
+                var tool = _clbWriteTools.Items[i].ToString();
+                if (_clbWriteTools.GetItemChecked(i) == _toolsBaseline.Contains(tool))
+                {
+                    _clbWriteTools.SetItemChecked(i, reloaded.Contains(tool));
+                }
+            }
+            _toolsBaseline = reloaded;
+        }
+
+        // The model counts as changed only when the admin picked it: the dialog
+        // also shows one on its own (a retired model's replacement).
+        private bool ModelEdited()
+        {
+            var picked = _cmbModel.SelectedItem as string;
+            return _modelPickedByUser && !string.IsNullOrEmpty(picked) && picked != _modelBaseline;
+        }
+
+        private bool EffortEdited()
+        {
+            return !string.IsNullOrEmpty(_intendedEffort) && _intendedEffort != _effortBaseline;
+        }
+
+        private bool ToolsEdited()
+        {
+            return !CheckedWriteTools().SetEquals(_toolsBaseline);
+        }
+
+        private HashSet<string> CheckedWriteTools()
+        {
+            var tools = new HashSet<string>(StringComparer.Ordinal);
+            for (int i = 0; i < _clbWriteTools.Items.Count; i++)
+            {
+                if (_clbWriteTools.GetItemChecked(i))
+                {
+                    tools.Add(_clbWriteTools.Items[i].ToString());
+                }
+            }
+            return tools;
+        }
+
+        // The write tools in effect: none while the master switch is off.
+        private static HashSet<string> SavedWriteTools()
+        {
+            return Config.WriteToolsEnabled
+                ? new HashSet<string>(Config.EnabledWriteTools ?? new HashSet<string>(), StringComparer.Ordinal)
+                : new HashSet<string>(StringComparer.Ordinal);
+        }
+
+        private void ShowSavedWriteTools()
+        {
+            _toolsBaseline = SavedWriteTools();
+            for (int i = 0; i < _clbWriteTools.Items.Count; i++)
+            {
+                _clbWriteTools.SetItemChecked(i, _toolsBaseline.Contains(_clbWriteTools.Items[i].ToString()));
             }
         }
 
@@ -396,15 +504,14 @@ namespace OutlookAI
             ShowModelInfo(model);
         }
 
-        // Fills the model dropdown from the catalog, selecting preferModel when
-        // offered, else the model requests actually use.
-        private void PopulateModelChoices(string preferModel)
+        // The models the dropdown offers: the listed ones, plus hidden catalog
+        // models in play (the saved one, and a hidden replacement it retired
+        // to), so Save AI Settings doesn't silently swap them for the first
+        // listed model.
+        private static List<string> ModelChoices()
         {
             var catalog = Config.ModelCatalog;
             var slugs = catalog.ListedSlugs.ToList();
-            // Hidden catalog models in play stay selectable (the saved one, and
-            // a hidden replacement it retired to), so Save AI Settings doesn't
-            // silently swap them for the first listed model.
             foreach (var inUse in new[] { Config.Model, Config.EffectiveModel })
             {
                 var entry = catalog.Find(inUse);
@@ -413,7 +520,14 @@ namespace OutlookAI
                     slugs.Add(entry.Slug);
                 }
             }
+            return slugs;
+        }
 
+        // Fills the model dropdown from the catalog, selecting preferModel when
+        // offered, else the model requests actually use.
+        private void PopulateModelChoices(string preferModel)
+        {
+            var slugs = ModelChoices();
             var index = slugs.FindIndex(s => string.Equals(s, preferModel, StringComparison.OrdinalIgnoreCase));
             if (index < 0)
             {
@@ -470,7 +584,7 @@ namespace OutlookAI
                         ? " retired " + FormatDate(savedEntry.Upgrade.RetirementAt.Value)
                         : " is no longer offered";
                     text = "Saved model " + saved + why + "; requests use " + entry.Slug
-                        + ". Click Save AI Settings to keep it. " + text;
+                        + ". Pick it and click Save AI Settings to keep it. " + text;
                 }
 
                 _lblModelInfo.ForeColor = warn ? Color.DarkRed : Color.DimGray;
@@ -562,8 +676,7 @@ namespace OutlookAI
                     Config.ReloadConfigFiles();
                     Config.NotifyAiSettingsChanged();
 
-                    if (!_effortPickedByUser) _intendedEffort = Config.ReasoningEffort;
-                    PopulateModelChoices(_modelPickedByUser ? _cmbModel.SelectedItem as string : Config.EffectiveModel);
+                    ShowReloadedSettings();
 
                     var warning = DescribeSaveProblem(result.Save);
                     ShowCatalogStatus(
@@ -647,41 +760,52 @@ namespace OutlookAI
         {
             if (!_authenticated) return;
 
-            var pickedModel = _cmbModel.SelectedItem as string;
-            if (!string.IsNullOrEmpty(pickedModel))
+            // Only what the admin changed here is saved: another admin may have
+            // saved other settings for every user since this dialog opened.
+            var before = new SettingsBeforeSave();
+            var changed = new List<string>();
+            if (ModelEdited())
             {
-                Config.Model = pickedModel;
+                Config.Model = _cmbModel.SelectedItem as string;
+                changed.Add("Model");
             }
 
-            var pickedEffort = _cmbReasoningEffort.SelectedItem as string;
-            if (!string.IsNullOrEmpty(pickedEffort))
+            if (EffortEdited())
             {
-                Config.ReasoningEffort = pickedEffort;
+                Config.ReasoningEffort = _intendedEffort;
+                changed.Add("ReasoningEffort");
             }
 
-            // EnabledWriteTools - collect every checked entry.
-            var newSet = new HashSet<string>(StringComparer.Ordinal);
-            for (int i = 0; i < _clbWriteTools.Items.Count; i++)
+            if (ToolsEdited())
             {
-                if (_clbWriteTools.GetItemChecked(i))
-                {
-                    newSet.Add(_clbWriteTools.Items[i].ToString());
-                }
+                var newSet = CheckedWriteTools();
+                Config.EnabledWriteTools = newSet;
+                // Master switch is derived: any write tool checked = true.
+                Config.WriteToolsEnabled = newSet.Count > 0;
+                changed.Add("EnabledWriteTools");
+                changed.Add("WriteToolsEnabled");
             }
-            Config.EnabledWriteTools = newSet;
-            // Master switch is derived: any write tool checked = true.
-            Config.WriteToolsEnabled = newSet.Count > 0;
 
-            Config.SaveConfig();
+            var saveError = SaveSettings(changed.ToArray(), _toolsBaseline);
+            if (saveError != null)
+            {
+                before.Restore();
+                ReportSaveFailed(this, saveError);
+                return;
+            }
             // Open panes re-read their effort lists for the (maybe new) model.
             Config.NotifyAiSettingsChanged();
 
-            // What's shown is now what's saved: drop any "saved model retired"
-            // notice and carry the saved effort through later model switches.
+            // The controls now show the settings in effect: what was saved here,
+            // and for the rest what this session has (another dialog's Update
+            // Models may have reloaded them underneath this one). This also
+            // refreshes the "saved model retired" notice.
             _intendedEffort = Config.ReasoningEffort;
-            _effortPickedByUser = false;
             _modelPickedByUser = false;
-            if (!string.IsNullOrEmpty(pickedModel)) ShowModelInfo(pickedModel);
+            _modelBaseline = Config.Model;
+            _effortBaseline = Config.ReasoningEffort;
+            PopulateModelChoices(Config.EffectiveModel);
+            ShowSavedWriteTools();
 
             _lblAiSaved.Visible = true;
             // Auto-hide the saved indicator after a short delay so repeated
@@ -963,12 +1087,19 @@ namespace OutlookAI
             }
             if (!string.IsNullOrWhiteSpace(_txtNewPassword.Text))
             {
+                var before = new SettingsBeforeSave();
                 Config.AdminPassword = _txtNewPassword.Text;
-                Config.SaveConfig();
+                var saveError = SaveSettings(new[] { "AdminPassword" }, null);
+                if (saveError != null)
+                {
+                    before.Restore();
+                    ReportSaveFailed(this, saveError);
+                    return;
+                }
                 _txtNewPassword.Text = "";
                 MessageBox.Show(
                     this,
-                    "Admin password updated.",
+                    "Admin password updated for all users on this machine.",
                     "OutlookAI Settings",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);

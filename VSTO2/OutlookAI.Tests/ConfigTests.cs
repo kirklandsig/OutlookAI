@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Xml.Linq;
 using OutlookAI;
 using OutlookAI.Services.Models;
 using OutlookAI.Tests.Helpers;
@@ -167,14 +170,15 @@ namespace OutlookAI.Tests
             var g = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".xml");
             var s = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".xml");
             var u = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".xml");
-            File.WriteAllText(g, "<Config><Model>gpt-5.5</Model></Config>");
-            File.WriteAllText(s, "<Config><Model> gpt-7 </Model></Config>");
-            File.WriteAllText(u, "<Config><Model>GPT-6-SOL</Model></Config>");
+            File.WriteAllText(g, "<Config><Model> gpt-7 </Model></Config>");
+            File.WriteAllText(s, "<Config><Model>GPT-6-SOL</Model></Config>");
+            File.WriteAllText(u, "<Config><Model>gpt-5.5</Model></Config>");
             try
             {
                 Config.LoadConfigFromPaths(g, s, u);
 
-                Assert.Equal(new[] { "gpt-5.5", "gpt-7", "GPT-6-SOL" }, Config.ModelsNamedInConfig);
+                // Load order: global, per-user, then the server-wide file, which wins.
+                Assert.Equal(new[] { "gpt-7", "gpt-5.5", "GPT-6-SOL" }, Config.ModelsNamedInConfig);
                 Assert.Equal("gpt-6-sol", Config.Model);
             }
             finally
@@ -451,7 +455,7 @@ namespace OutlookAI.Tests
         }
 
         [Fact]
-        public void LoadConfigFromPaths_UserOverridesSharedDefaults()
+        public void LoadConfigFromPaths_ServerWideSettingsBeatAPerUserFile()
         {
             var g = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".xml");
             var s = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".xml");
@@ -462,7 +466,7 @@ namespace OutlookAI.Tests
             try
             {
                 Config.LoadConfigFromPaths(g, s, u);
-                Assert.Equal("Low", Config.ReasoningEffort);
+                Assert.Equal("Medium", Config.ReasoningEffort);
             }
             finally
             {
@@ -490,7 +494,7 @@ namespace OutlookAI.Tests
         }
 
         [Fact]
-        public void LoadConfigFromPaths_GlobalAndSharedAndUser_UserBeatsSharedBeatsGlobal()
+        public void LoadConfigFromPaths_GlobalAndSharedAndUser_SharedBeatsUserBeatsGlobal()
         {
             var g = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".xml");
             var s = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".xml");
@@ -502,7 +506,7 @@ namespace OutlookAI.Tests
             try
             {
                 Config.LoadConfigFromPaths(g, s, u);
-                Assert.Equal("Low", Config.ReasoningEffort);
+                Assert.Equal("Medium", Config.ReasoningEffort);
             }
             finally
             {
@@ -510,6 +514,395 @@ namespace OutlookAI.Tests
                 if (File.Exists(s)) File.Delete(s);
                 if (File.Exists(u)) File.Delete(u);
             }
+        }
+
+        [Fact]
+        public void LoadConfigFromPaths_APerUserCopyCantShadowServerWideSettings()
+        {
+            // What Settings wrote per user before v2.2.2, then the admin changed everything server-wide.
+            var (g, u) = MakeTempPaths();
+            var s = Path.Combine(Path.GetDirectoryName(g), "shared.xml");
+            File.WriteAllText(g, "<Config><AdminPassword>installer</AdminPassword></Config>");
+            File.WriteAllText(s, "<Config><AdminPassword>rotated</AdminPassword><Model>gpt-6-sol</Model>"
+                + "<ReasoningEffort>High</ReasoningEffort><WriteToolsEnabled>true</WriteToolsEnabled>"
+                + "<EnabledWriteTools>outlook_create_draft</EnabledWriteTools></Config>");
+            File.WriteAllText(u, "<Config><AdminPassword>old</AdminPassword><Model>gpt-5.5</Model>"
+                + "<ReasoningEffort>Low</ReasoningEffort><WriteToolsEnabled>false</WriteToolsEnabled>"
+                + "<EnabledWriteTools>outlook_mark_as_read</EnabledWriteTools></Config>");
+
+            Config.LoadConfigFromPaths(g, s, u);
+
+            Assert.Equal("rotated", Config.AdminPassword);
+            Assert.Equal("gpt-6-sol", Config.Model);
+            Assert.Equal("High", Config.ReasoningEffort);
+            Assert.True(Config.WriteToolsEnabled);
+            Assert.Equal(new[] { "outlook_create_draft" }, Config.EnabledWriteTools);
+        }
+
+        [Theory]
+        [InlineData("<EnabledWriteTools></EnabledWriteTools>")]
+        [InlineData("<EnabledWriteTools />")]
+        public void LoadConfigFromPaths_AnEmptyToolList_MeansEveryToolUnchecked(string element)
+        {
+            // What Settings saves when every write tool is unchecked; it must not
+            // bring back an earlier list for the next Save to switch on again.
+            var (g, u) = MakeTempPaths();
+            var s = Path.Combine(Path.GetDirectoryName(g), "shared.xml");
+            File.WriteAllText(g, "<Config><WriteToolsEnabled>true</WriteToolsEnabled><EnabledWriteTools>outlook_create_draft</EnabledWriteTools></Config>");
+            File.WriteAllText(s, "<Config><WriteToolsEnabled>false</WriteToolsEnabled>" + element + "</Config>");
+
+            Config.LoadConfigFromPaths(g, s, u);
+
+            Assert.False(Config.WriteToolsEnabled);
+            Assert.Empty(Config.EnabledWriteTools);
+        }
+
+        [Fact]
+        public void LoadConfigFromPaths_APartialServerWideFile_KeepsThePerUserValuesItDoesNotSet()
+        {
+            // A hand-made server-wide file with just a model must not reset the
+            // rest (e.g. re-enable write tools or restore the installer's password).
+            var (g, u) = MakeTempPaths();
+            var s = Path.Combine(Path.GetDirectoryName(g), "shared.xml");
+            File.WriteAllText(g, "<Config><AdminPassword>installer</AdminPassword></Config>");
+            File.WriteAllText(s, "<Config><Model>gpt-6-sol</Model></Config>");
+            File.WriteAllText(u, "<Config><AdminPassword>rotated</AdminPassword><Model>gpt-5.5</Model>"
+                + "<WriteToolsEnabled>false</WriteToolsEnabled><EnabledWriteTools></EnabledWriteTools></Config>");
+
+            Config.LoadConfigFromPaths(g, s, u);
+
+            Assert.Equal("gpt-6-sol", Config.Model);
+            Assert.Equal("rotated", Config.AdminPassword);
+            Assert.False(Config.WriteToolsEnabled);
+        }
+
+        [Theory]
+        [InlineData(null)]                     // never saved server-wide (e.g. no Settings save since v2.1.1)
+        [InlineData("<Config><Model>")]       // unreadable
+        public void LoadConfigFromPaths_WithoutReadableServerWideSettings_APerUserFileStillApplies(string shared)
+        {
+            var (g, u) = MakeTempPaths();
+            var s = Path.Combine(Path.GetDirectoryName(g), "shared.xml");
+            if (shared != null) File.WriteAllText(s, shared);
+            File.WriteAllText(g, "<Config><AdminPassword>installer</AdminPassword></Config>");
+            File.WriteAllText(u, "<Config><AdminPassword>rotated</AdminPassword><ReasoningEffort>Low</ReasoningEffort></Config>");
+
+            Config.LoadConfigFromPaths(g, s, u);
+
+            Assert.Equal("rotated", Config.AdminPassword);
+            Assert.Equal("Low", Config.ReasoningEffort);
+        }
+
+        [Fact]
+        public void SaveSettingsTo_SavesForEveryUser_EvenOneWithAnOldPerUserCopy()
+        {
+            var (g, u) = MakeTempPaths();
+            var s = Path.Combine(Path.GetDirectoryName(g), "ProgramData", "config.xml");
+            File.WriteAllText(u, "<Config><AdminPassword>old</AdminPassword><Model>gpt-5.5</Model><ReasoningEffort>Low</ReasoningEffort>"
+                + "<WriteToolsEnabled>false</WriteToolsEnabled><EnabledWriteTools></EnabledWriteTools></Config>");
+            Config.ResetDefaults();   // all four write tools on
+            Config.Model = "gpt-6-sol";
+            Config.ReasoningEffort = "High";
+            Config.AdminPassword = "new";
+
+            Assert.Null(Config.SaveSettingsTo(s, new[] { "Model", "ReasoningEffort" }));
+            Assert.Equal(Config.SavedSettingNames, ElementNames(s));   // the first save writes all of them
+
+            Config.ResetDefaults();
+            Config.LoadConfigFromPaths(g, s, u);   // that user's next Outlook start
+
+            Assert.Equal("gpt-6-sol", Config.Model);
+            Assert.Equal("High", Config.ReasoningEffort);
+            Assert.Equal("new", Config.AdminPassword);
+            Assert.True(Config.WriteToolsEnabled);
+        }
+
+        [Fact]
+        public void SaveSettingsTo_WritesOnlyTheChangedSettings_OverWhatAnotherSessionSaved()
+        {
+            // This Outlook loaded the settings before another admin changed the password and effort.
+            var (g, _) = MakeTempPaths();
+            var s = Path.Combine(Path.GetDirectoryName(g), "config.xml");
+            File.WriteAllText(s, "<Config><AdminPassword>rotated</AdminPassword><Model>gpt-5.5</Model><ReasoningEffort>High</ReasoningEffort>"
+                + "<WriteToolsEnabled>true</WriteToolsEnabled><EnabledWriteTools>outlook_create_draft</EnabledWriteTools></Config>");
+            Config.ResetDefaults();
+            Config.AdminPassword = "stale";
+            Config.ReasoningEffort = "Low";
+            Config.Model = "gpt-6-sol";
+
+            Assert.Null(Config.SaveSettingsTo(s, new[] { "Model" }));
+
+            var root = XDocument.Load(s).Root;
+            Assert.Equal("gpt-6-sol", root.Element("Model").Value);
+            Assert.Equal("rotated", root.Element("AdminPassword").Value);
+            Assert.Equal("High", root.Element("ReasoningEffort").Value);
+            Assert.Equal("outlook_create_draft", root.Element("EnabledWriteTools").Value);
+        }
+
+        [Fact]
+        public void SaveSettingsTo_MergesWriteToolsOneByOne_WithWhatAnotherSessionSaved()
+        {
+            // This session started from tools 0-2 on, then switched 1 off and 3
+            // on; another admin has since switched 0 off. All three changes stay.
+            var t = Config.AllWriteTools;
+            var (g, _) = MakeTempPaths();
+            var s = Path.Combine(Path.GetDirectoryName(g), "config.xml");
+            File.WriteAllText(s, "<Config><WriteToolsEnabled>true</WriteToolsEnabled><EnabledWriteTools>"
+                + t[1] + "," + t[2] + "</EnabledWriteTools></Config>");
+            Config.ResetDefaults();
+            Config.EnabledWriteTools = new HashSet<string> { t[0], t[2], t[3] };
+
+            Assert.Null(Config.SaveSettingsTo(s, new[] { "EnabledWriteTools", "WriteToolsEnabled" }, new HashSet<string> { t[0], t[1], t[2] }));
+
+            var root = XDocument.Load(s).Root;
+            Assert.Equal(new[] { t[2], t[3] }, root.Element("EnabledWriteTools").Value.Split(',').OrderBy(x => Array.IndexOf(t, x)));
+            Assert.Equal("true", root.Element("WriteToolsEnabled").Value);
+            Assert.Equal(new[] { t[2], t[3] }, Config.EnabledWriteTools.OrderBy(x => Array.IndexOf(t, x)));   // this session uses what was saved
+            Assert.True(Config.WriteToolsEnabled);
+        }
+
+        [Fact]
+        public void SaveSettingsTo_ToolsSwitchedOffHere_KeepWritesOff_WhenAnotherSessionSwitchedThemOff()
+        {
+            var t = Config.AllWriteTools;
+            var (g, _) = MakeTempPaths();
+            var s = Path.Combine(Path.GetDirectoryName(g), "config.xml");
+            File.WriteAllText(s, "<Config><WriteToolsEnabled>false</WriteToolsEnabled><EnabledWriteTools>"
+                + string.Join(",", t) + "</EnabledWriteTools></Config>");
+            Config.ResetDefaults();
+            Config.EnabledWriteTools = new HashSet<string>(t.Skip(1));
+
+            Assert.Null(Config.SaveSettingsTo(s, new[] { "EnabledWriteTools", "WriteToolsEnabled" }, new HashSet<string>(t)));
+
+            var root = XDocument.Load(s).Root;
+            Assert.Equal("false", root.Element("WriteToolsEnabled").Value);
+            Assert.Equal("", root.Element("EnabledWriteTools").Value);
+            Assert.False(Config.WriteToolsEnabled);
+        }
+
+        [Fact]
+        public void SaveSettingsTo_ASavedToolListAnotherLayerSwitchesOff_IsNotSwitchedOnByOneTool()
+        {
+            // The server-wide file lists every tool but has no switch, and the
+            // Program Files config switches writes off, so none are in effect.
+            // Checking one tool in Settings must enable just that one.
+            var t = Config.AllWriteTools;
+            var (g, u) = MakeTempPaths();
+            var s = Path.Combine(Path.GetDirectoryName(g), "shared.xml");
+            File.WriteAllText(g, "<Config><WriteToolsEnabled>false</WriteToolsEnabled></Config>");
+            File.WriteAllText(s, "<Config><EnabledWriteTools>" + string.Join(",", t) + "</EnabledWriteTools></Config>");
+            Config.LoadConfigFromPaths(g, s, u);
+            Assert.False(Config.WriteToolsEnabled);
+
+            Config.EnabledWriteTools = new HashSet<string> { t[0] };   // what Save sets for the one checked tool
+            Config.WriteToolsEnabled = true;
+            Assert.Null(Config.SaveSettingsTo(s, new[] { "EnabledWriteTools", "WriteToolsEnabled" }, new HashSet<string>()));
+
+            Config.ResetDefaults();
+            Config.LoadConfigFromPaths(g, s, u);
+            Assert.True(Config.WriteToolsEnabled);
+            Assert.Equal(new[] { t[0] }, Config.EnabledWriteTools);
+        }
+
+        [Fact]
+        public void SaveSettingsTo_WithoutASavedToolList_SavesThisSessionsTools()
+        {
+            var t = Config.AllWriteTools;
+            var (g, _) = MakeTempPaths();
+            var s = Path.Combine(Path.GetDirectoryName(g), "config.xml");
+            Config.ResetDefaults();
+            Config.EnabledWriteTools = new HashSet<string>(t.Skip(1));
+
+            Assert.Null(Config.SaveSettingsTo(s, new[] { "EnabledWriteTools", "WriteToolsEnabled" }, new HashSet<string>(t)));
+
+            Assert.Equal(t.Skip(1), XDocument.Load(s).Root.Element("EnabledWriteTools").Value.Split(',').OrderBy(x => Array.IndexOf(t, x)));
+        }
+
+        [Fact]
+        public void SaveSettingsTo_FillsInSettingsMissingFromTheFile_AndLeavesNothingElseBehind()
+        {
+            var (g, _) = MakeTempPaths();
+            var s = Path.Combine(Path.GetDirectoryName(g), "config.xml");
+            File.WriteAllText(s, "<Config><Model>gpt-5.5</Model><AdminPassword> </AdminPassword><VoiceModel>hand-added</VoiceModel></Config>");
+            Config.ResetDefaults();
+            Config.AdminPassword = "mine";
+            Config.ReasoningEffort = "High";
+
+            Assert.Null(Config.SaveSettingsTo(s, new[] { "ReasoningEffort" }));
+
+            var root = XDocument.Load(s).Root;
+            Assert.Equal("gpt-5.5", root.Element("Model").Value);
+            Assert.Equal("hand-added", root.Element("VoiceModel").Value);
+            Assert.Equal("High", root.Element("ReasoningEffort").Value);
+            Assert.Equal("mine", root.Element("AdminPassword").Value);
+            Assert.All(Config.SavedSettingNames, name => Assert.NotNull(root.Element(name)));
+            Assert.Equal(new[] { s }, Directory.GetFileSystemEntries(Path.GetDirectoryName(s), "config.xml*"));   // no temp or lock files
+        }
+
+        [Fact]
+        public void SaveSettingsTo_WaitsForAnotherSessionsSave_ThenSaysSo()
+        {
+            var (g, _) = MakeTempPaths();
+            var s = Path.Combine(Path.GetDirectoryName(g), "config.xml");
+            using (new FileStream(s + ".lock", FileMode.Create, FileAccess.ReadWrite, FileShare.None))
+            {
+                var error = Config.SaveSettingsTo(s, new[] { "Model" }, lockTimeout: TimeSpan.FromMilliseconds(200));
+
+                Assert.Contains("Try again", error);
+                Assert.False(File.Exists(s));
+            }
+        }
+
+        [Fact]
+        public void LoadConfigFromPaths_WaitsBrieflyForAServerWideFileAnotherSessionIsSaving()
+        {
+            // Otherwise this whole session would run on the old per-user copy.
+            var (g, u) = MakeTempPaths();
+            var s = Path.Combine(Path.GetDirectoryName(g), "shared.xml");
+            File.WriteAllText(s, "<Config><Model>gpt-6-sol</Model></Config>");
+            File.WriteAllText(u, "<Config><Model>gpt-5.5</Model></Config>");
+            var busy = new FileStream(s, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            var release = System.Threading.Tasks.Task.Delay(300).ContinueWith(_ => busy.Dispose());
+
+            Config.LoadConfigFromPaths(g, s, u);
+
+            release.Wait();
+            Assert.Equal("gpt-6-sol", Config.Model);
+        }
+
+        [Fact]
+        public void SaveSettingsTo_WhenTheFileCantBeRead_FailsEvenIfItFreesUpBeforeTheSwap()
+        {
+            // Another process holds config.xml past the read's retries (~1 s), then
+            // lets go while the swap still retries. Writing every setting from this
+            // session then would undo other admins' changes.
+            var (g, _) = MakeTempPaths();
+            var s = Path.Combine(Path.GetDirectoryName(g), "config.xml");
+            const string saved = "<Config><AdminPassword>rotated</AdminPassword><WriteToolsEnabled>false</WriteToolsEnabled></Config>";
+            File.WriteAllText(s, saved);
+            Config.ResetDefaults();
+            Config.ReasoningEffort = "High";
+            var busy = new FileStream(s, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            var release = System.Threading.Tasks.Task.Delay(1500).ContinueWith(_ => busy.Dispose());
+
+            var error = Config.SaveSettingsTo(s, new[] { "ReasoningEffort" });
+
+            release.Wait();
+            Assert.False(string.IsNullOrEmpty(error));
+            Assert.Equal(saved, File.ReadAllText(s));
+        }
+
+        [Fact]
+        public void SaveSettingsTo_AFileThatIsNotValidXml_IsReportedNotReplaced()
+        {
+            var (g, _) = MakeTempPaths();
+            var s = Path.Combine(Path.GetDirectoryName(g), "config.xml");
+            File.WriteAllText(s, "<Config><Model>");
+
+            var error = Config.SaveSettingsTo(s, new[] { "Model" });
+
+            Assert.Contains("not valid XML", error);
+            Assert.Equal("<Config><Model>", File.ReadAllText(s));
+        }
+
+        [Fact]
+        public void SaveSettingsTo_WaitsForAnotherSessionReadingTheFile()
+        {
+            var (g, _) = MakeTempPaths();
+            var s = Path.Combine(Path.GetDirectoryName(g), "config.xml");
+            File.WriteAllText(s, "<Config><ReasoningEffort>Low</ReasoningEffort></Config>");
+            Config.ResetDefaults();
+            Config.ReasoningEffort = "High";
+            var reader = new FileStream(s, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var release = System.Threading.Tasks.Task.Delay(300).ContinueWith(_ => reader.Dispose());
+
+            var error = Config.SaveSettingsTo(s, new[] { "ReasoningEffort" });
+
+            release.Wait();
+            Assert.Null(error);
+            Assert.Equal("High", XDocument.Load(s).Root.Element("ReasoningEffort").Value);
+        }
+
+        [Fact]
+        public void ReloadConfigFiles_KeepsWhatThisSessionHas_WhileASavedFileCantBeRead()
+        {
+            // Falling back to the other layers would e.g. switch write tools back on.
+            var (g, u) = MakeTempPaths();
+            var s = Path.Combine(Path.GetDirectoryName(g), "shared.xml");
+            File.WriteAllText(s, "<Config><WriteToolsEnabled>false</WriteToolsEnabled><EnabledWriteTools></EnabledWriteTools></Config>");
+            Config.LoadConfigFromPaths(g, s, u);
+
+            using (new FileStream(s, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
+                Config.ReloadConfigFilesFrom(g, s, u);   // gives up after ~1 s
+            }
+            Assert.False(Config.WriteToolsEnabled);
+
+            File.WriteAllText(s, "<Config><WriteToolsEnabled>true</WriteToolsEnabled></Config>");
+            Config.ReloadConfigFilesFrom(g, s, u);
+            Assert.True(Config.WriteToolsEnabled);
+        }
+
+        [Fact]
+        public void ReloadConfigFiles_KeepsWhatThisSessionHas_WhenTheSavedFilesFolderIsDenied()
+        {
+            // File.Exists then says false, as if there were no file; the other
+            // layers would e.g. switch write tools back on.
+            var (g, u) = MakeTempPaths();
+            var dir = Path.Combine(Path.GetDirectoryName(g), "ProgramData");
+            Directory.CreateDirectory(dir);
+            var s = Path.Combine(dir, "config.xml");
+            File.WriteAllText(s, "<Config><WriteToolsEnabled>false</WriteToolsEnabled><EnabledWriteTools></EnabledWriteTools></Config>");
+            Config.LoadConfigFromPaths(g, s, u);
+
+            var deny = new System.Security.AccessControl.FileSystemAccessRule(
+                System.Security.Principal.WindowsIdentity.GetCurrent().User,
+                System.Security.AccessControl.FileSystemRights.ListDirectory | System.Security.AccessControl.FileSystemRights.ReadAttributes,
+                System.Security.AccessControl.InheritanceFlags.ContainerInherit | System.Security.AccessControl.InheritanceFlags.ObjectInherit,
+                System.Security.AccessControl.PropagationFlags.None,
+                System.Security.AccessControl.AccessControlType.Deny);
+            var acl = Directory.GetAccessControl(dir);
+            acl.AddAccessRule(deny);
+            Directory.SetAccessControl(dir, acl);
+            try
+            {
+                Assert.False(File.Exists(s));
+                Config.ReloadConfigFilesFrom(g, s, u);
+            }
+            finally
+            {
+                acl.RemoveAccessRule(deny);
+                Directory.SetAccessControl(dir, acl);
+            }
+
+            Assert.False(Config.WriteToolsEnabled);
+        }
+
+        [Fact]
+        public void Saving_NeverWritesThePerUserFile()
+        {
+            // Settings saves for every user; the per-user path is only passed to the loaders.
+            var uses = File.ReadAllLines(RepoFiles.Find("VSTO2", "OutlookAI", "Config.cs"))
+                .Where(line => line.Contains("UserConfigFilePath") && !line.Contains("private static readonly string UserConfigFilePath"))
+                .ToArray();
+
+            Assert.NotEmpty(uses);
+            Assert.All(uses, line => Assert.Contains("(GlobalConfigFilePath, SharedConfigFilePath, UserConfigFilePath);", line));
+        }
+
+        [Fact]
+        public void SaveSettingsTo_ReportsWhyItCouldNotSave()
+        {
+            var (g, _) = MakeTempPaths();
+            var s = Path.Combine(Path.GetDirectoryName(g), "config.xml");
+            Directory.CreateDirectory(s);   // a folder where the file should go
+
+            Assert.False(string.IsNullOrEmpty(Config.SaveSettingsTo(s, new[] { "Model" })));
+        }
+
+        private static string[] ElementNames(string path)
+        {
+            return XDocument.Load(path).Root.Elements().Select(e => e.Name.LocalName).ToArray();
         }
 
         [Fact]

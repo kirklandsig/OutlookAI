@@ -58,6 +58,9 @@ namespace OutlookAI.Tests.Services.Models
             var swap = handler.IndexOf("Config.ModelCatalog = result.Catalog;", StringComparison.Ordinal);
             Assert.True(handler.IndexOf("Config.ReloadConfigFiles();", swap, StringComparison.Ordinal) > swap);
             Assert.True(handler.IndexOf("Config.NotifyAiSettingsChanged();", swap, StringComparison.Ordinal) > swap);
+            // Controls the admin hasn't touched follow the reloaded settings, so a
+            // later Save doesn't write the values they showed before back.
+            Assert.True(handler.IndexOf("ShowReloadedSettings();", swap, StringComparison.Ordinal) > swap);
         }
 
         [Fact]
@@ -66,7 +69,48 @@ namespace OutlookAI.Tests.Services.Models
             var handler = Slice(SettingsFormSource, "private void BtnSaveAiSettings_Click", "\n        }\n");
 
             Assert.True(handler.IndexOf("Config.NotifyAiSettingsChanged();", StringComparison.Ordinal)
-                > handler.IndexOf("Config.SaveConfig();", StringComparison.Ordinal));
+                > handler.IndexOf("SaveSettings(", StringComparison.Ordinal));
+        }
+
+        // Settings saves for every user: only what was changed in the dialog, so
+        // another admin's newer settings aren't overwritten.
+        [Theory]
+        [InlineData("private void BtnSaveAiSettings_Click", "SaveSettings(changed.ToArray(), _toolsBaseline)")]
+        [InlineData("private void BtnSavePassword_Click", "SaveSettings(new[] { \"AdminPassword\" }, null)")]
+        public void SaveHandlers_SaveOnlyWhatChanged(string handlerStart, string save)
+        {
+            Assert.Contains(save, Slice(SettingsFormSource, handlerStart, "\n        }\n"));
+        }
+
+        [Fact]
+        public void Settings_OpensOnWhatIsSavedNow()
+        {
+            var pane = File.ReadAllText(FindSourceFile("OutlookAI", "TaskPane", "AITaskPane.cs")).Replace("\r\n", "\n");
+            var open = Slice(pane, "private static SettingsForm OpenSettings", "\n        }\n");
+
+            var reload = open.IndexOf("Config.ReloadConfigFiles();", StringComparison.Ordinal);
+            Assert.True(reload >= 0 && reload < open.IndexOf("new SettingsForm", StringComparison.Ordinal));
+            // Every way the pane opens Settings goes through it.
+            Assert.Equal(2, pane.Split(new[] { "new SettingsForm" }, StringSplitOptions.None).Length - 1);
+            Assert.Equal(2, open.Split(new[] { "new SettingsForm" }, StringSplitOptions.None).Length - 1);
+        }
+
+        // Settings saves for every user; a failed save must not look saved.
+        [Theory]
+        [InlineData("private void BtnSaveAiSettings_Click")]
+        [InlineData("private void BtnSavePassword_Click")]
+        public void SaveHandlers_StopAndSayWhy_WhenTheSaveFails(string handlerStart)
+        {
+            var handler = Slice(SettingsFormSource, handlerStart, "\n        }\n");
+
+            // This session's settings are captured before the handler changes them
+            // and put back when the save fails.
+            var snapshot = handler.IndexOf("var before = new SettingsBeforeSave();", StringComparison.Ordinal);
+            var firstChange = handler.IndexOf("Config.", snapshot < 0 ? 0 : snapshot, StringComparison.Ordinal);
+            var save = handler.IndexOf("var saveError = SaveSettings(", StringComparison.Ordinal);
+            var bail = System.Text.RegularExpressions.Regex.Match(handler,
+                @"if \(saveError != null\)\s*\{\s*before\.Restore\(\);\s*ReportSaveFailed\(this, saveError\);\s*return;");
+            Assert.True(snapshot >= 0 && firstChange > snapshot && save > snapshot && bail.Success && bail.Index > save);
         }
 
         [Theory]
@@ -86,7 +130,7 @@ namespace OutlookAI.Tests.Services.Models
         public void ModelDropdown_ComesFromTheCatalog_NotAHardcodedList()
         {
             var src = SettingsFormSource;
-            var populate = Slice(src, "private void PopulateModelChoices", "\n        }\n");
+            var populate = Slice(src, "private static List<string> ModelChoices", "\n        }\n");
 
             Assert.Contains("Config.ModelCatalog", populate);
             Assert.Contains(".ListedSlugs", populate);
