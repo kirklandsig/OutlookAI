@@ -389,3 +389,27 @@ Tests covering this precedence are in `VSTO2/OutlookAI.Tests/ConfigTests.cs`:
 `LoadConfigFromPaths_UserOverridesSharedDefaults`,
 `LoadConfigFromPaths_SharedConfigPathNull_TreatedAsAbsent`,
 `LoadConfigFromPaths_GlobalAndSharedAndUser_UserBeatsSharedBeatsGlobal`.
+
+## Addendum — v2.2.2 precedence change
+
+The v2.1.1 layering above let the per-user file win, and `SaveConfig()`
+wrote both files, so an old per-user copy kept its user on the model,
+effort, write tools and admin password it held when saved, whatever an
+admin set for everyone later. v2.2.2 swaps the last two layers:
+
+| Layer | Location | Written by | Purpose |
+| --- | --- | --- | --- |
+| 1. Defaults | hardcoded in `Config.cs` | n/a | Last-resort fallback. |
+| 2. Global | `C:\Program Files\OutlookAI\config.xml` | hand edits (updates keep it) | Server-only fields (`CodexAuthPath`, `VoiceModel`, `MaxBulkExportRows`, `ModelCatalogClientVersion`) and fallbacks. |
+| 3. Per-user | `%APPDATA%\OutlookAI\config.xml` | nothing since v2.2.2 | Old copies only fill in settings layer 4 lacks. |
+| 4. Shared | `C:\ProgramData\OutlookAI\config.xml` | Settings (admin password) | The Settings for every user. |
+
+Settings (`Config.SaveSettings`) writes only layer 4, and only the settings
+changed in the dialog, merged into the file on disk under a cross-process
+lock (`Services/FileLock.cs`) and swapped in atomically; write tools are
+merged tool by tool. The per-user tests named above were replaced by
+`LoadConfigFromPaths_GlobalAndSharedAndUser_SharedBeatsUserBeatsGlobal`,
+`LoadConfigFromPaths_ServerWideSettingsBeatAPerUserFile` and the
+`SaveSettingsTo_*` tests; the dialog's behavior is covered by
+`SettingsFormModelCatalogTests`. User-facing details: `Deploy/README.txt`
+(SETTINGS).

@@ -119,9 +119,11 @@ a clean Outlook session (close Outlook → run the installer → reopen Outlook)
 
 ## Cleanup
 
-- [ ] Run `Deploy\Uninstall-OutlookAI.ps1` (when applicable). Verify
-  `C:\Program Files\OutlookAI` removed, `%LOCALAPPDATA%\OutlookAI\WebUI` and
-  `%LOCALAPPDATA%\OutlookAI\WebView2Data` cleaned up on next user logon.
+- [ ] Run `Uninstall-OutlookAI.ps1` (when applicable). Verify
+  `C:\Program Files\OutlookAI` and `C:\ProgramData\OutlookAI\auth.json` are
+  removed, while `config.xml`, `models.json` and `Backups\` in
+  `C:\ProgramData\OutlookAI` stay. Per-user `%LOCALAPPDATA%\OutlookAI`
+  folders are left in place.
 
 ---
 
