@@ -43,8 +43,32 @@ namespace OutlookAI.Tests.Services
             using (var http = new HttpClient(new FakeHttpMessageHandler()))
             using (var svc = new CodexAuthService(_authPath, http))
             {
-                await Assert.ThrowsAsync<InvalidOperationException>(
+                var ex = await Assert.ThrowsAsync<NotSignedInException>(
                     () => svc.GetAccessTokenAsync(CancellationToken.None));
+                // The Inbox panes show this too and have no gear: name the ribbon button.
+                Assert.Contains("Settings in the AI Assistant group on the ribbon", ex.Message);
+                Assert.Equal("Not signed in", ex.Status);
+            }
+        }
+
+        [Fact]
+        public async Task GetAccessTokenAsync_Throws_WhenTheSignInExpiredWithoutARefreshToken()
+        {
+            File.WriteAllText(_authPath,
+                "{\"tokens\":{\"access_token\":\"sk-old\",\"id_token\":\"\","
+                + "\"refresh_token\":\"\",\"access_token_expires_at\":\""
+                + DateTimeOffset.UtcNow.AddHours(-1).ToString("o")
+                + "\"},\"last_refresh\":\"" + DateTimeOffset.UtcNow.ToString("o") + "\"}");
+
+            var fake = new FakeHttpMessageHandler();
+            using (var http = new HttpClient(fake))
+            using (var svc = new CodexAuthService(_authPath, http))
+            {
+                var ex = await Assert.ThrowsAsync<NotSignedInException>(
+                    () => svc.GetAccessTokenAsync(CancellationToken.None));
+                Assert.Contains("Settings in the AI Assistant group on the ribbon", ex.Message);
+                Assert.Equal("Sign-in expired", ex.Status);
+                Assert.Empty(fake.Requests);
             }
         }
 

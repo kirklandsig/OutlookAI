@@ -124,6 +124,10 @@ namespace OutlookAI.Services.Models
             {
                 throw;
             }
+            catch (NotSignedInException ex)
+            {
+                return ModelCatalogUpdateResult.Failed(ex.Status + ". Sign in under ChatGPT Account above first.");
+            }
             catch (Exception ex)
             {
                 return ModelCatalogUpdateResult.Failed(

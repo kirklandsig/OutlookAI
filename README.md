@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/kirklandsig/OutlookAI)](https://github.com/kirklandsig/OutlookAI/releases/latest)
-[![Tests](https://img.shields.io/badge/tests-898%2F898-brightgreen)](#contributing)
+[![Tests](https://img.shields.io/badge/tests-904%2F904-brightgreen)](#contributing)
 
 The free open-source alternative to **GPT for Outlook**, **Mailbutler**,
 **Lavender**, **Compose AI**, **OtterMail**, **Boomerang Respondable**,
@@ -126,8 +126,12 @@ API key.
 
 ### ⚙️ Settings
 
-The gear icon opens a password-gated Settings dialog. Its choices apply to
-every user on the machine (saved in `C:\ProgramData\OutlookAI\config.xml`):
+**Settings** in the ribbon's AI Assistant group (Home tab, and in compose
+windows) opens a password-gated Settings dialog; so does the gear on the
+compose pane's Actions tab. The default admin password is `admin`: change it
+in Settings after your first sign-in, since anyone who knows it can change
+these settings. Its choices apply to every user on the machine (saved in
+`C:\ProgramData\OutlookAI\config.xml`):
 
 - ChatGPT account: Sign In / Sign Out / Refresh.
 - Model picker driven by the model catalog ChatGPT publishes for your
@@ -141,7 +145,8 @@ every user on the machine (saved in `C:\ProgramData\OutlookAI\config.xml`):
   v2.2.1) sends no effort, so the model's own default applies (medium today).
   `config.xml` still stores it as `None`, which older versions read the same way.
 - 4 checkboxes for the safe-write tools (each can be individually enabled).
-- Admin password rotation.
+- Admin password change (default `admin`; Settings flags it in red until
+  it's changed).
 - Updates: **Check Now** / **Install Update** for new OutlookAI releases (see
   [Updating](#updating)).
 
@@ -205,7 +210,10 @@ Expand-Archive $zip -DestinationPath C:\OutlookAI
 Set-ExecutionPolicy -Scope LocalMachine -ExecutionPolicy RemoteSigned
 C:\OutlookAI\Install-OutlookAI.ps1 -SourcePath C:\OutlookAI
 
-# 3. Open Outlook → AI Assistant → sign in with your ChatGPT account.
+# 3. Open Outlook → Home tab → AI Assistant group → Settings. Enter the
+#    admin password (default: admin), click Sign In and sign in with your
+#    ChatGPT account. Then change the admin password (New Admin Password →
+#    Save Password).
 ```
 
 The same bundle covers single workstations, multi-user RDS / Terminal Server
@@ -388,6 +396,9 @@ up; delete that folder too to remove everything.
   effort is now called `Auto`.
 - **v2.2.2:** Settings saves for every user, and the ProgramData file wins
   over old per-user copies.
+- **v2.2.3:** a Settings button on the ribbon (Inbox and compose windows);
+  the chat panes say where to sign in, and Settings flags the default admin
+  password.
 
 **Known gaps / explicit follow-ups:**
 
@@ -415,7 +426,7 @@ $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=OutlookAI d
   "VSTO2\OutlookAI.sln" /restore /p:RestorePackagesConfig=true /p:Configuration=Debug `
   /p:Platform="Any CPU" /p:ManifestCertificateThumbprint=$($cert.Thumbprint)
 
-# Test (898 tests, all passing)
+# Test (904 tests, all passing)
 & "C:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe" `
   "VSTO2\OutlookAI.Tests\bin\Debug\net472\OutlookAI.Tests.dll"
 

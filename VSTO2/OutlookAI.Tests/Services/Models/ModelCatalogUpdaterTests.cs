@@ -197,9 +197,30 @@ namespace OutlookAI.Tests.Services.Models
             var result = await RunAsync(fake, Current("0.155.1"), authPath: Path.Combine(_dir, "missing-auth.json"));
 
             Assert.False(result.Succeeded);
-            // Says what failed (any token failure, not only "signed out") and why.
-            Assert.Contains("ChatGPT sign-in", result.Error);
-            Assert.Contains("not signed in", result.Error);
+            // Shown in Settings, so it points above, not back at the ribbon button.
+            Assert.Contains("Not signed in", result.Error);
+            Assert.Contains("ChatGPT Account above", result.Error);
+            Assert.DoesNotContain("ribbon", result.Error);
+            Assert.Empty(fake.Requests);
+        }
+
+        [Fact]
+        public async Task UpdateAsync_OtherTokenFailure_SaysWhatFailedAndWhy()
+        {
+            // Expired, and the token endpoint (nothing queued) answers 500.
+            var expired = Path.Combine(_dir, "expired-auth.json");
+            File.WriteAllText(expired,
+                "{\"tokens\":{\"access_token\":\"sk-old\",\"id_token\":\"\",\"refresh_token\":\"r1\","
+                + "\"account_id\":\"acct-123\",\"access_token_expires_at\":\""
+                + DateTimeOffset.UtcNow.AddHours(-1).ToString("o")
+                + "\"},\"last_refresh\":\"" + DateTimeOffset.UtcNow.ToString("o") + "\"}");
+            var fake = new FakeHttpMessageHandler();
+
+            var result = await RunAsync(fake, Current("0.155.1"), authPath: expired);
+
+            Assert.False(result.Succeeded);
+            Assert.Contains("ChatGPT sign-in token", result.Error);
+            Assert.Contains("OAuth refresh failed: 500", result.Error);
             Assert.Empty(fake.Requests);
         }
 
