@@ -11,6 +11,12 @@
 							onAction="OnAIAssistantClick"
 							supertip="Open the AI Writing Assistant to help proofread, revise, and write emails."
 							imageMso="SmartArtChangeColorsGallery" />
+					<button id="btnSettings"
+							label="Settings"
+							size="large"
+							onAction="OnSettingsClick"
+							supertip="Open OutlookAI Settings (admin password): ChatGPT sign-in, model, reasoning effort, write tools and updates."
+							imageMso="CurrentViewSettings" />
 				</group>
 			</tab>
 			<!-- Phase 3a: Explorer ribbon button (Inbox view). Same onAction
@@ -30,6 +36,12 @@
 							onAction="OnReportsClick"
 							supertip="Open the Inbox Reports pane to generate digests, action items, conversation summaries, and stats."
 							imageMso="PivotTableInsert" />
+					<button id="btnSettingsExplorer"
+							label="Settings"
+							size="large"
+							onAction="OnSettingsClick"
+							supertip="Open OutlookAI Settings (admin password): ChatGPT sign-in, model, reasoning effort, write tools and updates."
+							imageMso="CurrentViewSettings" />
 				</group>
 			</tab>
 		</tabs>

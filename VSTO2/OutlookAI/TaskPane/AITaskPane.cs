@@ -659,20 +659,7 @@ namespace OutlookAI.TaskPane
 
         private void btnSettings_Click(object sender, EventArgs e)
         {
-            using (var settingsForm = OpenSettings(null))
-            {
-                settingsForm.ShowDialog();
-            }
-        }
-
-        // Settings opens on what is saved for every user now, not on what this
-        // Outlook loaded at startup: another admin may have changed it since,
-        // and a Save must not write the old values back.
-        private static SettingsForm OpenSettings(CodexAuthService auth)
-        {
-            Config.ReloadConfigFiles();
-            Config.NotifyAiSettingsChanged();
-            return auth != null ? new SettingsForm(auth) : new SettingsForm();
+            SettingsForm.Open();
         }
 
         // -------------------------------------------------------------------
@@ -786,10 +773,7 @@ namespace OutlookAI.TaskPane
                 return true;
             }
             ShowStatus(promptMessage, true);
-            using (var settingsForm = OpenSettings(auth))
-            {
-                settingsForm.ShowDialog();
-            }
+            SettingsForm.Open(auth);
             return auth.GetStatus().State == AuthState.Authenticated;
         }
 
