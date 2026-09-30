@@ -55,6 +55,21 @@ namespace OutlookAI.Services
     }
 
     /// <summary>
+    /// No usable ChatGPT sign-in: none is stored, or it expired and can't be
+    /// renewed. Its message tells pane users where an admin signs in;
+    /// Settings shows <see cref="Status"/> instead.
+    /// </summary>
+    public sealed class NotSignedInException : InvalidOperationException
+    {
+        public NotSignedInException(string message, string status) : base(message)
+        {
+            Status = status;
+        }
+
+        public string Status { get; }
+    }
+
+    /// <summary>
     /// Persisted token bundle. Mirrors the shape of <c>~/.codex/auth.json</c>
     /// produced by Codex CLI; OutlookAI writes it to <c>C:\ProgramData\OutlookAI\auth.json</c>.
     /// </summary>
@@ -141,7 +156,9 @@ namespace OutlookAI.Services
                 EnsureLoaded();
                 if (_cached == null)
                 {
-                    throw new InvalidOperationException("OutlookAI is not signed in. Open Settings to sign in.");
+                    throw new NotSignedInException(
+                        "OutlookAI is not signed in to ChatGPT. An admin signs in once for everyone: Settings in the AI Assistant group on the ribbon.",
+                        "Not signed in");
                 }
 
                 if (NeedsRefresh(_cached))
@@ -370,7 +387,9 @@ namespace OutlookAI.Services
         {
             if (string.IsNullOrEmpty(refreshToken))
             {
-                throw new InvalidOperationException("Cannot refresh: refresh_token is missing. Sign in again.");
+                throw new NotSignedInException(
+                    "OutlookAI's ChatGPT sign-in has expired and can't be renewed. An admin signs in again for everyone: Settings in the AI Assistant group on the ribbon.",
+                    "Sign-in expired");
             }
 
             var body = new FormUrlEncodedContent(new Dictionary<string, string>

@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using Xunit;
 
 namespace OutlookAI.Tests.Services.Models
@@ -85,15 +86,26 @@ namespace OutlookAI.Tests.Services.Models
         [Fact]
         public void Settings_OpensOnWhatIsSavedNow()
         {
-            var pane = File.ReadAllText(FindSourceFile("OutlookAI", "TaskPane", "AITaskPane.cs")).Replace("\r\n", "\n");
-            var open = Slice(pane, "private static SettingsForm OpenSettings", "\n        }\n");
+            var open = Slice(SettingsFormSource, "public static void Open(", "\n        }\n");
 
             var reload = open.IndexOf("Config.ReloadConfigFiles();", StringComparison.Ordinal);
             Assert.True(reload >= 0 && reload < open.IndexOf("new SettingsForm", StringComparison.Ordinal));
-            // Every way the pane opens Settings goes through it.
-            Assert.Equal(2, pane.Split(new[] { "new SettingsForm" }, StringSplitOptions.None).Length - 1);
-            Assert.Equal(2, open.Split(new[] { "new SettingsForm" }, StringSplitOptions.None).Length - 1);
+            // Every way into Settings goes through it: the compose pane's gear and
+            // sign-in prompt, and the ribbon button.
+            var addIn = Path.GetDirectoryName(FindSourceFile("OutlookAI", "SettingsForm.cs"));
+            var created = Directory.GetFiles(addIn, "*.cs", SearchOption.AllDirectories)
+                .Where(f => !f.Contains(@"\obj\") && !f.Contains(@"\bin\"))
+                .Sum(f => Occurrences(File.ReadAllText(f), "new SettingsForm"));
+            Assert.Equal(Occurrences(open, "new SettingsForm"), created);
+            Assert.Equal(2, Occurrences(File.ReadAllText(FindSourceFile("OutlookAI", "TaskPane", "AITaskPane.cs")), "SettingsForm.Open("));
+            Assert.Contains("SettingsForm.Open(",
+                Slice(File.ReadAllText(FindSourceFile("OutlookAI", "ThisAddIn.cs")).Replace("\r\n", "\n"), "public void ShowSettings()", "\n        }\n"));
+            Assert.Contains("Globals.ThisAddIn.ShowSettings();",
+                Slice(File.ReadAllText(FindSourceFile("OutlookAI", "Ribbon.cs")).Replace("\r\n", "\n"), "public void OnSettingsClick(", "\n        }\n"));
         }
+
+        private static int Occurrences(string text, string value) =>
+            text.Split(new[] { value }, StringSplitOptions.None).Length - 1;
 
         // Settings saves for every user; a failed save must not look saved.
         [Theory]

@@ -92,14 +92,15 @@ Steps:
    Set-ExecutionPolicy -Scope LocalMachine -ExecutionPolicy RemoteSigned
    C:\OutlookAI\Install-OutlookAI.ps1 -SourcePath C:\OutlookAI
 
-3. Open Outlook -> click AI Assistant on the ribbon.
+3. Open Outlook -> Home tab -> AI Assistant group -> Settings.
 
-4. Open a compose window or use the taskpane button -> click any action ->
-   the default browser opens the ChatGPT OAuth consent page (the consent
+4. Enter the admin password (default: admin) -> ChatGPT Account -> Sign In.
+   The default browser opens the ChatGPT OAuth consent page (the consent
    screen says "Codex CLI" because OutlookAI reuses the public Codex
    client_id; this is expected).
 
-5. Sign in. The browser confirms and OutlookAI returns to its taskpane.
+5. Sign in. The browser confirms and Settings shows "Signed in as ...".
+   Then change the admin password: New Admin Password -> Save Password.
 
 6. Verification:
      SHA256 of C:\Program Files\OutlookAI\OutlookAI.dll matches the
@@ -124,9 +125,12 @@ Steps:
    .\Install-OutlookAI.ps1 -SourcePath C:\OutlookAI
 
 3. Designate one admin user as the "first run" user. Have them log in,
-   open Outlook, open AI Assistant, and click any action. The OAuth
+   open Outlook, click Settings in the AI Assistant group on the Home tab,
+   enter the admin password (default: admin) and click Sign In. The OAuth
    browser flow runs once; the resulting auth.json is shared with every
-   user on this server.
+   user on this server. Then change the admin password (New Admin
+   Password -> Save Password), since every user on the server sees the
+   Settings button.
 
 Exports: where Folder Redirection points Documents at a network share,
 Excel/PDF exports go to %LOCALAPPDATA%\OutlookAI\Reports\ instead of
@@ -155,8 +159,10 @@ trusted with the ChatGPT account that signs in.
 
 SETTINGS (ALL USERS)
 --------------------
-Settings (gear icon, admin password) saves the model, reasoning effort,
-write tools and admin password for every user on the machine, in:
+Settings (the Settings button in the ribbon's AI Assistant group, or the
+gear on the compose pane's Actions tab; admin password, default "admin")
+saves the model, reasoning effort, write tools and admin password for
+every user on the machine, in:
 
   C:\ProgramData\OutlookAI\config.xml
 
@@ -235,14 +241,15 @@ C:\Program Files\OutlookAI\config.xml:
 
 UPDATES
 -------
-Admins update OutlookAI from inside Outlook: Settings (gear icon, admin
-password) -> Updates. Check Now looks up the latest release on GitHub;
-Install Update, offered when that release is newer, downloads its zip,
-checks the SHA256 and runs its installer with administrator rights (UAC
-prompt). The installer closes Outlook for every user on the machine and
-leaves it closed, so warn RDS users first; everyone reopens Outlook when
-it finishes. Updates keep C:\Program Files\OutlookAI\config.xml and the
-Settings in C:\ProgramData\OutlookAI.
+Admins update OutlookAI from inside Outlook: Settings (ribbon, AI
+Assistant group; admin password) -> Updates. Check Now looks up the
+latest release on GitHub; Install Update, offered when that release is
+newer, downloads its zip, checks the SHA256 and runs its installer with
+administrator rights (UAC prompt). The installer closes Outlook for
+every user on the machine and leaves it closed, so warn RDS users first;
+everyone reopens Outlook when it finishes. Updates keep
+C:\Program Files\OutlookAI\config.xml and the Settings in
+C:\ProgramData\OutlookAI.
 
 The updater needs HTTPS access to api.github.com, github.com and the
 *.githubusercontent.com hosts GitHub redirects release downloads to.
@@ -258,7 +265,7 @@ ROTATING CREDENTIALS
 OutlookAI can't revoke tokens remotely; rotation is a manual two-step:
 
 1. On the RDS server, as any user who knows the OutlookAI admin password:
-   - Open Outlook -> AI Assistant -> gear icon (Settings).
+   - Open Outlook -> Home tab -> AI Assistant group -> Settings.
    - Enter the OutlookAI admin password.
    - Click "Sign Out" in the ChatGPT Account section.
    - Click "Sign In" and authenticate with the new ChatGPT account.
