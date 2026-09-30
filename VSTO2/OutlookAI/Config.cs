@@ -21,6 +21,7 @@ namespace OutlookAI
         // MaxTokens, and Claude model names) are ignored if encountered.
         // ============================================================
 
+        public const string DefaultAdminPassword = "admin";
         public const string DefaultVoiceModel = "gpt-realtime-1.5";
         public const string DefaultCodexAuthPath = @"C:\ProgramData\OutlookAI\auth.json";
         public const string DefaultReasoningEffort = ReasoningEffortNames.Auto;
@@ -42,7 +43,7 @@ namespace OutlookAI
         // Test seam for retirement-date resolution.
         internal static Func<DateTimeOffset> Clock { get; set; } = () => DateTimeOffset.UtcNow;
 
-        public static string AdminPassword { get; set; } = "admin";
+        public static string AdminPassword { get; set; } = DefaultAdminPassword;
         public static string CodexAuthPath { get; set; } = DefaultCodexAuthPath;
         // After ModelCatalog/Clock: static initializers run in textual order.
         public static string Model { get; set; } = DefaultModel;
@@ -303,7 +304,7 @@ namespace OutlookAI
             {
                 return new Values
                 {
-                    AdminPassword = "admin",
+                    AdminPassword = DefaultAdminPassword,
                     CodexAuthPath = DefaultCodexAuthPath,
                     Model = DefaultModel,
                     VoiceModel = DefaultVoiceModel,

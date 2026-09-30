@@ -78,7 +78,8 @@ a clean Outlook session (close Outlook → run the installer → reopen Outlook)
 
 ## Settings + admin
 
-20. [ ] Open Settings (gear icon on Actions tab) → enter admin password.
+20. [ ] Open Settings (gear icon on Actions tab, or Settings in the ribbon's
+    AI Assistant group) → enter admin password (default `admin`).
 21. [ ] Change Model dropdown to `gpt-6-astra`. Reasoning dropdown re-filters
     (`Auto`, `Low`, `Medium`, `High`, `XHigh`, `Max`; never `Ultra`). The chat
     pane's effort list starts with `(from Settings)`, then the same entries.
@@ -145,6 +146,9 @@ passes.
     ribbon is unchanged.
   - Close it. Look at the main Outlook Home tab (TabMail) → an
     AI Assistant group now appears far right, after Move.
+  - Both AI Assistant groups have a Settings button (gear icon). It opens
+    the password-gated Settings dialog. Signed out, a chat pane's error
+    names that button.
 
 ## Pane lifecycle
 

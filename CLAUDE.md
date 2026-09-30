@@ -81,6 +81,13 @@ $vstest  = "C:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\Co
   reloaded or saved). Values it shows on its own, such as a retired model's
   replacement or Auto for a model without the chosen effort, never count as
   edits.
+- Open Settings only through `SettingsForm.Open` (ribbon button, compose
+  gear, sign-in prompt): it reloads the saved config first, so a Save can't
+  write stale values back.
+- `Ribbon.xml` serves both the Inbox (`TabMail`) and compose
+  (`TabNewMailMessage`) ribbons. Every callback needs a public handler in
+  `Ribbon.cs` and control ids must be unique, or Office drops the add-in's
+  whole ribbon (`RibbonTests`). Built-in icons are `imageMso` names.
 - Outlook COM access goes through `OutlookThreadMarshaller` onto the UI
   thread.
 - WinForms buttons need explicit `ForeColor`/`BackColor` and

@@ -253,6 +253,27 @@ namespace OutlookAI
                 }
         }
 
+        /// <summary>
+        /// Settings button on the ribbon (Inbox and compose windows).
+        /// </summary>
+        public void ShowSettings()
+        {
+            using (TraceLog.Scope("ShowSettings", "ThisAddIn"))
+                try
+                {
+                    SettingsForm.Open(AuthService);
+                }
+                catch (Exception ex)
+                {
+                    TraceLog.Write("ShowSettings error: " + ex, "ThisAddIn");
+                    System.Windows.Forms.MessageBox.Show(
+                        $"Error: {ex.Message}",
+                        "OutlookAI Settings",
+                        System.Windows.Forms.MessageBoxButtons.OK,
+                        System.Windows.Forms.MessageBoxIcon.Error);
+                }
+        }
+
         private void ShowReportsExplorerTaskPane(Outlook.Explorer explorer)
         {
             foreach (CustomTaskPane pane in this.CustomTaskPanes)

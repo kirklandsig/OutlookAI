@@ -28,7 +28,9 @@ Expand-Archive $zip -DestinationPath C:\OutlookAI
 Set-ExecutionPolicy -Scope LocalMachine -ExecutionPolicy RemoteSigned
 C:\OutlookAI\Install-OutlookAI.ps1 -SourcePath C:\OutlookAI
 
-# Open Outlook → AI Assistant → sign in with your ChatGPT account.
+# Open Outlook → Home tab → AI Assistant group → Settings. Enter the admin
+# password (default: admin), click Sign In and sign in with your ChatGPT
+# account. Then change the admin password (New Admin Password → Save Password).
 ```
 
 After that, admins install new versions from Settings → **Updates**

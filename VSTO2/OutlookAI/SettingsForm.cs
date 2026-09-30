@@ -28,6 +28,7 @@ namespace OutlookAI
         private Button _btnSignIn;
         private Button _btnSignOut;
         private Button _btnRefresh;
+        private Label _lblNewPassword;
         private TextBox _txtNewPassword;
         private Button _btnSavePassword;
 
@@ -115,9 +116,18 @@ namespace OutlookAI
             }
         }
 
-        public SettingsForm()
-            : this(Globals.ThisAddIn != null ? Globals.ThisAddIn.AuthService : null)
+        // Settings opens on what is saved for every user now, not on what this
+        // Outlook loaded at startup: another admin may have changed it since,
+        // and a Save must not write the old values back. The ribbon button and
+        // the compose pane's gear and sign-in prompt all open it through here.
+        public static void Open(CodexAuthService auth = null)
         {
+            Config.ReloadConfigFiles();
+            Config.NotifyAiSettingsChanged();
+            using (var form = new SettingsForm(auth ?? Globals.ThisAddIn?.AuthService))
+            {
+                form.ShowDialog();
+            }
         }
 
         public SettingsForm(CodexAuthService auth)
@@ -232,7 +242,7 @@ namespace OutlookAI
                 _lblAccountStatus, _btnSignIn, _btnSignOut, _btnRefresh
             });
 
-            var lblNewPassword = new Label
+            _lblNewPassword = new Label
             {
                 Text = "New Admin Password (leave blank to keep):",
                 Location = new Point(20, 145),
@@ -256,7 +266,7 @@ namespace OutlookAI
 
             _panelSettings.Controls.AddRange(new Control[]
             {
-                grpAccount, lblNewPassword, _txtNewPassword, _btnSavePassword
+                grpAccount, _lblNewPassword, _txtNewPassword, _btnSavePassword
             });
 
             BuildAiBehaviorGroup();
@@ -1071,6 +1081,7 @@ namespace OutlookAI
                 _lblError.Visible = false;
                 _txtPassword.Enabled = false;
                 UpdateAccountUi(GetCurrentStatus());
+                ShowPasswordHint();
             }
             else
             {
@@ -1097,6 +1108,7 @@ namespace OutlookAI
                     return;
                 }
                 _txtNewPassword.Text = "";
+                ShowPasswordHint();
                 MessageBox.Show(
                     this,
                     "Admin password updated for all users on this machine.",
@@ -1104,6 +1116,17 @@ namespace OutlookAI
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
             }
+        }
+
+        // Every user can open Settings from the ribbon, and the default
+        // password is in the docs: say so while it's still the one in use.
+        private void ShowPasswordHint()
+        {
+            var isDefault = Config.AdminPassword == Config.DefaultAdminPassword;
+            _lblNewPassword.Text = isDefault
+                ? "New Admin Password (still the default \"admin\": change it):"
+                : "New Admin Password (leave blank to keep):";
+            _lblNewPassword.ForeColor = isDefault ? Color.DarkRed : SystemColors.ControlText;
         }
 
         private async Task SignInAsync()
@@ -1173,6 +1196,10 @@ namespace OutlookAI
                 // Forcing a token fetch exercises the refresh path.
                 await _auth.GetAccessTokenAsync(CancellationToken.None).ConfigureAwait(true);
                 UpdateAccountUi(_auth.GetStatus());
+            }
+            catch (NotSignedInException ex)
+            {
+                UpdateAccountUi(AuthStatus.Unauthenticated(ex.Status));
             }
             catch (Exception ex)
             {
