@@ -87,6 +87,51 @@ namespace OutlookAI.Tests.Services.QuickTools
         }
 
         [Fact]
+        public void LargeDarkArea_StaysDark()
+        {
+            using (var page = SyntheticPages.Page(600, 800, SyntheticPages.DimPaper, SyntheticPages.DimInk))
+            {
+                using (var g = Graphics.FromImage(page))
+                using (var fill = new SolidBrush(Color.FromArgb(40, 40, 40)))
+                {
+                    g.FillRectangle(fill, 60, 280, 210, 200);
+                }
+                var px = PixelBuffer.FromBitmap(page);
+
+                PageLook.Apply(px, PageLook.Normal, grayscale: true);
+
+                Assert.True(PageLook.Percentile(Region(px, 0.135, 0.375, 0.415, 0.575), 50) < 100);
+            }
+        }
+
+        [Fact]
+        public void SparsePage_PaperStaysClean()
+        {
+            var px = new PixelBuffer(600, 800);
+            for (var y = 0; y < 800; y++)
+            {
+                for (var x = 0; x < 600; x++)
+                {
+                    var v = (byte)(245 + ((x * 7 + y * 13) % 7) - 3);
+                    var o = (y * 600 + x) * 3;
+                    px.Data[o] = px.Data[o + 1] = px.Data[o + 2] = v;
+                }
+            }
+            foreach (var y in new[] { 200, 400, 600 })
+            {
+                for (var x = 100; x < 300; x++)
+                {
+                    var o = (y * 600 + x) * 3;
+                    px.Data[o] = px.Data[o + 1] = px.Data[o + 2] = 60;
+                }
+            }
+
+            PageLook.Apply(px, PageLook.Normal, grayscale: true);
+
+            Assert.True(PageLook.Percentile(Region(px, 0.05, 0.05, 0.95, 0.2), 1) > 240);
+        }
+
+        [Fact]
         public void Apply_IsDeterministic()
         {
             var a = DimPage();

@@ -34,6 +34,10 @@ namespace OutlookAI.Services.QuickTools
 
         private const int Block = 8;
         private const int SharpenThreshold = 2;
+        // Levels only stretch when the page has at least this much tonal range; less is paper noise.
+        private const int MinContrast = 48;
+        // Background estimates are floored at this share of the paper so large dark areas are not whitened.
+        private const float BackgroundFloor = 0.6f;
 
         public static LookProfile For(CleanupStrength strength)
         {
@@ -72,7 +76,7 @@ namespace OutlookAI.Services.QuickTools
 
             var black = Percentile(lum, profile.BlackPercentile);
             var white = Percentile(lum, profile.WhitePercentile);
-            if (white - black >= 10)
+            if (white - black >= MinContrast)
             {
                 var lut = Levels(black, white, profile.Gamma);
                 foreach (var c in channels)
@@ -206,13 +210,15 @@ namespace OutlookAI.Services.QuickTools
             }
             BoxBlur(background, bw, bh, Math.Max(1, (int)Math.Round(Math.Min(w, h) / 20.0 / Block)));
 
+            var paper = Percentile(lum, 90);
+            var floor = Math.Max(16f, BackgroundFloor * paper);
             for (var y = 0; y < h; y++)
             {
                 var gy = (y + 0.5) / Block - 0.5;
                 for (var x = 0; x < w; x++)
                 {
                     var gx = (x + 0.5) / Block - 0.5;
-                    var gain = 255f / Math.Max(Bilinear(background, bw, bh, gx, gy), 16f);
+                    var gain = 255f / Math.Max(Bilinear(background, bw, bh, gx, gy), floor);
                     var i = y * w + x;
                     foreach (var c in channels) c[i] = Clamp(c[i] * gain);
                     if (!lumIsChannel) lum[i] = Clamp(lum[i] * gain);
