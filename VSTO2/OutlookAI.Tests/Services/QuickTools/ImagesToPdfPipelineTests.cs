@@ -204,6 +204,45 @@ namespace OutlookAI.Tests.Services.QuickTools
         }
 
         [Fact]
+        public async Task RunAsync_FrameThatFailsToDecode_IsListed_AndNextImageStillRuns()
+        {
+            var pipeline = new ImagesToPdfPipeline(PlansByWidth(w => PlanJson("document_page")), _dir);
+            var calls = 0;
+            pipeline.FrameDecoder = (pages, index) =>
+            {
+                if (Interlocked.Increment(ref calls) == 1) throw new FormatException("corrupt frame");
+                return pages.Decode(index);
+            };
+
+            var result = await pipeline.RunAsync(new[] { AttachedImage("a.jpg", 300, 400), AttachedImage("b.jpg", 300, 400) }, null, CancellationToken.None);
+
+            Assert.Equal(2, result.Pages.Count);
+            Assert.False(result.Pages[0].Readable);
+            Assert.Equal("can't read this file", result.Pages[0].Status);
+            Assert.True(result.Pages[1].Readable);
+            Assert.Equal("page", result.Pages[1].Status);
+        }
+
+        [Fact]
+        public void RunFolder_Delete_IgnoresFoldersOutsideRoot()
+        {
+            var saved = QuickToolsRunFolder.Root;
+            QuickToolsRunFolder.Root = Path.Combine(_dir, "root");
+            try
+            {
+                var outside = Path.Combine(_dir, "elsewhere");
+                Directory.CreateDirectory(outside);
+
+                QuickToolsRunFolder.Delete(outside);
+
+                Assert.True(Directory.Exists(outside));
+            }
+            finally
+            {
+                QuickToolsRunFolder.Root = saved;
+            }
+        }
+        [Fact]
         public void RunFolder_IsCreated_AndOldOnesArePurged()
         {
             var root = Path.Combine(_dir, "root");

@@ -4,7 +4,6 @@ using System.Drawing;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using OutlookAI.Diagnostics;
@@ -30,8 +29,8 @@ namespace OutlookAI.Services.QuickTools
     }
 
     /// <summary>
-    /// Decode ??? plan (AI) ??? clean, writing every image as files in the run folder.
-    /// Runs off the UI thread; at most one full-size image per worker in memory.
+    /// Decode -> plan (AI) -> clean, writing every image as files in the run folder.
+    /// The caller must run it off the UI thread (phase 1 is synchronous until the first await); at most one full-size image per worker in memory.
     /// </summary>
     internal sealed class ImagesToPdfPipeline
     {
@@ -41,6 +40,9 @@ namespace OutlookAI.Services.QuickTools
 
         private readonly Func<byte[], CancellationToken, Task<PagePlan>> _plan;
         private readonly string _runFolder;
+
+        // Test seam: lets a test make a frame fail to decode.
+        internal Func<ImagePages, int, Bitmap> FrameDecoder { get; set; } = (pages, index) => pages.Decode(index);
 
         public ImagesToPdfPipeline(Func<byte[], CancellationToken, Task<PagePlan>> plan, string runFolder)
         {
@@ -88,9 +90,9 @@ namespace OutlookAI.Services.QuickTools
                         Bitmap bitmap;
                         try
                         {
-                            bitmap = frames.Decode(f);
+                            bitmap = FrameDecoder(frames, f);
                         }
-                        catch (Exception ex) when (ex is ArgumentException || ex is ExternalException || ex is OutOfMemoryException || ex is InvalidOperationException || ex is NotSupportedException)
+                        catch (Exception ex) when (!(ex is OperationCanceledException))
                         {
                             TraceLog.Write("QuickTools: unreadable frame (" + ex.GetType().Name + ")", "QuickTools");
                             pages.Add(new ReviewPage(pages.Count + 1, label));
@@ -121,6 +123,7 @@ namespace OutlookAI.Services.QuickTools
             {
                 var work = readable.Select(async page =>
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     var plan = await _plan(aiCopies[page], cancellationToken).ConfigureAwait(false);
                     page.Plan = plan;
                     page.Include = plan.Kind == PageKind.DocumentPage;

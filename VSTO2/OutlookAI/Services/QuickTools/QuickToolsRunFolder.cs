@@ -16,17 +16,28 @@ namespace OutlookAI.Services.QuickTools
 
         public static string Create(DateTime nowUtc)
         {
-            PurgeOlderThan(nowUtc.AddDays(-1));
+            try
+            {
+                PurgeOlderThan(nowUtc.AddDays(-1));
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
             var dir = Path.Combine(Root, nowUtc.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)
                 + "-" + Guid.NewGuid().ToString("N").Substring(0, 8));
             Directory.CreateDirectory(dir);
             return dir;
         }
 
+        /// <summary>Deletes a run folder; anything outside Root is left alone.</summary>
         public static void Delete(string dir)
         {
             try
             {
+                if (!IsUnderRoot(dir)) return;
                 if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
             }
             catch (IOException)
@@ -35,6 +46,13 @@ namespace OutlookAI.Services.QuickTools
             catch (UnauthorizedAccessException)
             {
             }
+        }
+
+        private static bool IsUnderRoot(string dir)
+        {
+            if (string.IsNullOrEmpty(dir)) return false;
+            var root = Path.GetFullPath(Root).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            return Path.GetFullPath(dir).StartsWith(root, StringComparison.OrdinalIgnoreCase);
         }
 
         internal static void PurgeOlderThan(DateTime cutoffUtc)
