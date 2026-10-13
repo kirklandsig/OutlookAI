@@ -228,5 +228,5 @@ follow-up. Do NOT merge to master until every step passes.
    Quick Tools works there too; Settings opens from that group.
 7. [ ] Cancel during "Analyzing…" → nothing else appears;
    `%LOCALAPPDATA%\OutlookAI\QuickTools` has no folder left for that run.
-8. [ ] `%LOCALAPPDATA%\OutlookAI	race.log` has QuickTools lines with counts
+8. [ ] `%LOCALAPPDATA%\OutlookAI\trace.log` has QuickTools lines with counts
    and durations only (no subjects, file names or AI text).

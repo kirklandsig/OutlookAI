@@ -165,7 +165,8 @@ takes the email's images, pasted in or attached, and:
   to the original, or keep it in color;
 - saves one PDF where you choose (starting in the Reports folder) and opens it.
 
-Images are sent to ChatGPT (downscaled) the same way email text is. Each image
+Images are sent to ChatGPT (downscaled) the same way email text is. Images
+under 200 px on the short side (icons, most signature logos) are skipped. Each image
 opens one page at a time (a multi-page TIFF becomes one PDF page per frame, up
 to 30 pages per run); a file that can't be decoded is listed as "can't read
 this file". Pages of PDF attachments and images pasted into Rich Text emails
