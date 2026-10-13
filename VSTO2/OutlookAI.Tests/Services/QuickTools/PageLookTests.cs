@@ -112,7 +112,7 @@ namespace OutlookAI.Tests.Services.QuickTools
             {
                 for (var x = 0; x < 600; x++)
                 {
-                    var v = (byte)(245 + ((x * 7 + y * 13) % 7) - 3);
+                    var v = (byte)(243 + ((x * 7 + y * 13) % 25) - 12);
                     var o = (y * 600 + x) * 3;
                     px.Data[o] = px.Data[o + 1] = px.Data[o + 2] = v;
                 }
@@ -128,7 +128,7 @@ namespace OutlookAI.Tests.Services.QuickTools
 
             PageLook.Apply(px, PageLook.Normal, grayscale: true);
 
-            Assert.True(PageLook.Percentile(Region(px, 0.05, 0.05, 0.95, 0.2), 1) > 240);
+            Assert.True(PageLook.Percentile(Region(px, 0.05, 0.05, 0.95, 0.2), 1) > 225);
         }
 
         [Fact]
