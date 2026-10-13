@@ -61,6 +61,12 @@ namespace OutlookAI.Services.QuickTools
             foreach (var image in images)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                if (image.Path == null)
+                {
+                    // Outlook couldn't save this attachment (see EmailImageCollector.SaveCopy).
+                    pages.Add(new ReviewPage(pages.Count + 1, image.FileName));
+                    continue;
+                }
                 ImagePages frames;
                 try
                 {

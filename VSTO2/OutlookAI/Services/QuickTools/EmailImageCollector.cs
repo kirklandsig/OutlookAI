@@ -67,20 +67,31 @@ namespace OutlookAI.Services.QuickTools
                 n++;
                 var path = Path.Combine(runFolder, "image-" + n.ToString("D2", CultureInfo.InvariantCulture)
                     + ImageAttachmentOrder.SafeExtension(info.FileName));
-                try
-                {
-                    attachments[info.Index].SaveAsFile(path);
-                }
-                catch (COMException ex)
-                {
-                    TraceLog.Write("QuickTools: SaveAsFile failed (0x" + ex.HResult.ToString("X8", CultureInfo.InvariantCulture) + ")", "QuickTools");
-                    continue;
-                }
-                images.Add(new CollectedImage(path, info.FileName, ImageAttachmentOrder.IsInline(info, html)));
+                var index = info.Index;
+                images.Add(SaveCopy(p => attachments[index].SaveAsFile(p), path, info.FileName, ImageAttachmentOrder.IsInline(info, html)));
             }
 
             var richText = Safe(() => mail.BodyFormat) == Outlook.OlBodyFormat.olFormatRichText;
             return new CollectedImages(images, richText);
+        }
+
+        /// <summary>
+        /// A copy Outlook couldn't save (blocked, access denied, disk full) comes back
+        /// without a path, so the review lists it instead of dropping it.
+        /// </summary>
+        internal static CollectedImage SaveCopy(Action<string> saveAsFile, string path, string fileName, bool isInline)
+        {
+            try
+            {
+                saveAsFile(path);
+            }
+            catch (Exception ex) when (ex is COMException || ex is UnauthorizedAccessException || ex is IOException || ex is ArgumentException)
+            {
+                TraceLog.Write("QuickTools: SaveAsFile failed (" + ex.GetType().Name + ", 0x"
+                    + ex.HResult.ToString("X8", CultureInfo.InvariantCulture) + ")", "QuickTools");
+                return new CollectedImage(null, fileName, isInline);
+            }
+            return new CollectedImage(path, fileName, isInline);
         }
 
         private static string Property(Outlook.Attachment attachment, string tag)

@@ -104,6 +104,23 @@ namespace OutlookAI.Tests.Services.QuickTools
             Assert.Equal("can't read this file", page.Status);
         }
 
+        // An attachment Outlook couldn't save arrives with no path: listed, never dropped.
+        [Fact]
+        public async Task RunAsync_ImageThatCouldntBeSaved_IsListedInItsPlace()
+        {
+            var images = new[] { AttachedImage("a.jpg", 300, 400), new CollectedImage(null, "blocked.jpg", false), AttachedImage("c.jpg", 300, 400) };
+            var pipeline = new ImagesToPdfPipeline(PlansByWidth(w => PlanJson("document_page")), _dir);
+
+            var result = await pipeline.RunAsync(images, null, CancellationToken.None);
+
+            Assert.Equal(3, result.Pages.Count);
+            Assert.True(result.Pages[0].Readable);
+            Assert.False(result.Pages[1].Readable);
+            Assert.Equal("blocked.jpg", result.Pages[1].Label);
+            Assert.Equal("can't read this file", result.Pages[1].Status);
+            Assert.True(result.Pages[2].Readable);
+        }
+
         [Fact]
         public async Task RunAsync_NoneAnalyzed_WhenEveryPlanFellBack()
         {
