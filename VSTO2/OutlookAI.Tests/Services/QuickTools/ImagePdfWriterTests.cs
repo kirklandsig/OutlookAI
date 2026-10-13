@@ -150,6 +150,56 @@ namespace OutlookAI.Tests.Services.QuickTools
                 Assert.NotNull(message);
                 Assert.Contains("close it", message);
             }
+            Assert.Equal("old", File.ReadAllText(destination));
+            Assert.Empty(Directory.GetFiles(_dir, "*.partial"));
+        }
+
+        [Fact]
+        public void Publish_ReplacesAnExistingFile_AndLeavesNoPartial()
+        {
+            var temp = Path.Combine(_dir, "temp.pdf");
+            File.WriteAllText(temp, "%PDF-1.4");
+            var destination = Path.Combine(_dir, "lease.pdf");
+            File.WriteAllText(destination, "old");
+
+            Assert.Null(ImagesToPdfOutput.Publish(temp, destination));
+            Assert.Equal("%PDF-1.4", File.ReadAllText(destination));
+            Assert.Empty(Directory.GetFiles(_dir, "*.partial"));
+        }
+
+        // A share that drops mid-copy: a locked region in the source makes the copy fail partway.
+        [Fact]
+        public void Publish_CopyFailsMidway_KeepsTheExistingFile()
+        {
+            var temp = Path.Combine(_dir, "temp.pdf");
+            File.WriteAllBytes(temp, new byte[8 * 1024 * 1024]);
+            var destination = Path.Combine(_dir, "lease.pdf");
+            File.WriteAllText(destination, "old");
+            using (var holder = new FileStream(temp, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite))
+            {
+                holder.Lock(4 * 1024 * 1024, 1024 * 1024);
+                try
+                {
+                    Assert.NotNull(ImagesToPdfOutput.Publish(temp, destination));
+                }
+                finally
+                {
+                    holder.Unlock(4 * 1024 * 1024, 1024 * 1024);
+                }
+            }
+            Assert.Equal("old", File.ReadAllText(destination));
+            Assert.Empty(Directory.GetFiles(_dir, "*.partial"));
+        }
+
+        [Fact]
+        public void Publish_MissingSource_KeepsTheExistingFile()
+        {
+            var destination = Path.Combine(_dir, "lease.pdf");
+            File.WriteAllText(destination, "old");
+
+            Assert.NotNull(ImagesToPdfOutput.Publish(Path.Combine(_dir, "gone.pdf"), destination));
+            Assert.Equal("old", File.ReadAllText(destination));
+            Assert.Empty(Directory.GetFiles(_dir, "*.partial"));
         }
     }
 }
