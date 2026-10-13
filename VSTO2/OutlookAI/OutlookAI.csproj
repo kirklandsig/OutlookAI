@@ -356,8 +356,10 @@
     <Compile Include="Services\Models\ReasoningEffortNames.cs" />
     <Compile Include="Services\OutlookThreadMarshaller.cs" />
     <Compile Include="Services\OutlookToolHost.cs" />
+    <Compile Include="Services\QuickTools\EmailImageCollector.cs" />
     <Compile Include="Services\QuickTools\Geometry.cs" />
     <Compile Include="Services\QuickTools\Homography.cs" />
+    <Compile Include="Services\QuickTools\ImageAttachmentOrder.cs" />
     <Compile Include="Services\QuickTools\ImageLoader.cs" />
     <Compile Include="Services\QuickTools\ImagePdfWriter.cs" />
     <Compile Include="Services\QuickTools\ImagesToPdfOutput.cs" />
