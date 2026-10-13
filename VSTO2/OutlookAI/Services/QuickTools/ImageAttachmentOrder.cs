@@ -46,8 +46,17 @@ namespace OutlookAI.Services.QuickTools
         {
             var id = (a.ContentId ?? "").Trim().TrimStart('<').TrimEnd('>');
             if (id.Length == 0 || string.IsNullOrEmpty(html)) return -1;
-            return html.IndexOf("cid:" + id, StringComparison.OrdinalIgnoreCase);
+            var cid = "cid:" + id;
+            for (var at = html.IndexOf(cid, StringComparison.OrdinalIgnoreCase); at >= 0;
+                 at = html.IndexOf(cid, at + 1, StringComparison.OrdinalIgnoreCase))
+            {
+                var end = at + cid.Length;
+                if (end == html.Length || !ContinuesId(html[end])) return at;
+            }
+            return -1;
         }
+
+        private static bool ContinuesId(char c) => char.IsLetterOrDigit(c) || "._-%+=$#~".IndexOf(c) >= 0;
 
         private static string Extension(string fileName)
         {
