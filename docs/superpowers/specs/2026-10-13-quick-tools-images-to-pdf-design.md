@@ -94,15 +94,21 @@ synthetic ones; the review window and the plan validation (§ 6.3) cover that.
 ```
 
 - **Page list:** thumbnail, include checkbox, position, and a label:
-  - "page": an AI-judged document page, included by default.
-  - "not a document: <reason>" (logo, signature image, photo of people):
-    excluded by default but listed, so nothing disappears silently.
+  - "page": an AI-judged document (a page, card, ID, form, receipt or screen),
+    included by default.
+  - "not a document: <reason>" (logo, signature image, decoration, a photo
+    with no document in it): excluded by default but listed, so nothing
+    disappears silently.
   - "AI couldn't analyze this one": basic cleanup only (§ 6.5), included.
   - "can't read this file": listed, can't be included.
 - **Per page:** move up/down, rotate 90° either way, **Cleaned** / **Original**
   (the untouched image, upright per EXIF), **Color: Auto / Color / Grayscale**
   (Auto = the AI's choice). Changing color re-runs the local cleanup; no new AI
   call.
+- **Memory:** the form never holds full-size images. Each page's original
+  and cleaned versions live as files in the run folder; the form keeps their
+  paths, a thumbnail (160 px) and, for the selected page, a preview (at most
+  1200 px). A color change re-cleans just that page from its file.
 - **Save PDF…** is disabled while no page is included.
 - Buttons use explicit `ForeColor`/`BackColor` and
   `UseVisualStyleBackColor = false` (Server 2025).
@@ -126,9 +132,9 @@ synthetic ones; the review window and the plan validation (§ 6.3) cover that.
 Ribbon.OnImagesToPdfClick ─► ThisAddIn.RunImagesToPdf ─► ImagesToPdfCommand
    ├─ EmailImageCollector   (Outlook COM, UI thread)  → temp files + order
    ├─ PagePlanner           (AI, background, 3 at a time) → PagePlan per image
-   ├─ PageCleaner           (pure, background)        → cleaned Bitmap per page
-   ├─ ImagesToPdfReviewForm (UI)                      → final page list
-   └─ ImagePdfWriter        (pure)                    → PDF bytes → temp → Save As target
+   ├─ PageCleaner           (pure, background)        → cleaned JPEG file per page
+   ├─ ImagesToPdfReviewForm (UI)                      → final page list (paths + thumbnails)
+   └─ ImagePdfWriter        (pure)                    → PDF from JPEG files → temp → Save As target
 ```
 
 New files under `VSTO2/OutlookAI/Services/QuickTools/` (plus the form under
@@ -141,10 +147,10 @@ New files under `VSTO2/OutlookAI/Services/QuickTools/` (plus the form under
 | `ImageLoader` | Decode a file into upright bitmaps: EXIF orientation applied; multi-page TIFF → one bitmap per frame; GIF → first frame; WebP/HEIC through WIC when Windows has the codec. | System.Drawing, PresentationCore (WIC) |
 | `PagePlanner` | Downscale, ask the AI, parse and validate the plan. | `CodexChatService` (new structured call), `Config` |
 | `PagePlan` | The validated plan for one image (kind, reason, corners, color, strength, analyzed flag). | — |
-| `PageCleaner` | Perspective warp + look pipeline + sharpening, on pixel arrays. | System.Drawing (LockBits) |
+| `PageCleaner` | Perspective warp + look pipeline + sharpening, on pixel arrays; writes the result as a JPEG file. | System.Drawing (LockBits, JPEG encode) |
 | `Homography` | Solve the 3×3 projective map from 4 point pairs; map points. | — |
-| `ImagePdfWriter` | Write a PDF with one JPEG per page. | System.Drawing (JPEG encode) |
-| `ImagesToPdfReviewForm` | The review window. | the above |
+| `ImagePdfWriter` | Write a PDF with one JPEG file per page, embedding the file's bytes. | — |
+| `ImagesToPdfReviewForm` | The review window (paths, thumbnails, one preview). | the above |
 
 No new NuGet packages. `PresentationCore`/`WindowsBase` are .NET Framework
 assemblies (reference only), used for WIC decoding.
@@ -154,6 +160,11 @@ assemblies (reference only), used for WIC decoding.
 AI calls and cleanup run on the thread pool; results come back via
 `async`/`await` on the UI synchronization context. One run at a time: a second
 click while a run is open brings that window to the front.
+
+**Memory:** 32-bit Outlook still exists in the fleet (2 GB address space), so
+at most one full-size image is decoded per worker at a time and every bitmap
+is disposed as soon as its file is written. AI requests use the downscaled
+copies only. Cleaning runs at most 2 pages in parallel.
 
 ## 6. Details
 
@@ -177,7 +188,10 @@ click while a run is open brings that window to the front.
 - Saved with `SaveAsFile` to `%LOCALAPPDATA%\OutlookAI\QuickTools\<run id>\`,
   with sanitized unique names.
 - After decoding: images whose short side is under 200 px are skipped (icons,
-  spacers, most signature logos) and counted. At most 30 pages per run; extra
+  spacers, most signature logos) and counted.
+- Rich Text (RTF) emails carry pasted images as OLE attachments, which this
+  version ignores. When such an email yields no images, the message says so:
+  "No images found. Images pasted into Rich Text emails aren't supported yet." At most 30 pages per run; extra
   ones are listed as "not processed (limit 30)".
 - The run folder is deleted when the run ends (saved, cancelled or failed).
   Run folders older than a day are purged at the start of the next run.
@@ -201,7 +215,10 @@ click while a run is open brings that window to the front.
   order the text reads (so a sideways or upside-down photo comes out upright);
   choose grayscale unless color carries meaning (stamps, highlights, colored
   ink, photos within the page); choose cleanup strength from how dim or
-  uneven the image is.
+  uneven the image is. A *document* is a photo or scan of a page, card, ID or
+  passport, form, receipt or screen, even when it shows a person;
+  *not_document* is a logo, signature image, decoration, or a photo with no
+  document in it.
 - **Schema** (`page_plan`, strict, all fields required):
 
   ```json
@@ -223,12 +240,15 @@ click while a run is open brings that window to the front.
   validation keeps its kind and color but uses the full image as corners, and
   is marked so the review shows "AI couldn't analyze this one".
 - **Concurrency and limits:** 3 requests at a time (`SemaphoreSlim`); 90 s per
-  image; the run's `CancellationToken` cancels all of them.
+  image; one retry after a 429 (rate limited), waiting `Retry-After` when
+  given (capped at 20 s) or 5 s otherwise; the run's `CancellationToken`
+  cancels all of them.
 
 ### 6.4 Cleaning (`PageCleaner`, deterministic)
 
-Input: the upright original (full resolution) and the plan (with the
-review's color override). Output: a 24-bit bitmap.
+Input: the upright original (full resolution, loaded from its file) and the
+plan (with the review's color override). Output: a JPEG file (quality 85) in
+the run folder; the bitmaps are disposed before returning.
 
 1. **Perspective warp:** map the 4 corners (in source pixels) to an output
    rectangle. Width is the longer of the top and bottom edges, height the
@@ -252,7 +272,9 @@ review's color override). Output: a 24-bit bitmap.
      median of pixels above the 90th luminance percentile, becomes neutral), then
      the same levels on all channels using the luminance black and white points.
    - *Sharpen:* unsharp mask with a 3 × 3 blur, the amount above, threshold 2.
-3. The review's quarter turns are applied last (`RotateFlip`).
+3. The review's quarter turns are applied last (`RotateFlip`) before the
+   JPEG is written; "Original" pages are written the same way from the
+   upright original, rotated but otherwise untouched.
 
 The exact numbers are defaults in one place (`PageCleaner.Profiles`) and are
 covered by tests; tuning them later doesn't change the design.
@@ -271,9 +293,12 @@ covered by tests; tuning them later doesn't change the design.
 
 ### 6.6 PDF (`ImagePdfWriter`)
 
+- Input: the final list of page JPEG files. Only one file's bytes are held in
+  memory at a time while writing.
 - PDF 1.4, written directly: catalog, pages, one page object per image, one
   image XObject per page (`/Filter /DCTDecode`, `/ColorSpace /DeviceRGB`,
-  `/BitsPerComponent 8`; the JPEG bytes as-is), a content stream drawing it,
+  `/BitsPerComponent 8`; the JPEG file's bytes as-is, width and height read
+  from its header), a content stream drawing it,
   an xref table with exact byte offsets, a trailer, and an Info dictionary
   (`/Title` = email subject; `/Producer` = `OutlookAI <version>`; non-ASCII
   text as UTF-16BE hex strings).
@@ -321,7 +346,10 @@ covered by tests; tuning them later doesn't change the design.
 
 **Opt-in live test** (skipped unless `OUTLOOKAI_LIVE_TESTS=1`): sends the two
 synthetic probe images to the real backend through `PagePlanner` and checks
-the plan against the known corners.
+the plan against the known corners. It uses the real token file
+(`OUTLOOKAI_LIVE_AUTH`, default `~/.codex/auth.json`), never a copy:
+`CodexAuthService` saves refreshed tokens to the file it was given, and
+refresh tokens are single-use, so refreshing a copy would sign Codex CLI out.
 
 **Manual smoke** (added to the smoke checklist): a real email with pasted
 phone photos and an attached JPEG, from the Inbox and from an opened email;
@@ -340,6 +368,7 @@ to a network folder; the PDF opens and is legible.
 - Dragging the corners by hand in the review window.
 - Several emails in one run.
 - Pages from PDF attachments.
+- Images pasted into Rich Text (RTF) emails (OLE attachments).
 - Saving the PDF as an attachment to a reply.
 - OCR or a text layer in the PDF.
 - Quick Tools in compose windows.
