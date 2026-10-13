@@ -359,7 +359,10 @@
     <Compile Include="Services\QuickTools\Geometry.cs" />
     <Compile Include="Services\QuickTools\Homography.cs" />
     <Compile Include="Services\QuickTools\ImageLoader.cs" />
+    <Compile Include="Services\QuickTools\ImagePdfWriter.cs" />
+    <Compile Include="Services\QuickTools\ImagesToPdfOutput.cs" />
     <Compile Include="Services\QuickTools\JpegFiles.cs" />
+    <Compile Include="Services\QuickTools\JpegHeader.cs" />
     <Compile Include="Services\QuickTools\PageAspect.cs" />
     <Compile Include="Services\QuickTools\PageCleaner.cs" />
     <Compile Include="Services\QuickTools\PageLook.cs" />
