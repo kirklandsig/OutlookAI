@@ -619,9 +619,22 @@ namespace OutlookAI.Services
                             "ChatGPT Codex backend error: " + (int)response.StatusCode + " " + errorBody);
                     }
 
-                    using (var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
+                    // On .NET Framework a pending read on the response stream ignores its token;
+                    // disposing the response is what ends a stream that stalls after the headers.
+                    using (cancellationToken.Register(() => response.Dispose()))
                     {
-                        return await ReadResponsesSseAsync(stream, cancellationToken).ConfigureAwait(false);
+                        try
+                        {
+                            using (var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
+                            {
+                                return await ReadResponsesSseAsync(stream, cancellationToken).ConfigureAwait(false);
+                            }
+                        }
+                        catch (Exception ex) when (cancellationToken.IsCancellationRequested
+                            && (ex is ObjectDisposedException || ex is IOException || ex is WebException))
+                        {
+                            throw new OperationCanceledException(cancellationToken);
+                        }
                     }
                 }
             }
@@ -671,15 +684,11 @@ namespace OutlookAI.Services
             var output = new StringBuilder();
             using (var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, bufferSize: 8 * 1024, leaveOpen: false))
             {
-                while (!reader.EndOfStream)
+                string line;
+                while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) != null)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    var line = await reader.ReadLineAsync().ConfigureAwait(false);
-                    if (line == null)
-                    {
-                        break;
-                    }
                     if (line.Length == 0 || !line.StartsWith("data:", StringComparison.Ordinal))
                     {
                         continue;

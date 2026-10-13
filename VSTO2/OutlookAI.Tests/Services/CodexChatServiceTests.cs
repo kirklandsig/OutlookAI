@@ -191,5 +191,29 @@ namespace OutlookAI.Tests.Services
                 Assert.Contains("slow down", ex.Message);
             }
         }
+
+        // Headers arrive, then the body stalls: the per-image timeout and Cancel must still end the call.
+        [Fact]
+        public async Task CompleteStructuredAsync_StalledStream_EndsWhenCancelled()
+        {
+            var stalling = new StallingStream(System.Text.Encoding.UTF8.GetBytes(
+                "data: {\"type\":\"response.output_text.delta\",\"delta\":\"{\"}\n\n"));
+            var fake = new FakeHttpMessageHandler();
+            fake.QueueRaw(HttpStatusCode.OK, new StreamContent(stalling));
+            using (var authHttp = new HttpClient(new FakeHttpMessageHandler()))
+            using (var auth = new CodexAuthService(_authPath, authHttp))
+            using (var chatHttp = new HttpClient(fake))
+            using (var chat = new CodexChatService(auth, chatHttp))
+            using (var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(300)))
+            {
+                // On a pool thread, so a read that blocks its thread can't hang the test.
+                var call = Task.Run(() => chat.CompleteStructuredAsync("i", TextAndImage(), "page_plan", Schema(), "Low", cts.Token));
+                var finished = await Task.WhenAny(call, Task.Delay(TimeSpan.FromSeconds(10)));
+
+                Assert.Same(call, finished);
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => call);
+                Assert.True(stalling.Disposed);
+            }
+        }
     }
 }
