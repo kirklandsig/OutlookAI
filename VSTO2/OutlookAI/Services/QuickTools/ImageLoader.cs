@@ -155,7 +155,7 @@ namespace OutlookAI.Services.QuickTools
                 var decoder = System.Windows.Media.Imaging.BitmapDecoder.Create(
                     stream,
                     System.Windows.Media.Imaging.BitmapCreateOptions.IgnoreColorProfile,
-                    System.Windows.Media.Imaging.BitmapCacheOption.OnDemand);
+                    System.Windows.Media.Imaging.BitmapCacheOption.None);
                 var frames = decoder is System.Windows.Media.Imaging.TiffBitmapDecoder
                     ? Math.Max(1, decoder.Frames.Count)
                     : 1;
