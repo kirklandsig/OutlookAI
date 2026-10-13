@@ -128,7 +128,7 @@ namespace OutlookAI.Tests.QuickTools
                         reclean: p => Task.FromException(new System.IO.IOException("x"))))
                     {
                         form.SelectPage(0);
-                        form.SetColorAsync(1).GetAwaiter().GetResult();
+                        form.ChooseColor(1);
 
                         Assert.Null(form.Pages[0].ColorOverride);
                         Assert.Equal(0, form.ColorIndex);

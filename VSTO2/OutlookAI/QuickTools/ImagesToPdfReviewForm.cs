@@ -152,6 +152,8 @@ namespace OutlookAI.QuickTools
 
         internal int ColorIndex => _color.SelectedIndex;
 
+        internal void ChooseColor(int index) => _color.SelectedIndex = index;
+
         private ReviewPage Selected => _selected >= 0 && _selected < _pages.Count ? _pages[_selected] : null;
 
         internal void SelectPage(int index)
