@@ -376,3 +376,23 @@ to a network folder; the PDF opens and is legible.
 - Saving the PDF as an attachment to a reply.
 - OCR or a text layer in the PDF.
 - Quick Tools in compose windows.
+
+## Addendum (as built, 2026-10-13)
+
+Behavior that differs from or refines the text above:
+
+- Pages are decoded at most 4000 px on the long side; sources over 100 MP are
+  refused and listed as too large.
+- Each image is opened once and decoded one page at a time. Frames past the
+  30-page cap are listed, never decoded.
+- The PDF is copied to a sibling `.partial` file and swapped in with
+  `File.Replace` (ignoring ACL-merge errors, with a rename fallback) instead of
+  a direct overwrite, so a failed copy never touches an existing file.
+- A page whose cleanup fails keeps its original ("cleanup failed, original
+  only").
+- An attachment Outlook can't save is listed as "can't read this file", as is
+  an image that runs out of memory on open.
+- A `not_document` answer is always uncropped.
+- The review list numbers pages by position.
+- Closing the email window mid-run cancels quietly.
+- Only a saved file named `.pdf` is opened automatically.
