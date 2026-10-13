@@ -363,6 +363,7 @@
     <Compile Include="Services\QuickTools\ImageLoader.cs" />
     <Compile Include="Services\QuickTools\ImagePdfWriter.cs" />
     <Compile Include="Services\QuickTools\ImagesToPdfOutput.cs" />
+    <Compile Include="Services\QuickTools\ImagesToPdfPipeline.cs" />
     <Compile Include="Services\QuickTools\JpegFiles.cs" />
     <Compile Include="Services\QuickTools\JpegHeader.cs" />
     <Compile Include="Services\QuickTools\PageAspect.cs" />
@@ -372,6 +373,8 @@
     <Compile Include="Services\QuickTools\PagePlanner.cs" />
     <Compile Include="Services\QuickTools\PerspectiveWarp.cs" />
     <Compile Include="Services\QuickTools\PixelBuffer.cs" />
+    <Compile Include="Services\QuickTools\QuickToolsRunFolder.cs" />
+    <Compile Include="Services\QuickTools\ReviewPage.cs" />
     <Compile Include="Services\RealtimeVoiceService.cs" />
     <Compile Include="Services\ToolDispatcher.cs" />
     <Compile Include="Services\Tools\AggregateMessagesArgs.cs" />
