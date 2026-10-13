@@ -185,6 +185,32 @@ namespace OutlookAI.Tests.QuickTools
             });
         }
 
+        // The icon view keeps each item where it was drawn, so the order on screen is what counts.
+        [Fact]
+        public void MovePage_ReordersTheListOnScreen()
+        {
+            Sta.Run(() =>
+            {
+                var moved = Page(3, "not_document");
+                using (var form = NewForm(new[] { Page(1), Page(2), moved, Page(4) }))
+                {
+                    form.Show();
+                    form.SelectPage(2);
+                    form.MovePage(-1);
+                    Application.DoEvents();
+
+                    var items = form.ListItems;
+                    var drawn = items.OrderBy(i => i.Position.Y).ThenBy(i => i.Position.X).Select(i => (ReviewPage)i.Tag).ToArray();
+                    Assert.Equal(form.Pages.ToArray(), drawn);
+                    var movedItem = items.Single(i => i.Tag == moved);
+                    Assert.StartsWith("2. ", movedItem.Text);
+                    Assert.True(movedItem.Selected);
+                    Assert.All(items, i => Assert.Equal(((ReviewPage)i.Tag).Include, i.Checked));
+                    form.Close();
+                }
+            });
+        }
+
         [Fact]
         public void Save_StaysOpen_WhenSavingFails()
         {

@@ -112,8 +112,8 @@ namespace OutlookAI.QuickTools
                 {
                     _thumbs.Images.Add(Key(page), thumb);
                 }
-                _list.Items.Add(new ListViewItem(page.Number + ". " + page.Status, Key(page)) { Checked = page.Include, Tag = page });
             }
+            AddItems();
 
             _list.ItemCheck += (s, e) =>
             {
@@ -147,6 +147,8 @@ namespace OutlookAI.QuickTools
         }
 
         internal IReadOnlyList<ReviewPage> Pages => _pages;
+
+        internal IReadOnlyList<ListViewItem> ListItems => _list.Items.Cast<ListViewItem>().ToList();
 
         internal bool CanSave => _savePdf.Enabled;
 
@@ -214,19 +216,32 @@ namespace OutlookAI.QuickTools
             var page = _pages[from];
             _pages.RemoveAt(from);
             _pages.Insert(to, page);
+            // The icon view keeps each item where it was drawn, so moving one item
+            // changes the index order but not the screen; re-adding lays them out anew.
             _updating = true;
+            _list.BeginUpdate();
             try
             {
-                var item = _list.Items[from];
-                _list.Items.RemoveAt(from);
-                _list.Items.Insert(to, item);
-                item.Checked = page.Include;
+                _list.Items.Clear();
+                AddItems();
             }
             finally
             {
+                _list.EndUpdate();
                 _updating = false;
             }
             SelectPage(to);
+            _list.Items[to].EnsureVisible();
+        }
+
+        // Thumbnails stay keyed by page number; the text shows the position.
+        private void AddItems()
+        {
+            for (var i = 0; i < _pages.Count; i++)
+            {
+                var page = _pages[i];
+                _list.Items.Add(new ListViewItem((i + 1) + ". " + page.Status, Key(page)) { Checked = page.Include, Tag = page });
+            }
         }
 
         internal void Rotate(int quarterTurns)
