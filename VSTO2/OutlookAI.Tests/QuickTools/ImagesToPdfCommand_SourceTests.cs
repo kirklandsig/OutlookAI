@@ -92,6 +92,30 @@ namespace OutlookAI.Tests.QuickTools
             Assert.True(run.IndexOf("_active = review;", StringComparison.Ordinal) < run.LastIndexOf("progressForm.Finish();", StringComparison.Ordinal));
         }
 
+        // Opening "lease.txt" or "lease.exe" with the shell would hand the PDF to the wrong program.
+        [Theory]
+        [InlineData(@"C:\Reports\Lease.pdf", true)]
+        [InlineData(@"C:\Reports\LEASE.PDF", true)]
+        [InlineData(@"C:\Reports\Lease.pdf.exe", false)]
+        [InlineData(@"C:\Reports\Lease.txt", false)]
+        [InlineData(@"C:\Reports\Lease", false)]
+        public void OnlyAPdfName_IsOpenedAfterSaving(string path, bool opens)
+        {
+            Assert.Equal(opens, OutlookAI.QuickTools.ImagesToPdfCommand.IsPdfPath(path));
+        }
+
+        [Fact]
+        public void SavePdf_OpensTheFileOnlyWhenItIsAPdf()
+        {
+            var src = Source;
+            var start = src.IndexOf("private static bool SavePdf(", StringComparison.Ordinal);
+            var body = src.Substring(start, src.IndexOf("private static string Producer(", start, StringComparison.Ordinal) - start);
+            var check = body.IndexOf("if (!IsPdfPath(dialog.FileName))", StringComparison.Ordinal);
+
+            Assert.True(check > 0);
+            Assert.True(check < body.IndexOf("Process.Start(", StringComparison.Ordinal));
+        }
+
         // The review form calls save from a Click handler; an exception there
         // would only reach Application.ThreadException and show the user nothing.
         [Fact]

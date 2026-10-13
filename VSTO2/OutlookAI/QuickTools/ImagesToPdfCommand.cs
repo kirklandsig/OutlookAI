@@ -222,6 +222,11 @@ namespace OutlookAI.QuickTools
                     return false;
                 }
                 TraceLog.Write("QuickTools: saved " + pages.Count + " pages", "QuickTools");
+                if (!IsPdfPath(dialog.FileName))
+                {
+                    Info(owner, "Saved to " + dialog.FileName + ".");
+                    return true;
+                }
                 try
                 {
                     Process.Start(new ProcessStartInfo(dialog.FileName) { UseShellExecute = true });
@@ -233,6 +238,10 @@ namespace OutlookAI.QuickTools
                 return true;
             }
         }
+
+        // Only a .pdf name is opened with the shell; any other extension belongs to another program.
+        internal static bool IsPdfPath(string path) =>
+            string.Equals(Path.GetExtension(path), ".pdf", StringComparison.OrdinalIgnoreCase);
 
         private static string Producer()
         {
