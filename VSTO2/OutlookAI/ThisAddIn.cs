@@ -274,6 +274,15 @@ namespace OutlookAI
                 }
         }
 
+        /// <summary>
+        /// Quick Tools -> Clean up images -> PDF (Home tab and opened emails).
+        /// </summary>
+        public void RunImagesToPdf(object context)
+        {
+            using (TraceLog.Scope("RunImagesToPdf", "ThisAddIn"))
+                OutlookAI.QuickTools.ImagesToPdfCommand.Run(context);
+        }
+
         private void ShowReportsExplorerTaskPane(Outlook.Explorer explorer)
         {
             foreach (CustomTaskPane pane in this.CustomTaskPanes)

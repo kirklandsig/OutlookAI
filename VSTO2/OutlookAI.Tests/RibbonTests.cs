@@ -12,8 +12,13 @@ namespace OutlookAI.Tests
         // The XML Outlook is served, for the Inbox and for compose windows.
         private static XDocument Served(string ribbonId) => XDocument.Parse(new Ribbon().GetCustomUI(ribbonId));
 
+        private static string RibbonIdFor(string tab) =>
+            tab == "TabMail" ? "Microsoft.Outlook.Explorer"
+            : tab == "TabReadMessage" ? "Microsoft.Outlook.Mail.Read"
+            : "Microsoft.Outlook.Mail.Compose";
+
         private static XElement AiAssistantGroup(string tab) =>
-            Served(tab == "TabMail" ? "Microsoft.Outlook.Explorer" : "Microsoft.Outlook.Mail.Compose")
+            Served(RibbonIdFor(tab))
                 .Descendants(Ui + "tab").Single(t => (string)t.Attribute("idMso") == tab)
                 .Elements(Ui + "group").Single(g => (string)g.Attribute("label") == "AI Assistant");
 
@@ -22,6 +27,7 @@ namespace OutlookAI.Tests
         [Theory]
         [InlineData("TabMail")]
         [InlineData("TabNewMailMessage")]
+        [InlineData("TabReadMessage")]
         public void SettingsButton_IsInTheAiAssistantGroup(string tab)
         {
             var settings = AiAssistantGroup(tab).Elements(Ui + "button")
@@ -30,6 +36,28 @@ namespace OutlookAI.Tests
             Assert.NotNull(settings);
             Assert.Equal("Settings", (string)settings.Attribute("label"));
             Assert.False(string.IsNullOrEmpty((string)settings.Attribute("imageMso")));
+        }
+
+        [Theory]
+        [InlineData("TabMail")]
+        [InlineData("TabReadMessage")]
+        public void QuickToolsMenu_HasCleanUpImagesToPdf(string tab)
+        {
+            var menu = AiAssistantGroup(tab).Elements(Ui + "menu")
+                .SingleOrDefault(m => (string)m.Attribute("label") == "Quick Tools");
+            Assert.NotNull(menu);
+            Assert.Equal("ControlToolboxOutlook", (string)menu.Attribute("imageMso"));
+
+            var item = menu.Elements(Ui + "button").SingleOrDefault(b => (string)b.Attribute("onAction") == "OnImagesToPdfClick");
+            Assert.NotNull(item);
+            Assert.Equal("Clean up images → PDF", (string)item.Attribute("label"));
+            Assert.Equal("PictureCrop", (string)item.Attribute("imageMso"));
+        }
+
+        [Fact]
+        public void ComposeWindow_HasNoQuickTools()
+        {
+            Assert.Empty(AiAssistantGroup("TabNewMailMessage").Elements(Ui + "menu"));
         }
 
         // Office drops the add-in's whole ribbon when a callback is missing or

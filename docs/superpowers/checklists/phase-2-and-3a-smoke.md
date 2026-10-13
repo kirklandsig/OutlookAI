@@ -208,3 +208,25 @@ passes.
 
 If any step fails, capture the trace log + screenshot and file as a
 follow-up. Do NOT merge to master until every step passes.
+
+---
+
+# Quick Tools Smoke (Clean up images → PDF)
+
+1. [ ] Home tab → AI Assistant → Quick Tools → Clean up images → PDF with no
+   email selected → "Select one email first."
+2. [ ] Select an email with 2–3 pasted phone photos of paper, one attached
+   JPEG and a signature logo → run it. Progress shows "Analyzing image n of m";
+   the review window lists every image, with the logo unchecked and labelled.
+3. [ ] Pages are flat, upright and readable (paper white, ink black).
+4. [ ] Move a page up, rotate one, switch one to Original, set one to Color
+   (it re-cleans). Save PDF… → the dialog starts in the Reports folder; save
+   to a network folder; the PDF opens with the pages in that order.
+5. [ ] Open the PDF in a viewer, run again and save over it → a "close it"
+   message; the review window stays open.
+6. [ ] Double-click an email to open it → Message tab → AI Assistant →
+   Quick Tools works there too; Settings opens from that group.
+7. [ ] Cancel during "Analyzing…" → nothing else appears;
+   `%LOCALAPPDATA%\OutlookAI\QuickTools` has no folder left for that run.
+8. [ ] `%LOCALAPPDATA%\OutlookAI\trace.log` has QuickTools lines with counts
+   and durations only (no subjects, file names or AI text).

@@ -207,6 +207,9 @@
     <Reference Include="System.Xml" />
     <Reference Include="System.Core" />
     <Reference Include="System.Xml.Linq" />
+    <Reference Include="PresentationCore" />
+    <Reference Include="System.Xaml" />
+    <Reference Include="WindowsBase" />
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="XLParser, Version=1.5.2.0, Culture=neutral, PublicKeyToken=63397e1e46bb91b4, processorArchitecture=MSIL">
@@ -316,6 +319,14 @@
       <AutoGen>True</AutoGen>
       <DependentUpon>Settings.settings</DependentUpon>
     </Compile>
+    <Compile Include="QuickTools\ImagesToPdfCommand.cs" />
+    <Compile Include="QuickTools\ImagesToPdfReviewForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="QuickTools\OwnerWindow.cs" />
+    <Compile Include="QuickTools\QuickToolsProgressForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="Ribbon.cs" />
     <Compile Include="Services\Chat\ChatEventSink.cs" />
     <Compile Include="Services\Chat\ConversationContext.cs" />
@@ -323,6 +334,7 @@
     <Compile Include="Services\Chat\StopReason.cs" />
     <Compile Include="Services\Chat\TurnResult.cs" />
     <Compile Include="Services\CodexAuthService.cs" />
+    <Compile Include="Services\CodexBackendException.cs" />
     <Compile Include="Services\CodexChatService.cs" />
     <Compile Include="Services\Export\ExcelCellCoercer.cs" />
     <Compile Include="Services\Export\ExcelColumnSpec.cs" />
@@ -339,6 +351,7 @@
     <Compile Include="Services\Export\UnauthorizedExportPathException.cs" />
     <Compile Include="Services\FileLock.cs" />
     <Compile Include="Services\IdResolver.cs" />
+    <Compile Include="Services\IStructuredCompletion.cs" />
     <Compile Include="Services\IToolHost.cs" />
     <Compile Include="Services\Models\BuiltInModelCatalog.cs" />
     <Compile Include="Services\Models\CodexClientVersion.cs" />
@@ -351,6 +364,25 @@
     <Compile Include="Services\Models\ReasoningEffortNames.cs" />
     <Compile Include="Services\OutlookThreadMarshaller.cs" />
     <Compile Include="Services\OutlookToolHost.cs" />
+    <Compile Include="Services\QuickTools\EmailImageCollector.cs" />
+    <Compile Include="Services\QuickTools\Geometry.cs" />
+    <Compile Include="Services\QuickTools\Homography.cs" />
+    <Compile Include="Services\QuickTools\ImageAttachmentOrder.cs" />
+    <Compile Include="Services\QuickTools\ImageLoader.cs" />
+    <Compile Include="Services\QuickTools\ImagePdfWriter.cs" />
+    <Compile Include="Services\QuickTools\ImagesToPdfOutput.cs" />
+    <Compile Include="Services\QuickTools\ImagesToPdfPipeline.cs" />
+    <Compile Include="Services\QuickTools\JpegFiles.cs" />
+    <Compile Include="Services\QuickTools\JpegHeader.cs" />
+    <Compile Include="Services\QuickTools\PageAspect.cs" />
+    <Compile Include="Services\QuickTools\PageCleaner.cs" />
+    <Compile Include="Services\QuickTools\PageLook.cs" />
+    <Compile Include="Services\QuickTools\PagePlan.cs" />
+    <Compile Include="Services\QuickTools\PagePlanner.cs" />
+    <Compile Include="Services\QuickTools\PerspectiveWarp.cs" />
+    <Compile Include="Services\QuickTools\PixelBuffer.cs" />
+    <Compile Include="Services\QuickTools\QuickToolsRunFolder.cs" />
+    <Compile Include="Services\QuickTools\ReviewPage.cs" />
     <Compile Include="Services\RealtimeVoiceService.cs" />
     <Compile Include="Services\ToolDispatcher.cs" />
     <Compile Include="Services\Tools\AggregateMessagesArgs.cs" />
