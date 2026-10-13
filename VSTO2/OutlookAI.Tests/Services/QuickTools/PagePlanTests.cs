@@ -76,6 +76,21 @@ namespace OutlookAI.Tests.Services.QuickTools
             Assert.Equal("lease page 1", plan.Reason);
         }
 
+        // A logo or signature isn't cropped, so its outline doesn't matter: never "AI couldn't analyze".
+        [Theory]
+        [InlineData(Keystone)]
+        [InlineData("[[0,0],[0,1],[1,1],[1,0]]")]
+        [InlineData("[[0.4,0.4],[0.5,0.4],[0.5,0.5],[0.4,0.5]]")]
+        public void FromJson_NotADocument_IsAnalyzed_WithTheFullImage(string corners)
+        {
+            var plan = PagePlan.FromJson(Json(corners, kind: "not_document"));
+
+            Assert.True(plan.Analyzed);
+            Assert.Equal(PageKind.NotDocument, plan.Kind);
+            Assert.Equal(PagePlan.FullImage.Select(p => p.X), plan.Corners.Select(p => p.X));
+            Assert.Equal(PagePlan.FullImage.Select(p => p.Y), plan.Corners.Select(p => p.Y));
+        }
+
         [Theory]
         [InlineData("not json")]
         [InlineData("")]

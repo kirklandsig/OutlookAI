@@ -81,7 +81,13 @@ namespace OutlookAI.Services.QuickTools
                 Strength = strength,
             };
             var corners = ReadCorners(o["corners"] as JArray);
-            if (corners != null && Quad.IsConvexClockwise(corners) && Quad.Area(corners) >= MinAreaFraction)
+            if (kind == PageKind.NotDocument)
+            {
+                // Never cropped, so its outline doesn't matter.
+                plan.Corners = FullImage;
+                plan.Analyzed = true;
+            }
+            else if (corners != null && Quad.IsConvexClockwise(corners) && Quad.Area(corners) >= MinAreaFraction)
             {
                 plan.Corners = corners;
                 plan.Analyzed = true;
