@@ -42,20 +42,28 @@ namespace OutlookAI.Services.QuickTools
         public Bitmap ToBitmap()
         {
             var bitmap = new Bitmap(Width, Height, PixelFormat.Format24bppRgb);
-            var data = bitmap.LockBits(new Rectangle(0, 0, Width, Height), ImageLockMode.WriteOnly, PixelFormat.Format24bppRgb);
             try
             {
-                var row = Width * 3;
-                for (var y = 0; y < Height; y++)
+                var data = bitmap.LockBits(new Rectangle(0, 0, Width, Height), ImageLockMode.WriteOnly, PixelFormat.Format24bppRgb);
+                try
                 {
-                    Marshal.Copy(Data, y * row, data.Scan0 + y * data.Stride, row);
+                    var row = Width * 3;
+                    for (var y = 0; y < Height; y++)
+                    {
+                        Marshal.Copy(Data, y * row, data.Scan0 + y * data.Stride, row);
+                    }
                 }
+                finally
+                {
+                    bitmap.UnlockBits(data);
+                }
+                return bitmap;
             }
-            finally
+            catch
             {
-                bitmap.UnlockBits(data);
+                bitmap.Dispose();
+                throw;
             }
-            return bitmap;
         }
 
         public PixelBuffer Clone()

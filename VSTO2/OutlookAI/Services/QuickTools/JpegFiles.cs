@@ -50,13 +50,21 @@ namespace OutlookAI.Services.QuickTools
             var width = Math.Max(1, (int)Math.Round(image.Width * scale));
             var height = Math.Max(1, (int)Math.Round(image.Height * scale));
             var copy = new Bitmap(width, height, PixelFormat.Format24bppRgb);
-            using (var g = Graphics.FromImage(copy))
+            try
             {
-                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-                g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-                g.DrawImage(image, new Rectangle(0, 0, width, height));
+                using (var g = Graphics.FromImage(copy))
+                {
+                    g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                    g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                    g.DrawImage(image, new Rectangle(0, 0, width, height));
+                }
+                return copy;
             }
-            return copy;
+            catch
+            {
+                copy.Dispose();
+                throw;
+            }
         }
 
         public static Bitmap LoadScaled(string path, int maxEdge)

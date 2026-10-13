@@ -67,52 +67,42 @@ namespace OutlookAI.Tests.Services.QuickTools
         }
 
         [Fact]
-        public void LoadPages_TurnsAPhoneShotUpright()
+        public void Open_TurnsAPhoneShotUpright()
         {
-            var pages = ImageLoader.LoadPages(SaveWithOrientation(6));
-            try
+            using (var pages = ImageLoader.Open(SaveWithOrientation(6)))
+            using (var page = pages.Decode(0))
             {
-                var page = Assert.Single(pages);
+                Assert.Equal(1, pages.Count);
                 Assert.Equal(20, page.Width);
                 Assert.Equal(40, page.Height);
                 // Rotated 90 degrees clockwise: the red left half is now on top.
                 Assert.True(page.GetPixel(10, 5).R > 200);
                 Assert.True(page.GetPixel(10, 35).B > 200);
             }
-            finally { foreach (var p in pages) p.Dispose(); }
         }
 
-        [Fact]
-        public void LoadPages_MultiPageTiff_GivesEveryFrame()
+        private string SaveTiff(string name, int frames)
         {
-            var path = Path.Combine(_dir, "fax.tif");
-            using (var first = Sample())
-            using (var second = Sample())
-            using (var third = Sample())
+            var path = Path.Combine(_dir, name);
+            var bitmaps = Enumerable.Range(0, frames).Select(_ => Sample()).ToList();
+            try
             {
                 var tiff = ImageCodecInfo.GetImageEncoders().First(c => c.FormatID == ImageFormat.Tiff.Guid);
                 using (var parameters = new EncoderParameters(1))
                 {
                     parameters.Param[0] = new EncoderParameter(Encoder.SaveFlag, (long)EncoderValue.MultiFrame);
-                    first.Save(path, tiff, parameters);
+                    bitmaps[0].Save(path, tiff, parameters);
                     parameters.Param[0] = new EncoderParameter(Encoder.SaveFlag, (long)EncoderValue.FrameDimensionPage);
-                    first.SaveAdd(second, parameters);
-                    first.SaveAdd(third, parameters);
+                    for (var i = 1; i < frames; i++) bitmaps[0].SaveAdd(bitmaps[i], parameters);
                     parameters.Param[0] = new EncoderParameter(Encoder.SaveFlag, (long)EncoderValue.Flush);
-                    first.SaveAdd(parameters);
+                    bitmaps[0].SaveAdd(parameters);
                 }
             }
-
-            var pages = ImageLoader.LoadPages(path);
-            try
-            {
-                Assert.Equal(3, pages.Count);
-            }
-            finally { foreach (var p in pages) p.Dispose(); }
+            finally { foreach (var b in bitmaps) b.Dispose(); }
+            return path;
         }
 
-        [Fact]
-        public void TransparentPng_ComesOutOnWhite()
+        private string SaveTransparentPng()
         {
             var path = Path.Combine(_dir, "screenshot.png");
             using (var png = new Bitmap(30, 30, PixelFormat.Format32bppArgb))
@@ -121,40 +111,92 @@ namespace OutlookAI.Tests.Services.QuickTools
                 png.SetPixel(15, 15, Color.Black);
                 png.Save(path, ImageFormat.Png);
             }
+            return path;
+        }
 
-            var pages = ImageLoader.LoadPages(path);
-            try
+        [Fact]
+        public void Open_MultiPageTiff_CountsPages_AndDecodesEachOnDemand()
+        {
+            using (var pages = ImageLoader.Open(SaveTiff("fax.tif", 3)))
             {
-                var pixel = pages[0].GetPixel(2, 2);
+                Assert.Equal(3, pages.Count);
+                for (var i = 0; i < 3; i++)
+                {
+                    using (var page = pages.Decode(i))
+                    {
+                        Assert.Equal(new Size(40, 20), page.Size);
+                        Assert.True(page.GetPixel(5, 5).R > 200);
+                    }
+                }
+            }
+        }
+
+        [Fact]
+        public void OpenWithWic_MultiPageTiff_CountsPages()
+        {
+            using (var pages = ImageLoader.OpenWithWic(SaveTiff("wicfax.tif", 3)))
+            {
+                Assert.Equal(3, pages.Count);
+                using (var page = pages.Decode(2)) Assert.Equal(40, page.Width);
+            }
+        }
+
+        [Fact]
+        public void OpenWithWic_Png_IsOnePage()
+        {
+            var path = Path.Combine(_dir, "one.png");
+            using (var bitmap = Sample()) bitmap.Save(path, ImageFormat.Png);
+            using (var pages = ImageLoader.OpenWithWic(path)) Assert.Equal(1, pages.Count);
+        }
+
+        [Fact]
+        public void OpenWithWic_TransparentPng_ComesOutOnWhite()
+        {
+            using (var pages = ImageLoader.OpenWithWic(SaveTransparentPng()))
+            using (var page = pages.Decode(0))
+            {
+                var pixel = page.GetPixel(2, 2);
+                Assert.Equal(255, pixel.R);
+                Assert.Equal(255, pixel.G);
+                Assert.Equal(255, pixel.B);
+                Assert.True(page.GetPixel(15, 15).R < 50);
+            }
+        }
+
+        [Fact]
+        public void TransparentPng_ComesOutOnWhite()
+        {
+            using (var pages = ImageLoader.Open(SaveTransparentPng()))
+            using (var page = pages.Decode(0))
+            {
+                var pixel = page.GetPixel(2, 2);
                 Assert.Equal(255, pixel.R);
                 Assert.Equal(255, pixel.G);
                 Assert.Equal(255, pixel.B);
             }
-            finally { foreach (var p in pages) p.Dispose(); }
         }
 
         [Fact]
-        public void LoadWithWic_DecodesWhatWindowsCan()
+        public void OpenWithWic_DecodesWhatWindowsCan()
         {
             var path = Path.Combine(_dir, "plain.png");
             using (var bitmap = Sample()) bitmap.Save(path, ImageFormat.Png);
 
-            var pages = ImageLoader.LoadWithWic(path);
-            try
+            using (var pages = ImageLoader.OpenWithWic(path))
+            using (var page = pages.Decode(0))
             {
-                Assert.Equal(40, pages[0].Width);
-                Assert.True(pages[0].GetPixel(5, 5).R > 200);
+                Assert.Equal(40, page.Width);
+                Assert.True(page.GetPixel(5, 5).R > 200);
             }
-            finally { foreach (var p in pages) p.Dispose(); }
         }
 
         [Fact]
-        public void LoadPages_NotAnImage_IsUnreadable()
+        public void Open_NotAnImage_IsUnreadable()
         {
             var path = Path.Combine(_dir, "fake.jpg");
             File.WriteAllText(path, "this is not an image");
 
-            Assert.Throws<UnreadableImageException>(() => ImageLoader.LoadPages(path));
+            Assert.Throws<UnreadableImageException>(() => ImageLoader.Open(path));
         }
 
         [Fact]
