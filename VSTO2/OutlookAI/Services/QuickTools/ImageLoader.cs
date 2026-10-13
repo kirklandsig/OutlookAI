@@ -9,6 +9,10 @@ namespace OutlookAI.Services.QuickTools
 {
     internal sealed class UnreadableImageException : Exception
     {
+        public UnreadableImageException(string message) : base(message)
+        {
+        }
+
         public UnreadableImageException(string message, Exception inner) : base(message, inner)
         {
         }
@@ -21,6 +25,12 @@ namespace OutlookAI.Services.QuickTools
     /// </summary>
     internal static class ImageLoader
     {
+        /// <summary>Pages come out at most this long on their long side (32-bit Outlook memory).</summary>
+        public const int MaxDecodeLongEdge = 4000;
+
+        /// <summary>Larger sources are refused before any pixels are decoded.</summary>
+        public const long MaxSourcePixels = 100000000;
+
         private const int ExifOrientation = 0x0112;
 
         /// <summary>
@@ -29,16 +39,25 @@ namespace OutlookAI.Services.QuickTools
         /// </summary>
         public static ImagePages Open(string path)
         {
+            return Open(path, MaxSourcePixels);
+        }
+
+        internal static ImagePages Open(string path, long maxSourcePixels)
+        {
             var bytes = File.ReadAllBytes(path);
             try
             {
-                return OpenWithGdi(bytes);
+                return OpenWithGdi(bytes, maxSourcePixels);
             }
             catch (Exception gdiError) when (gdiError is ArgumentException || gdiError is ExternalException)
             {
                 try
                 {
-                    return OpenWicBytes(bytes);
+                    return OpenWicBytes(bytes, maxSourcePixels);
+                }
+                catch (UnreadableImageException)
+                {
+                    throw;
                 }
                 catch (Exception wicError)
                 {
@@ -48,9 +67,23 @@ namespace OutlookAI.Services.QuickTools
             }
         }
 
-        internal static ImagePages OpenWithWic(string path)
+        internal static ImagePages OpenWithWic(string path, long maxSourcePixels = MaxSourcePixels)
         {
-            return OpenWicBytes(File.ReadAllBytes(path));
+            return OpenWicBytes(File.ReadAllBytes(path), maxSourcePixels);
+        }
+
+        /// <summary>The decoded size: the source size, scaled down to <see cref="MaxDecodeLongEdge"/>.</summary>
+        internal static Size DecodedSize(int width, int height)
+        {
+            var longEdge = Math.Max(width, height);
+            if (longEdge <= MaxDecodeLongEdge) return new Size(width, height);
+            var scale = (double)MaxDecodeLongEdge / longEdge;
+            return new Size(Math.Max(1, (int)Math.Round(width * scale)), Math.Max(1, (int)Math.Round(height * scale)));
+        }
+
+        private static void CheckSize(int width, int height, long maxSourcePixels)
+        {
+            if ((long)width * height > maxSourcePixels) throw new UnreadableImageException("This image is too large.");
         }
 
         internal static RotateFlipType Upright(int orientation)
@@ -68,8 +101,15 @@ namespace OutlookAI.Services.QuickTools
             }
         }
 
-        private static ImagePages OpenWithGdi(byte[] bytes)
+        private static ImagePages OpenWithGdi(byte[] bytes, long maxSourcePixels)
         {
+            // Header only: the validating open below decodes every pixel.
+            using (var probeStream = new MemoryStream(bytes))
+            using (var probe = Image.FromStream(probeStream, false, false))
+            {
+                CheckSize(probe.Width, probe.Height, maxSourcePixels);
+            }
+
             var stream = new MemoryStream(bytes);
             Image image = null;
             try
@@ -107,7 +147,7 @@ namespace OutlookAI.Services.QuickTools
             }
         }
 
-        private static ImagePages OpenWicBytes(byte[] bytes)
+        private static ImagePages OpenWicBytes(byte[] bytes, long maxSourcePixels)
         {
             var stream = new MemoryStream(bytes);
             try
@@ -119,6 +159,10 @@ namespace OutlookAI.Services.QuickTools
                 var frames = decoder is System.Windows.Media.Imaging.TiffBitmapDecoder
                     ? Math.Max(1, decoder.Frames.Count)
                     : 1;
+                for (var i = 0; i < frames; i++)
+                {
+                    CheckSize(decoder.Frames[i].PixelWidth, decoder.Frames[i].PixelHeight, maxSourcePixels);
+                }
                 return new ImagePages(frames, index => DecodeWicFrame(decoder.Frames[index]), new IDisposable[] { stream });
             }
             catch
@@ -130,8 +174,16 @@ namespace OutlookAI.Services.QuickTools
 
         private static Bitmap DecodeWicFrame(System.Windows.Media.Imaging.BitmapFrame frame)
         {
+            System.Windows.Media.Imaging.BitmapSource scaled = frame;
+            var size = DecodedSize(frame.PixelWidth, frame.PixelHeight);
+            if (size.Width != frame.PixelWidth || size.Height != frame.PixelHeight)
+            {
+                // Scaled before the conversion, so the copied buffer is capped too.
+                scaled = new System.Windows.Media.Imaging.TransformedBitmap(frame, new System.Windows.Media.ScaleTransform(
+                    (double)size.Width / frame.PixelWidth, (double)size.Height / frame.PixelHeight));
+            }
             var bgra = new System.Windows.Media.Imaging.FormatConvertedBitmap(
-                frame, System.Windows.Media.PixelFormats.Bgra32, null, 0);
+                scaled, System.Windows.Media.PixelFormats.Bgra32, null, 0);
             var width = bgra.PixelWidth;
             var height = bgra.PixelHeight;
             var source = new byte[checked(width * height * 4)];
@@ -195,17 +247,20 @@ namespace OutlookAI.Services.QuickTools
             }
         }
 
-        // Normalizes any format (palette, alpha, CMYK, 16-bit) to 24-bit on white.
+        // Normalizes any format (palette, alpha, CMYK, 16-bit) to 24-bit on white,
+        // scaled down to MaxDecodeLongEdge.
         private static Bitmap OnWhite(Image image)
         {
-            var page = new Bitmap(image.Width, image.Height, PixelFormat.Format24bppRgb);
+            var size = DecodedSize(image.Width, image.Height);
+            var scaling = size.Width != image.Width || size.Height != image.Height;
+            var page = new Bitmap(size.Width, size.Height, PixelFormat.Format24bppRgb);
             page.SetResolution(96, 96);
             using (var g = Graphics.FromImage(page))
             {
                 g.Clear(Color.White);
-                g.InterpolationMode = InterpolationMode.NearestNeighbor;
-                g.PixelOffsetMode = PixelOffsetMode.Half;
-                g.DrawImage(image, new Rectangle(0, 0, image.Width, image.Height));
+                g.InterpolationMode = scaling ? InterpolationMode.HighQualityBicubic : InterpolationMode.NearestNeighbor;
+                g.PixelOffsetMode = scaling ? PixelOffsetMode.HighQuality : PixelOffsetMode.Half;
+                g.DrawImage(image, new Rectangle(0, 0, size.Width, size.Height));
             }
             return page;
         }

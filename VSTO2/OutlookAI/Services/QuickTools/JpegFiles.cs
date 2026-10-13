@@ -33,13 +33,28 @@ namespace OutlookAI.Services.QuickTools
             }
         }
 
-        /// <summary>Reads the file fully first, so it isn't kept locked.</summary>
+        /// <summary>A 24-bit copy; reads the file fully first, so it isn't kept locked.</summary>
         public static Bitmap Load(string path)
         {
             using (var stream = new MemoryStream(File.ReadAllBytes(path)))
             using (var image = Image.FromStream(stream))
             {
-                return new Bitmap(image);
+                var copy = new Bitmap(image.Width, image.Height, PixelFormat.Format24bppRgb);
+                try
+                {
+                    using (var g = Graphics.FromImage(copy))
+                    {
+                        g.InterpolationMode = InterpolationMode.NearestNeighbor;
+                        g.PixelOffsetMode = PixelOffsetMode.Half;
+                        g.DrawImage(image, new Rectangle(0, 0, image.Width, image.Height));
+                    }
+                    return copy;
+                }
+                catch
+                {
+                    copy.Dispose();
+                    throw;
+                }
             }
         }
 

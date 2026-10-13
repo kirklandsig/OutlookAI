@@ -226,6 +226,86 @@ namespace OutlookAI.Tests.Services.QuickTools
         }
 
         [Fact]
+        public void JpegFiles_Load_Is24Bit()
+        {
+            var path = Path.Combine(_dir, "page.jpg");
+            using (var bitmap = Sample()) JpegFiles.Save(bitmap, path, 85);
+
+            using (var loaded = JpegFiles.Load(path))
+            {
+                Assert.Equal(PixelFormat.Format24bppRgb, loaded.PixelFormat);
+                Assert.True(loaded.GetPixel(5, 5).R > 200);
+            }
+        }
+
+        // 5000 x 3000, left half red, right half blue.
+        private string SaveLargeJpeg(string name)
+        {
+            var path = Path.Combine(_dir, name);
+            using (var bitmap = new Bitmap(5000, 3000, PixelFormat.Format24bppRgb))
+            {
+                using (var g = Graphics.FromImage(bitmap))
+                {
+                    g.FillRectangle(Brushes.Red, 0, 0, 2500, 3000);
+                    g.FillRectangle(Brushes.Blue, 2500, 0, 2500, 3000);
+                }
+                JpegFiles.Save(bitmap, path, 85);
+            }
+            return path;
+        }
+
+        [Fact]
+        public void Open_VeryLargePhoto_DecodesAtMost4000PxOnTheLongSide()
+        {
+            using (var pages = ImageLoader.Open(SaveLargeJpeg("big.jpg")))
+            using (var page = pages.Decode(0))
+            {
+                Assert.Equal(new Size(4000, 2400), page.Size);
+                Assert.True(page.GetPixel(100, 1200).R > 200);
+                Assert.True(page.GetPixel(3900, 1200).B > 200);
+            }
+        }
+
+        [Fact]
+        public void OpenWithWic_VeryLargePhoto_DecodesAtMost4000PxOnTheLongSide()
+        {
+            using (var pages = ImageLoader.OpenWithWic(SaveLargeJpeg("wicbig.jpg")))
+            using (var page = pages.Decode(0))
+            {
+                Assert.Equal(new Size(4000, 2400), page.Size);
+                Assert.True(page.GetPixel(100, 1200).R > 200);
+                Assert.True(page.GetPixel(3900, 1200).B > 200);
+            }
+        }
+
+        private string Save300Square()
+        {
+            var path = Path.Combine(_dir, "square.jpg");
+            using (var bitmap = Sample())
+            using (var square = new Bitmap(bitmap, 300, 300))
+            {
+                JpegFiles.Save(square, path, 85);
+            }
+            return path;
+        }
+
+        [Fact]
+        public void Open_OverThePixelLimit_IsUnreadable()
+        {
+            var ex = Assert.Throws<UnreadableImageException>(() => ImageLoader.Open(Save300Square(), maxSourcePixels: 10000));
+
+            Assert.Equal("This image is too large.", ex.Message);
+        }
+
+        [Fact]
+        public void OpenWithWic_OverThePixelLimit_IsUnreadable()
+        {
+            var ex = Assert.Throws<UnreadableImageException>(() => ImageLoader.OpenWithWic(Save300Square(), maxSourcePixels: 10000));
+
+            Assert.Equal("This image is too large.", ex.Message);
+        }
+
+        [Fact]
         public void PixelBuffer_RoundTripsThroughABitmap()
         {
             using (var bitmap = Sample())
