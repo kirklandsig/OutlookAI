@@ -277,6 +277,12 @@ rest of OutlookAI, like email text already is. Working copies go to
 %LOCALAPPDATA%\OutlookAI\QuickTools and are deleted when the window closes.
 Any user can run it; it doesn't need the admin password.
 
+HEIC and WebP photos (common from phones) need the Windows HEIF and WebP
+image codecs, which Windows Server and RDS hosts often don't have. Without
+them those files are listed as "can't read this file"; JPEG, PNG, GIF, BMP
+and TIFF always work. Attachments Outlook can't save and photos over 100
+megapixels are listed the same way.
+
 
 ROTATING CREDENTIALS
 --------------------

@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/kirklandsig/OutlookAI)](https://github.com/kirklandsig/OutlookAI/releases/latest)
-[![Tests](https://img.shields.io/badge/tests-1036%2F1036-brightgreen)](#contributing)
+[![Tests](https://img.shields.io/badge/tests-1069%2F1069-brightgreen)](#contributing)
 
 The free open-source alternative to **GPT for Outlook**, **Mailbutler**,
 **Lavender**, **Compose AI**, **OtterMail**, **Boomerang Respondable**,
@@ -168,9 +168,11 @@ takes the email's images, pasted in or attached, and:
 Images are sent to ChatGPT (downscaled) the same way email text is. Images
 under 200 px on the short side (icons, most signature logos) are skipped. Each image
 opens one page at a time (a multi-page TIFF becomes one PDF page per frame, up
-to 30 pages per run); a file that can't be decoded is listed as "can't read
-this file". Pages of PDF attachments and images pasted into Rich Text emails
-aren't handled yet.
+to 30 pages per run); a file that can't be saved or decoded, or a photo over
+100 megapixels, is listed as "can't read this file". HEIC and WebP photos need
+the Windows HEIF and WebP image codecs, which Windows Server and RDS hosts
+often don't have; without them those photos are listed the same way. Pages of
+PDF attachments and images pasted into Rich Text emails aren't handled yet.
 
 ## How it compares
 
@@ -449,7 +451,7 @@ $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=OutlookAI d
   "VSTO2\OutlookAI.sln" /restore /p:RestorePackagesConfig=true /p:Configuration=Debug `
   /p:Platform="Any CPU" /p:ManifestCertificateThumbprint=$($cert.Thumbprint)
 
-# Test (1036 tests, all passing)
+# Test (1069 tests, all passing)
 & "C:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe" `
   "VSTO2\OutlookAI.Tests\bin\Debug\net472\OutlookAI.Tests.dll"
 
