@@ -96,6 +96,9 @@ namespace OutlookAI.Services
     /// </summary>
     public sealed class CodexAuthService : IDisposable
     {
+        public const string NotSignedInMessage =
+            "OutlookAI is not signed in to ChatGPT. An admin signs in once for everyone: Settings in the AI Assistant group on the ribbon.";
+
         public const string ClientId = "app_EMoamEEZ73f0CkXaXp7hrann";
         public const string AuthorizeEndpoint = "https://auth.openai.com/oauth/authorize";
         public const string TokenEndpoint = "https://auth.openai.com/oauth/token";
@@ -156,9 +159,7 @@ namespace OutlookAI.Services
                 EnsureLoaded();
                 if (_cached == null)
                 {
-                    throw new NotSignedInException(
-                        "OutlookAI is not signed in to ChatGPT. An admin signs in once for everyone: Settings in the AI Assistant group on the ribbon.",
-                        "Not signed in");
+                    throw new NotSignedInException(NotSignedInMessage, "Not signed in");
                 }
 
                 if (NeedsRefresh(_cached))

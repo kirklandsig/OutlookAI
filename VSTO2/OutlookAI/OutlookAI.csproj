@@ -319,7 +319,12 @@
       <AutoGen>True</AutoGen>
       <DependentUpon>Settings.settings</DependentUpon>
     </Compile>
+    <Compile Include="QuickTools\ImagesToPdfCommand.cs" />
     <Compile Include="QuickTools\ImagesToPdfReviewForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="QuickTools\OwnerWindow.cs" />
+    <Compile Include="QuickTools\QuickToolsProgressForm.cs">
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="Ribbon.cs" />

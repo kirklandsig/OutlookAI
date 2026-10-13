@@ -42,6 +42,39 @@
 							onAction="OnSettingsClick"
 							supertip="Open OutlookAI Settings (admin password): ChatGPT sign-in, model, reasoning effort, write tools and updates."
 							imageMso="CurrentViewSettings" />
+					<menu id="mnuQuickToolsExplorer"
+						  label="Quick Tools"
+						  size="large"
+						  imageMso="ControlToolboxOutlook"
+						  supertip="Quick tools for the selected email.">
+						<button id="btnImagesToPdfExplorer"
+								label="Clean up images &#x2192; PDF"
+								imageMso="PictureCrop"
+								onAction="OnImagesToPdfClick"
+								supertip="Straighten, crop and clean up the images in the selected email, review them, and save them as one PDF." />
+					</menu>
+				</group>
+			</tab>
+			<!-- Opened email (read inspector): Quick Tools and Settings. -->
+			<tab idMso="TabReadMessage">
+				<group id="AIAssistantReadGroup" label="AI Assistant">
+					<menu id="mnuQuickToolsRead"
+						  label="Quick Tools"
+						  size="large"
+						  imageMso="ControlToolboxOutlook"
+						  supertip="Quick tools for this email.">
+						<button id="btnImagesToPdfRead"
+								label="Clean up images &#x2192; PDF"
+								imageMso="PictureCrop"
+								onAction="OnImagesToPdfClick"
+								supertip="Straighten, crop and clean up the images in this email, review them, and save them as one PDF." />
+					</menu>
+					<button id="btnSettingsRead"
+							label="Settings"
+							size="large"
+							onAction="OnSettingsClick"
+							supertip="Open OutlookAI Settings (admin password): ChatGPT sign-in, model, reasoning effort, write tools and updates."
+							imageMso="CurrentViewSettings" />
 				</group>
 			</tab>
 		</tabs>

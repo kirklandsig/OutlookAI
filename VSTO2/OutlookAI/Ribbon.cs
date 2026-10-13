@@ -24,7 +24,8 @@ namespace OutlookAI
             // silently ignored by Office's ribbon-XML applier, so a single
             // XML payload safely covers both cases.
             if (ribbonID == "Microsoft.Outlook.Mail.Compose" ||
-                ribbonID == "Microsoft.Outlook.Explorer")
+                ribbonID == "Microsoft.Outlook.Explorer" ||
+                ribbonID == "Microsoft.Outlook.Mail.Read")
             {
                 return GetResourceText("OutlookAI.Ribbon.xml");
             }
@@ -49,6 +50,11 @@ namespace OutlookAI
         public void OnSettingsClick(Office.IRibbonControl control)
         {
             Globals.ThisAddIn.ShowSettings();
+        }
+
+        public void OnImagesToPdfClick(Office.IRibbonControl control)
+        {
+            Globals.ThisAddIn.RunImagesToPdf(control.Context);
         }
 
         private static string GetResourceText(string resourceName)
