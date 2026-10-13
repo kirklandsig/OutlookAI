@@ -115,6 +115,34 @@ namespace OutlookAI.Tests.QuickTools
         }
 
         [Fact]
+        public void ColorChange_FailedReclean_RevertsTheChoice()
+        {
+            Sta.Run(() =>
+            {
+                var original = ImagesToPdfReviewForm.ShowWarning;
+                var warned = 0;
+                ImagesToPdfReviewForm.ShowWarning = (owner, text) => warned++;
+                try
+                {
+                    using (var form = NewForm(new[] { Page(1) },
+                        reclean: p => Task.FromException(new System.IO.IOException("x"))))
+                    {
+                        form.SelectPage(0);
+                        form.SetColorAsync(1).GetAwaiter().GetResult();
+
+                        Assert.Null(form.Pages[0].ColorOverride);
+                        Assert.Equal(0, form.ColorIndex);
+                        Assert.Equal(1, warned);
+                    }
+                }
+                finally
+                {
+                    ImagesToPdfReviewForm.ShowWarning = original;
+                }
+            });
+        }
+
+        [Fact]
         public void Save_PassesTheIncludedPagesInOrder_AndCloses()
         {
             Sta.Run(() =>

@@ -19,6 +19,9 @@ namespace OutlookAI.QuickTools
         internal const int PreviewSize = 1200;
         private const string Caption = "Clean up images \u2192 PDF";
 
+        internal static Action<IWin32Window, string> ShowWarning = (owner, text) =>
+            MessageBox.Show(owner, text, Caption, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
         private readonly List<ReviewPage> _pages;
         private readonly Func<ReviewPage, Task> _reclean;
         private readonly Func<IWin32Window, IReadOnlyList<ReviewPage>, bool> _save;
@@ -62,6 +65,9 @@ namespace OutlookAI.QuickTools
             MinimizeBox = false;
 
             _thumbs = new ImageList { ImageSize = new Size(ThumbSize, ThumbSize), ColorDepth = ColorDepth.Depth24Bit };
+            // Creating the handle now makes the list copy every bitmap it is given; before
+            // that it keeps the caller's reference, which the callers here dispose.
+            GC.KeepAlive(_thumbs.Handle);
             _list = new ListView
             {
                 Dock = DockStyle.Left,
@@ -102,7 +108,10 @@ namespace OutlookAI.QuickTools
 
             foreach (var page in _pages)
             {
-                _thumbs.Images.Add(Key(page), Thumbnail(page));
+                using (var thumb = Thumbnail(page))
+                {
+                    _thumbs.Images.Add(Key(page), thumb);
+                }
                 _list.Items.Add(new ListViewItem(page.Number + ". " + page.Status, Key(page)) { Checked = page.Include, Tag = page });
             }
 
@@ -131,6 +140,7 @@ namespace OutlookAI.QuickTools
             _color.SelectedIndexChanged += async (s, e) => { if (!_updating) await SetColorAsync(_color.SelectedIndex); };
             _savePdf.Click += (s, e) => SavePdf();
             _cancel.Click += (s, e) => { DialogResult = DialogResult.Cancel; Close(); };
+            FormClosing += (s, e) => { if (_busy) e.Cancel = true; };
 
             if (_pages.Count > 0) SelectPage(0);
             UpdateButtons();
@@ -140,6 +150,8 @@ namespace OutlookAI.QuickTools
 
         internal bool CanSave => _savePdf.Enabled;
 
+        internal int ColorIndex => _color.SelectedIndex;
+
         private ReviewPage Selected => _selected >= 0 && _selected < _pages.Count ? _pages[_selected] : null;
 
         internal void SelectPage(int index)
@@ -148,13 +160,32 @@ namespace OutlookAI.QuickTools
             _selected = index;
             var page = _pages[index];
             _updating = true;
-            _list.Items[index].Selected = true;
-            _cleaned.Checked = !page.UseOriginal;
-            _original.Checked = page.UseOriginal;
-            _color.SelectedIndex = page.ColorOverride == null ? 0 : page.ColorOverride == PageColor.Color ? 1 : 2;
-            _updating = false;
+            try
+            {
+                _list.Items[index].Selected = true;
+            }
+            finally
+            {
+                _updating = false;
+            }
+            SyncControls(page);
             ShowPreview(page);
             UpdateButtons();
+        }
+
+        private void SyncControls(ReviewPage page)
+        {
+            _updating = true;
+            try
+            {
+                _cleaned.Checked = !page.UseOriginal;
+                _original.Checked = page.UseOriginal;
+                _color.SelectedIndex = page.ColorOverride == null ? 0 : page.ColorOverride == PageColor.Color ? 1 : 2;
+            }
+            finally
+            {
+                _updating = false;
+            }
         }
 
         internal void SetIncluded(int index, bool include)
@@ -162,8 +193,14 @@ namespace OutlookAI.QuickTools
             var page = _pages[index];
             page.Include = include && page.Readable;
             _updating = true;
-            _list.Items[index].Checked = page.Include;
-            _updating = false;
+            try
+            {
+                _list.Items[index].Checked = page.Include;
+            }
+            finally
+            {
+                _updating = false;
+            }
             UpdateButtons();
         }
 
@@ -176,11 +213,17 @@ namespace OutlookAI.QuickTools
             _pages.RemoveAt(from);
             _pages.Insert(to, page);
             _updating = true;
-            var item = _list.Items[from];
-            _list.Items.RemoveAt(from);
-            _list.Items.Insert(to, item);
-            item.Checked = page.Include;
-            _updating = false;
+            try
+            {
+                var item = _list.Items[from];
+                _list.Items.RemoveAt(from);
+                _list.Items.Insert(to, item);
+                item.Checked = page.Include;
+            }
+            finally
+            {
+                _updating = false;
+            }
             SelectPage(to);
         }
 
@@ -220,13 +263,18 @@ namespace OutlookAI.QuickTools
             catch (Exception ex)
             {
                 page.ColorOverride = previous;
-                MessageBox.Show(this, "This page couldn't be redone in that color.\n\n" + ex.Message, Caption, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                if (!IsDisposed)
+                {
+                    SyncControls(page);
+                    ShowWarning(this, "This page couldn't be redone in that color.\n\n" + ex.Message);
+                }
             }
             finally
             {
                 _busy = false;
-                UpdateButtons();
+                if (!IsDisposed) UpdateButtons();
             }
+            if (IsDisposed) return;
             RefreshPage(page);
         }
 
@@ -256,7 +304,13 @@ namespace OutlookAI.QuickTools
         private void RefreshPage(ReviewPage page)
         {
             var slot = _thumbs.Images.IndexOfKey(Key(page));
-            if (slot >= 0) _thumbs.Images[slot] = Thumbnail(page);
+            if (slot >= 0)
+            {
+                using (var thumb = Thumbnail(page))
+                {
+                    _thumbs.Images[slot] = thumb;
+                }
+            }
             _list.Invalidate();
             if (_pages.IndexOf(page) == _selected) ShowPreview(page);
         }
@@ -295,7 +349,15 @@ namespace OutlookAI.QuickTools
             try
             {
                 var bitmap = _loadScaled(path, maxEdge);
-                bitmap.RotateFlip(PageCleaner.QuarterTurns(page.QuarterTurns));
+                try
+                {
+                    bitmap.RotateFlip(PageCleaner.QuarterTurns(page.QuarterTurns));
+                }
+                catch
+                {
+                    bitmap.Dispose();
+                    throw;
+                }
                 return bitmap;
             }
             catch (Exception ex) when (ex is System.IO.IOException || ex is ArgumentException || ex is OutOfMemoryException)
@@ -308,6 +370,7 @@ namespace OutlookAI.QuickTools
         {
             var page = Selected;
             var editable = !_busy && page != null && page.Readable;
+            _cancel.Enabled = !_busy;
             _up.Enabled = !_busy && _selected > 0;
             _down.Enabled = !_busy && _selected >= 0 && _selected < _pages.Count - 1;
             _rotateLeft.Enabled = _rotateRight.Enabled = _cleaned.Enabled = _original.Enabled = _color.Enabled = editable;
