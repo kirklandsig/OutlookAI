@@ -360,7 +360,9 @@
     <Compile Include="Services\QuickTools\Homography.cs" />
     <Compile Include="Services\QuickTools\ImageLoader.cs" />
     <Compile Include="Services\QuickTools\JpegFiles.cs" />
+    <Compile Include="Services\QuickTools\PageAspect.cs" />
     <Compile Include="Services\QuickTools\PagePlan.cs" />
+    <Compile Include="Services\QuickTools\PerspectiveWarp.cs" />
     <Compile Include="Services\QuickTools\PixelBuffer.cs" />
     <Compile Include="Services\RealtimeVoiceService.cs" />
     <Compile Include="Services\ToolDispatcher.cs" />

@@ -251,8 +251,12 @@ plan (with the review's color override). Output: a JPEG file (quality 85) in
 the run folder; the bitmaps are disposed before returning.
 
 1. **Perspective warp:** map the 4 corners (in source pixels) to an output
-   rectangle. Width is the longer of the top and bottom edges, height the
-   longer of the left and right edges; scaled down (never up) to fit within
+   rectangle. Height is the longer of the left and right edges; width is the height times
+   the page's aspect ratio, estimated from the perspective (Zhang & He,
+   assuming the optical center is the image center) and falling back to the
+   longer of the top and bottom edges when the photo shows no usable
+   perspective or the estimate is implausible (focal length outside 0.25–4×
+   the image size, or a ratio outside 0.2–5); scaled down (never up) to fit within
    2550 × 3300 px (or 3300 × 2550 when wider than tall). Inverse mapping
    through `Homography` with bilinear sampling.
 2. **Look**, by strength:
