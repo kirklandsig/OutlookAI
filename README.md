@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/kirklandsig/OutlookAI)](https://github.com/kirklandsig/OutlookAI/releases/latest)
-[![Tests](https://img.shields.io/badge/tests-1069%2F1069-brightgreen)](#contributing)
+[![Tests](https://img.shields.io/badge/tests-1071%2F1071-brightgreen)](#contributing)
 
 The free open-source alternative to **GPT for Outlook**, **Mailbutler**,
 **Lavender**, **Compose AI**, **OtterMail**, **Boomerang Respondable**,
@@ -451,7 +451,7 @@ $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=OutlookAI d
   "VSTO2\OutlookAI.sln" /restore /p:RestorePackagesConfig=true /p:Configuration=Debug `
   /p:Platform="Any CPU" /p:ManifestCertificateThumbprint=$($cert.Thumbprint)
 
-# Test (1069 tests, all passing)
+# Test (1071 tests, all passing)
 & "C:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe" `
   "VSTO2\OutlookAI.Tests\bin\Debug\net472\OutlookAI.Tests.dll"
 
