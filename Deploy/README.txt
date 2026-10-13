@@ -260,6 +260,24 @@ To update without the updater, get the new install bundle and run its
 installer as for a fresh install; it upgrades in place.
 
 
+QUICK TOOLS
+-----------
+Quick Tools -> "Clean up images -> PDF" (Home tab on the selected email, or
+the Message tab of an opened email) turns the images in an email (pasted in
+or attached) into one PDF of flat, upright, high-contrast pages:
+
+- ChatGPT judges each image (document page, or a logo/signature to leave
+  out) and finds the page's corners. It never redraws a page.
+- The add-in flattens and cleans each page, then shows a review window
+  (drop, reorder, rotate, original vs cleaned, color).
+- Save PDF asks where to save (starting in the Reports folder) and opens it.
+
+Images are sent to ChatGPT, downscaled, through the same sign-in as the
+rest of OutlookAI, like email text already is. Working copies go to
+%LOCALAPPDATA%\OutlookAI\QuickTools and are deleted when the window closes.
+Any user can run it; it doesn't need the admin password.
+
+
 ROTATING CREDENTIALS
 --------------------
 OutlookAI can't revoke tokens remotely; rotation is a manual two-step:

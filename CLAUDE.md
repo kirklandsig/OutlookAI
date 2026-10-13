@@ -41,7 +41,9 @@ $vstest  = "C:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\Co
     `Services/OutlookToolHost.cs` + `Services/Tools/` (the 16 model-callable
     tools over Outlook COM), `Services/Export/` (ClosedXML Excel, WebView2
     PDF), `Services/Models/` (model catalog, Update Models),
-    `Services/Updates/` (in-app updater).
+    `Services/Updates/` (in-app updater), `Services/QuickTools/` +
+    `QuickTools/` (Clean up images → PDF: image collection, AI page plans,
+    perspective cleanup, review window, PDF writer).
   - `Config.cs` (config layers, Settings save) and `SettingsForm.cs` (the
     admin Settings dialog).
   - `WebUI/` — `chat.js`, `markdown.js`, styles and the print template.
@@ -64,6 +66,7 @@ $vstest  = "C:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\Co
 | OAuth and the Codex backend | `docs/superpowers/specs/2026-05-14-codex-oauth-migration-design.md` | `Services/CodexAuthService.cs`, `Services/CodexChatService.cs` |
 | Tools | `README.md` (tools) | `Services/OutlookToolHost.cs`, `Services/Tools/` |
 | Exports | `docs/superpowers/specs/2026-05-18-phase-5-exports-design.md` | `Services/Export/`, `TaskPane/Chat/ExportBridge.cs` |
+| Quick Tools (images → PDF) | `docs/superpowers/specs/2026-10-13-quick-tools-images-to-pdf-design.md` | `Services/QuickTools/`, `QuickTools/` |
 
 ## Key Patterns
 

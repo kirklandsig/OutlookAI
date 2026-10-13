@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/kirklandsig/OutlookAI)](https://github.com/kirklandsig/OutlookAI/releases/latest)
-[![Tests](https://img.shields.io/badge/tests-904%2F904-brightgreen)](#contributing)
+[![Tests](https://img.shields.io/badge/tests-1036%2F1036-brightgreen)](#contributing)
 
 The free open-source alternative to **GPT for Outlook**, **Mailbutler**,
 **Lavender**, **Compose AI**, **OtterMail**, **Boomerang Respondable**,
@@ -149,6 +149,27 @@ these settings. Its choices apply to every user on the machine (saved in
   it's changed).
 - Updates: **Check Now** / **Install Update** for new OutlookAI releases (see
   [Updating](#updating)).
+
+### 🧰 Quick Tools: Clean up images → PDF
+
+Clients often send scans as phone photos pasted into an email. **Quick Tools →
+Clean up images → PDF** (Home tab, or the Message tab of an opened email)
+takes the email's images, pasted in or attached, and:
+
+- has ChatGPT judge each one (a document page, or a logo or signature image
+  to leave out) and find the page's four corners;
+- flattens each page from those corners to its real proportions, evens out
+  shadows, sets the paper to white and the ink to black, and sharpens it. The
+  AI never redraws a page, so it can't change a word;
+- shows a review window to drop, reorder or rotate pages, switch a page back
+  to the original, or keep it in color;
+- saves one PDF where you choose (starting in the Reports folder) and opens it.
+
+Images are sent to ChatGPT (downscaled) the same way email text is. Each image
+opens one page at a time (a multi-page TIFF becomes one PDF page per frame, up
+to 30 pages per run); a file that can't be decoded is listed as "can't read
+this file". Pages of PDF attachments and images pasted into Rich Text emails
+aren't handled yet.
 
 ## How it compares
 
@@ -399,6 +420,7 @@ up; delete that folder too to remove everything.
 - **v2.2.3:** a Settings button on the ribbon (Inbox and compose windows);
   the chat panes say where to sign in, and Settings flags the default admin
   password.
+- **v2.3.0:** Quick Tools → Clean up images → PDF.
 
 **Known gaps / explicit follow-ups:**
 
@@ -426,7 +448,7 @@ $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=OutlookAI d
   "VSTO2\OutlookAI.sln" /restore /p:RestorePackagesConfig=true /p:Configuration=Debug `
   /p:Platform="Any CPU" /p:ManifestCertificateThumbprint=$($cert.Thumbprint)
 
-# Test (904 tests, all passing)
+# Test (1036 tests, all passing)
 & "C:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe" `
   "VSTO2\OutlookAI.Tests\bin\Debug\net472\OutlookAI.Tests.dll"
 
