@@ -96,6 +96,28 @@ namespace OutlookAI.Tests.QuickTools
             });
         }
 
+        // Its cleaned file was never written: Cleaned and a color change would point at nothing.
+        [Fact]
+        public void CleanupFailedPage_StaysOnItsOriginal()
+        {
+            Sta.Run(() =>
+            {
+                var recleaned = 0;
+                var page = Page(1);
+                page.CleanupFailed = true;
+                page.UseOriginal = true;
+                using (var form = NewForm(new[] { page }, reclean: p => { recleaned++; return Task.CompletedTask; }))
+                {
+                    form.SelectPage(0);
+                    form.SetUseOriginal(false);
+                    form.SetColorAsync(1).GetAwaiter().GetResult();
+
+                    Assert.True(form.Pages[0].UseOriginal);
+                    Assert.Equal(0, recleaned);
+                }
+            });
+        }
+
         [Fact]
         public void ColorChange_RecleansThatPage()
         {

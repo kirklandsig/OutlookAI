@@ -142,8 +142,8 @@ namespace OutlookAI.Services.QuickTools
                     catch (Exception ex) when (!(ex is OperationCanceledException))
                     {
                         TraceLog.Write("QuickTools: cleanup failed (" + ex.GetType().Name + ")", "QuickTools");
-                        page.Readable = false;
-                        page.Include = false;
+                        page.CleanupFailed = true;
+                        page.UseOriginal = true;
                     }
                     finally
                     {

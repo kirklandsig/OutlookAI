@@ -17,6 +17,9 @@ namespace OutlookAI.Services.QuickTools
 
         public bool Readable { get; set; }
         public bool OverLimit { get; set; }
+
+        /// <summary>The cleaner failed on this page; only its original can be used.</summary>
+        public bool CleanupFailed { get; set; }
         public string UprightPath { get; set; }
         public string CleanedPath { get; set; }
         public PagePlan Plan { get; set; }
@@ -33,6 +36,7 @@ namespace OutlookAI.Services.QuickTools
             {
                 if (OverLimit) return "not processed (limit " + ImagesToPdfPipeline.MaxPages + ")";
                 if (!Readable) return "can't read this file";
+                if (CleanupFailed) return "cleanup failed, original only";
                 if (!Plan.Analyzed) return "AI couldn't analyze this one";
                 if (Plan.Kind == PageKind.NotDocument)
                     return string.IsNullOrEmpty(Plan.Reason) ? "not a document" : "not a document: " + Plan.Reason;

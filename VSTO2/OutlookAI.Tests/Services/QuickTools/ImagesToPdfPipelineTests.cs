@@ -122,6 +122,26 @@ namespace OutlookAI.Tests.Services.QuickTools
         }
 
         [Fact]
+        public async Task RunAsync_CleanupFailure_KeepsThePageWithItsOriginal()
+        {
+            var pipeline = new ImagesToPdfPipeline((jpeg, ct) =>
+            {
+                // The upright copy is no longer a JPEG when the cleaner reads it.
+                File.WriteAllText(Path.Combine(_dir, "upright-01.jpg"), "not a jpeg");
+                return Task.FromResult(PagePlan.FromJson(PlanJson("document_page")));
+            }, _dir);
+
+            var result = await pipeline.RunAsync(new[] { AttachedImage("a.jpg", 300, 400) }, null, CancellationToken.None);
+
+            var page = Assert.Single(result.Pages);
+            Assert.True(page.Readable);
+            Assert.True(page.CleanupFailed);
+            Assert.True(page.UseOriginal);
+            Assert.True(page.Include);
+            Assert.Equal("cleanup failed, original only", page.Status);
+        }
+
+        [Fact]
         public async Task RunAsync_NoneAnalyzed_WhenEveryPlanFellBack()
         {
             var pipeline = new ImagesToPdfPipeline((jpeg, ct) => Task.FromResult(PagePlan.Fallback()), _dir);

@@ -240,7 +240,7 @@ namespace OutlookAI.QuickTools
         internal void SetUseOriginal(bool useOriginal)
         {
             var page = Selected;
-            if (page == null || !page.Readable || page.UseOriginal == useOriginal) return;
+            if (page == null || !page.Readable || page.UseOriginal == useOriginal || (page.CleanupFailed && !useOriginal)) return;
             page.UseOriginal = useOriginal;
             RefreshPage(page);
         }
@@ -248,7 +248,7 @@ namespace OutlookAI.QuickTools
         internal async Task SetColorAsync(int choice)
         {
             var page = Selected;
-            if (page == null || !page.Readable) return;
+            if (page == null || !page.Readable || page.CleanupFailed) return;
             var wanted = choice == 1 ? (PageColor?)PageColor.Color : choice == 2 ? PageColor.Grayscale : (PageColor?)null;
             if (wanted == page.ColorOverride) return;
             var previous = page.ColorOverride;
@@ -375,7 +375,8 @@ namespace OutlookAI.QuickTools
             _cancel.Enabled = !_busy;
             _up.Enabled = !_busy && _selected > 0;
             _down.Enabled = !_busy && _selected >= 0 && _selected < _pages.Count - 1;
-            _rotateLeft.Enabled = _rotateRight.Enabled = _cleaned.Enabled = _original.Enabled = _color.Enabled = editable;
+            _rotateLeft.Enabled = _rotateRight.Enabled = _original.Enabled = editable;
+            _cleaned.Enabled = _color.Enabled = editable && !page.CleanupFailed;
             _savePdf.Enabled = !_busy && _pages.Any(p => p.Include && p.Readable);
         }
 
