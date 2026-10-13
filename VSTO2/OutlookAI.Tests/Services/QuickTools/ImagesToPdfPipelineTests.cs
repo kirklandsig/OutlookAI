@@ -261,6 +261,25 @@ namespace OutlookAI.Tests.Services.QuickTools
         }
 
         [Fact]
+        public async Task RunAsync_ImageThatRunsOutOfMemoryOnOpen_IsListed_AndNextImageStillRuns()
+        {
+            var pipeline = new ImagesToPdfPipeline(PlansByWidth(w => PlanJson("document_page")), _dir);
+            var calls = 0;
+            pipeline.Opener = path =>
+            {
+                if (Interlocked.Increment(ref calls) == 1) throw new OutOfMemoryException();
+                return ImageLoader.Open(path);
+            };
+
+            var result = await pipeline.RunAsync(new[] { AttachedImage("a.jpg", 300, 400), AttachedImage("b.jpg", 300, 400) }, null, CancellationToken.None);
+
+            Assert.Equal(2, result.Pages.Count);
+            Assert.False(result.Pages[0].Readable);
+            Assert.Equal("can't read this file", result.Pages[0].Status);
+            Assert.True(result.Pages[1].Readable);
+        }
+
+        [Fact]
         public void RunFolder_Delete_IgnoresFoldersOutsideRoot()
         {
             var saved = QuickToolsRunFolder.Root;

@@ -44,6 +44,9 @@ namespace OutlookAI.Services.QuickTools
         // Test seam: lets a test make a frame fail to decode.
         internal Func<ImagePages, int, Bitmap> FrameDecoder { get; set; } = (pages, index) => pages.Decode(index);
 
+        // Test seam: lets a test make opening an image fail.
+        internal Func<string, ImagePages> Opener { get; set; } = path => ImageLoader.Open(path);
+
         public ImagesToPdfPipeline(Func<byte[], CancellationToken, Task<PagePlan>> plan, string runFolder)
         {
             _plan = plan ?? throw new ArgumentNullException(nameof(plan));
@@ -70,9 +73,9 @@ namespace OutlookAI.Services.QuickTools
                 ImagePages frames;
                 try
                 {
-                    frames = ImageLoader.Open(image.Path);
+                    frames = Opener(image.Path);
                 }
-                catch (Exception ex) when (ex is UnreadableImageException || ex is IOException || ex is UnauthorizedAccessException || ex is ArgumentException)
+                catch (Exception ex) when (ex is UnreadableImageException || ex is IOException || ex is UnauthorizedAccessException || ex is ArgumentException || ex is OutOfMemoryException)
                 {
                     TraceLog.Write("QuickTools: unreadable image (" + ex.GetType().Name + ")", "QuickTools");
                     pages.Add(new ReviewPage(pages.Count + 1, image.FileName));
