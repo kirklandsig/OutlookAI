@@ -39,7 +39,7 @@ namespace OutlookAI.QuickTools
             FormClosing += (s, e) =>
             {
                 if (_finished) return;
-                e.Cancel = true;
+                if (e.CloseReason == CloseReason.UserClosing) e.Cancel = true;
                 Cancel();
             };
             Controls.AddRange(new Control[] { _status, _cancel });
@@ -47,7 +47,7 @@ namespace OutlookAI.QuickTools
 
         public void SetStatus(string text)
         {
-            if (!IsDisposed) _status.Text = text;
+            if (!IsDisposed && !_cts.IsCancellationRequested) _status.Text = text;
         }
 
         public void Finish()

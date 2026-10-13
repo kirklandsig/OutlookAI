@@ -42,5 +42,22 @@ namespace OutlookAI.Tests.QuickTools
             Assert.True(src.IndexOf("new QuickToolsProgressForm(", StringComparison.Ordinal)
                 < src.IndexOf("await ", StringComparison.Ordinal));
         }
+
+        // The review form calls save from a Click handler; an exception there
+        // would only reach Application.ThreadException and show the user nothing.
+        [Fact]
+        public void SavePdf_ReportsFailuresAndReturnsFalse()
+        {
+            var src = Source;
+            var start = src.IndexOf("private static bool SavePdf(", StringComparison.Ordinal);
+            Assert.True(start > 0);
+            var end = src.IndexOf("private static string Producer(", start, StringComparison.Ordinal);
+            var body = src.Substring(start, end - start);
+            var write = body.IndexOf("ImagePdfWriter.WriteFile(", StringComparison.Ordinal);
+            Assert.True(write > 0);
+            var catchAt = body.IndexOf("catch (Exception ex)", write, StringComparison.Ordinal);
+            Assert.True(catchAt > write);
+            Assert.True(body.IndexOf("return false;", catchAt, StringComparison.Ordinal) > catchAt);
+        }
     }
 }

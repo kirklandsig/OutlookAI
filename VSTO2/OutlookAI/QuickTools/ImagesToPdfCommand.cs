@@ -53,9 +53,14 @@ namespace OutlookAI.QuickTools
                     Info(owner, "OutlookAI isn't ready. Restart Outlook and try again.");
                     return;
                 }
-                if (auth.GetStatus().State != AuthState.Authenticated)
+                var authStatus = auth.GetStatus();
+                if (authStatus.State != AuthState.Authenticated)
                 {
-                    Info(owner, CodexAuthService.NotSignedInMessage);
+                    Info(owner, authStatus.State == AuthState.Error
+                        ? "OutlookAI couldn't read its ChatGPT sign-in: " + authStatus.Message + "
+
+" + CodexAuthService.NotSignedInMessage
+                        : CodexAuthService.NotSignedInMessage);
                     return;
                 }
 
@@ -82,6 +87,11 @@ namespace OutlookAI.QuickTools
                     try
                     {
                         result = await Task.Run(() => pipeline.RunAsync(collected.Images, progress, cts.Token));
+                        if (cts.IsCancellationRequested)
+                        {
+                            TraceLog.Write("QuickTools: cancelled", "QuickTools");
+                            return;
+                        }
                     }
                     catch (OperationCanceledException) when (cts.IsCancellationRequested)
                     {
@@ -134,6 +144,7 @@ namespace OutlookAI.QuickTools
             }
             finally
             {
+                _active = null;
                 if (runFolder != null) QuickToolsRunFolder.Delete(runFolder);
             }
         }
@@ -191,12 +202,21 @@ namespace OutlookAI.QuickTools
                     name => folder != null && File.Exists(Path.Combine(folder, name)));
                 if (dialog.ShowDialog(owner) != DialogResult.OK) return false;
 
-                var temp = Path.Combine(runFolder, "output.pdf");
-                ImagePdfWriter.WriteFile(ImagesToPdfPipeline.FinalJpegs(pages, runFolder), subject, Producer(), temp);
-                var error = ImagesToPdfOutput.Publish(temp, dialog.FileName);
-                if (error != null)
+                try
                 {
-                    MessageBox.Show(owner, error, Caption, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    var temp = Path.Combine(runFolder, "output.pdf");
+                    ImagePdfWriter.WriteFile(ImagesToPdfPipeline.FinalJpegs(pages, runFolder), subject, Producer(), temp);
+                    var error = ImagesToPdfOutput.Publish(temp, dialog.FileName);
+                    if (error != null)
+                    {
+                        MessageBox.Show(owner, error, Caption, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return false;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    TraceLog.Write("QuickTools: save failed (" + ex.GetType().Name + ")", "QuickTools");
+                    MessageBox.Show(owner, "Error: " + ex.Message, Caption, MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return false;
                 }
                 TraceLog.Write("QuickTools: saved " + pages.Count + " pages", "QuickTools");
