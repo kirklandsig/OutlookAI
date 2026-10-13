@@ -43,7 +43,9 @@
 & "C:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe" VSTO2\OutlookAI.Tests\bin\Debug\net472\OutlookAI.Tests.dll /TestCaseFilter:"FullyQualifiedName~GeometryTests"
 ```
 
-"Build" and "Test X" in the steps below mean these two commands (X = the `FullyQualifiedName~` filter). The baseline before Task 1 is **908/908**.
+"Build" and "Test X" in the steps below mean these two commands (X = the `FullyQualifiedName~` filter). The baseline before Task 1 is **908/908**. The plan adds **114** tests (Task 1: 7, 2: 13, 3: 3, 4: 17, 5: 7, 6: 6, 7: 9, 8: 9, 9: 8, 10: 10, 11: 9, 12: 7, 13: 8 = 4 more `RibbonTests` cases + 4 source tests, 14: 1), so the full suite ends at **1022/1022**.
+
+**Notes for reviewers:** `PagePlannerTests.PlanAsync_RunsAtMostThreeAtOnce` holds every answer on one shared task, so the peak it sees is bounded by the planner's gate by construction; don't "fix" it into a timing test. `ImagesToPdfPipelineTests.RunAsync_Cancelled_Throws` throws synchronously from the plan delegate on purpose: the pipeline calls it inside an async lambda, so the throw faults that page's task, which is the contract.
 
 ## Review Focus
 
@@ -1517,7 +1519,7 @@ and next to `<Reference Include="System.Xml.Linq" />` add:
 - [ ] **Step 4: Run to verify they pass**
 
 Run: Build; Test `ImageLoaderTests`
-Expected: all pass (9 theory cases + 8 facts). If `LoadPages_TurnsAPhoneShotUpright` fails because GDI+ didn't write the orientation tag, check with `Image.FromFile(path).PropertyIdList` that 0x0112 is present after `JpegFiles.Save`; GDI+ keeps property items set with `SetPropertyItem` when encoding JPEG.
+Expected: all pass (9 theory cases + 8 facts). (Verified 2026-10-13: GDI+ writes an orientation set with `SetPropertyItem` into the JPEG, and it reads back as 6.)
 
 - [ ] **Step 5: Commit**
 
@@ -4634,14 +4636,14 @@ namespace OutlookAI.QuickTools
             base.Dispose(disposing);
         }
 
+        // Replaces the thumbnail in place: removing and re-adding would shift the
+        // image indices the other list items resolved.
         private void RefreshPage(ReviewPage page)
         {
-            var key = Key(page);
-            _thumbs.Images.RemoveByKey(key);
-            _thumbs.Images.Add(key, Thumbnail(page));
-            var index = _pages.IndexOf(page);
-            _list.Items[index].ImageKey = key;
-            if (index == _selected) ShowPreview(page);
+            var slot = _thumbs.Images.IndexOfKey(Key(page));
+            if (slot >= 0) _thumbs.Images[slot] = Thumbnail(page);
+            _list.Invalidate();
+            if (_pages.IndexOf(page) == _selected) ShowPreview(page);
         }
 
         private void ShowPreview(ReviewPage page)
@@ -5322,7 +5324,7 @@ Expected: all pass (the existing `CodexAuthServiceTests` still find the ribbon t
 - [ ] **Step 5: Full suite**
 
 Run: Build; Test (no filter)
-Expected: all pass (908 + the new tests).
+Expected: 1021/1021 (everything except Task 14's live test, which comes next).
 
 - [ ] **Step 6: Commit**
 
@@ -5453,7 +5455,7 @@ In "Status and roadmap", add after the v2.2.3 line:
 - **v2.3.0:** Quick Tools → Clean up images → PDF.
 ```
 
-Update the tests badge and the "# Test (N tests, all passing)" line in Contributing to the new total from Task 13 Step 5.
+Update the tests badge (`tests-1022%2F1022`) and the Contributing line to `# Test (1022 tests, all passing)`; if review fixes in Task 16 add tests, update both again before the release.
 
 - [ ] **Step 2: Deploy/README.txt (ASCII only)**
 
@@ -5529,7 +5531,7 @@ git commit -m "docs: Quick Tools, clean up images to PDF" -m "Co-Authored-By: Cl
 
 - [ ] **Step 1: Full verification**
 
-Run: Build; Test (no filter). Expected: all pass. Record the count.
+Run: Build; Test (no filter). Expected: 1022/1022 (more if review fixes added tests; then update the README badge and count).
 
 - [ ] **Step 2: Manual check in a running Outlook (dev box)**
 
