@@ -82,6 +82,9 @@ namespace OutlookAI.Tests.Services.QuickTools
         [InlineData(null)]
         [InlineData("{\"kind\":\"maybe\",\"reason\":\"\",\"corners\":[[0,0],[1,0],[1,1],[0,1]],\"color\":\"grayscale\",\"strength\":\"normal\"}")]
         [InlineData("{\"kind\":\"document_page\",\"reason\":\"\",\"corners\":[[0,0],[1,0],[1,1]],\"color\":\"grayscale\",\"strength\":\"normal\"}")]
+        [InlineData("{\"kind\":[],\"reason\":\"\",\"corners\":[[0,0],[1,0],[1,1],[0,1]],\"color\":\"grayscale\",\"strength\":\"normal\"}")]
+        [InlineData("{\"kind\":\"document_page\",\"reason\":\"\",\"corners\":[[0,0],[1,0],[1,1],[0,1]],\"color\":{},\"strength\":\"normal\"}")]
+        [InlineData("{\"kind\":\"document_page\",\"reason\":\"\",\"corners\":[[0,0],[1,0],[1,1],[0,1]],\"color\":\"grayscale\",\"strength\":[]}")]
         public void FromJson_Unusable_IsTheFallback(string text)
         {
             var plan = PagePlan.FromJson(text);
@@ -90,6 +93,18 @@ namespace OutlookAI.Tests.Services.QuickTools
             Assert.Equal(PageKind.DocumentPage, plan.Kind);
             Assert.Equal(PageColor.Grayscale, plan.Color);
             Assert.Equal(CleanupStrength.Normal, plan.Strength);
+        }
+
+        [Fact]
+        public void FromJson_NonStringReason_IsEmptyAndThePlanStaysValid()
+        {
+            var plan = PagePlan.FromJson("{\"kind\":\"document_page\",\"reason\":{},\"corners\":" + Keystone
+                + ",\"color\":\"color\",\"strength\":\"strong\"}");
+
+            Assert.True(plan.Analyzed);
+            Assert.Equal("", plan.Reason);
+            Assert.Equal(PageColor.Color, plan.Color);
+            Assert.Equal(CleanupStrength.Strong, plan.Strength);
         }
 
         [Fact]

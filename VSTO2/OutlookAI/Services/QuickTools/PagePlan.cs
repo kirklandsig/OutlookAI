@@ -66,9 +66,9 @@ namespace OutlookAI.Services.QuickTools
             PageKind kind;
             PageColor color;
             CleanupStrength strength;
-            if (!TryKind((string)o["kind"], out kind)
-                || !TryColor((string)o["color"], out color)
-                || !TryStrength((string)o["strength"], out strength))
+            if (!TryKind(StringOf(o["kind"]), out kind)
+                || !TryColor(StringOf(o["color"]), out color)
+                || !TryStrength(StringOf(o["strength"]), out strength))
             {
                 return Fallback();
             }
@@ -76,7 +76,7 @@ namespace OutlookAI.Services.QuickTools
             var plan = new PagePlan
             {
                 Kind = kind,
-                Reason = ((string)o["reason"] ?? "").Trim(),
+                Reason = (StringOf(o["reason"]) ?? "").Trim(),
                 Color = color,
                 Strength = strength,
             };
@@ -126,6 +126,10 @@ namespace OutlookAI.Services.QuickTools
             }
             return corners;
         }
+
+        // Only a JSON string counts; an object or array in a string field is not a value.
+        private static string StringOf(JToken token) =>
+            token != null && token.Type == JTokenType.String ? (string)token : null;
 
         private static bool TryNumber(JToken token, out double value)
         {
