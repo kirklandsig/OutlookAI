@@ -57,9 +57,7 @@ namespace OutlookAI.QuickTools
                 if (authStatus.State != AuthState.Authenticated)
                 {
                     Info(owner, authStatus.State == AuthState.Error
-                        ? "OutlookAI couldn't read its ChatGPT sign-in: " + authStatus.Message + "
-
-" + CodexAuthService.NotSignedInMessage
+                        ? "OutlookAI couldn't read its ChatGPT sign-in: " + authStatus.Message + "\n\n" + CodexAuthService.NotSignedInMessage
                         : CodexAuthService.NotSignedInMessage);
                     return;
                 }
