@@ -56,6 +56,27 @@ namespace OutlookAI.Tests.Services.QuickTools
             Assert.False(ImageAttachmentOrder.IsInline(A(9, "other.png", "other@01DB1234"), Html));
         }
 
+        [Fact]
+        public void Order_AnIdThatPrefixesAnotherDoesNotTakeItsPlace()
+        {
+            var ordered = ImageAttachmentOrder.Order(new[]
+            {
+                A(1, "image1.jpg", "ii_1"),
+                A(2, "image12.jpg", "ii_12"),
+            }, "<img src=\"cid:ii_12\"><br><img src=\"cid:ii_1\">");
+
+            Assert.Equal(new[] { 2, 1 }, ordered.Select(a => a.Index));
+        }
+
+        [Fact]
+        public void IsInline_NotWhenOnlyALongerIdIsInTheBody()
+        {
+            Assert.False(ImageAttachmentOrder.IsInline(A(1, "image1.jpg", "ii_1"), "<img src=\"cid:ii_12\">"));
+            Assert.False(ImageAttachmentOrder.IsInline(A(2, "image001", "image001"), "<img src=cid:image001.png>"));
+            Assert.True(ImageAttachmentOrder.IsInline(A(3, "image001.png", "image001.png"), Html));
+            Assert.True(ImageAttachmentOrder.IsInline(A(4, "ii_1", "ii_1"), "<img src=cid:ii_1>"));
+        }
+
         [Theory]
         [InlineData("Scan.JPG", ".jpg")]
         [InlineData("photo.heic", ".heic")]
