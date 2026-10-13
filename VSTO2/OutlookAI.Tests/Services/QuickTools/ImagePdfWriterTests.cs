@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
 using System.Text.RegularExpressions;
 using OutlookAI.Services.QuickTools;
@@ -189,6 +191,30 @@ namespace OutlookAI.Tests.Services.QuickTools
             }
             Assert.Equal("old", File.ReadAllText(destination));
             Assert.Empty(Directory.GetFiles(_dir, "*.partial"));
+        }
+
+        // Hardened shares (an explicit OWNER RIGHTS ACE) withhold WRITE_DAC, so ReplaceFile
+        // can't merge the old file's ACL unless told to ignore merge errors.
+        [Fact]
+        public void Publish_OverAFileWhereTheOwnerLacksWriteDac_Succeeds()
+        {
+            var temp = Path.Combine(_dir, "temp.pdf");
+            File.WriteAllText(temp, "%PDF-1.4");
+            var folder = Path.Combine(_dir, "hardened");
+            Directory.CreateDirectory(folder);
+            var security = new DirectorySecurity();
+            security.SetAccessRuleProtection(true, false);
+            var inherit = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
+            security.AddAccessRule(new FileSystemAccessRule(WindowsIdentity.GetCurrent().User, FileSystemRights.Modify, inherit, PropagationFlags.None, AccessControlType.Allow));
+            security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier("S-1-3-4"), FileSystemRights.Modify, inherit, PropagationFlags.None, AccessControlType.Allow));
+            new DirectoryInfo(folder).SetAccessControl(security);
+            var destination = Path.Combine(folder, "lease.pdf");
+            File.WriteAllText(destination, "old");
+
+            Assert.Null(ImagesToPdfOutput.Publish(temp, destination));
+
+            Assert.Equal("%PDF-1.4", File.ReadAllText(destination));
+            Assert.Equal(new[] { destination }, Directory.GetFiles(folder));
         }
 
         [Fact]
