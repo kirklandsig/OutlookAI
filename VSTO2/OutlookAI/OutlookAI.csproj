@@ -207,6 +207,9 @@
     <Reference Include="System.Xml" />
     <Reference Include="System.Core" />
     <Reference Include="System.Xml.Linq" />
+    <Reference Include="PresentationCore" />
+    <Reference Include="System.Xaml" />
+    <Reference Include="WindowsBase" />
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="XLParser, Version=1.5.2.0, Culture=neutral, PublicKeyToken=63397e1e46bb91b4, processorArchitecture=MSIL">
@@ -355,7 +358,10 @@
     <Compile Include="Services\OutlookToolHost.cs" />
     <Compile Include="Services\QuickTools\Geometry.cs" />
     <Compile Include="Services\QuickTools\Homography.cs" />
+    <Compile Include="Services\QuickTools\ImageLoader.cs" />
+    <Compile Include="Services\QuickTools\JpegFiles.cs" />
     <Compile Include="Services\QuickTools\PagePlan.cs" />
+    <Compile Include="Services\QuickTools\PixelBuffer.cs" />
     <Compile Include="Services\RealtimeVoiceService.cs" />
     <Compile Include="Services\ToolDispatcher.cs" />
     <Compile Include="Services\Tools\AggregateMessagesArgs.cs" />
