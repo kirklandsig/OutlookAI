@@ -107,7 +107,7 @@ namespace OutlookAI.QuickTools
 
                 if (result.Pages.Count == 0)
                 {
-                    Info(owner, NoImages + (result.SkippedSmall > 0 ? " (" + result.SkippedSmall + " small images skipped.)" : ""));
+                    Info(OwnerWindow.Alive(owner), NoImages + (result.SkippedSmall > 0 ? " (" + result.SkippedSmall + " small images skipped.)" : ""));
                     return;
                 }
 
@@ -123,7 +123,7 @@ namespace OutlookAI.QuickTools
                     _active = review;
                     try
                     {
-                        review.ShowDialog(owner);
+                        review.ShowDialog(OwnerWindow.Alive(owner));
                     }
                     finally
                     {
@@ -133,12 +133,12 @@ namespace OutlookAI.QuickTools
             }
             catch (NotSignedInException ex)
             {
-                Info(owner, ex.Message);
+                Info(OwnerWindow.Alive(owner), ex.Message);
             }
             catch (Exception ex)
             {
                 TraceLog.Write("QuickTools: failed (" + ex.GetType().Name + ")", "QuickTools");
-                MessageBox.Show(owner, "Error: " + ex.Message, Caption, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(OwnerWindow.Alive(owner), "Error: " + ex.Message, Caption, MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
             {

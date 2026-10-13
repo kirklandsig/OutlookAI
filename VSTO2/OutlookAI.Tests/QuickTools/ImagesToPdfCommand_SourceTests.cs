@@ -11,6 +11,30 @@ namespace OutlookAI.Tests.QuickTools
         private static string Source =>
             File.ReadAllText(RepoFiles.Find("OutlookAI", "QuickTools", "ImagesToPdfCommand.cs")).Replace("\r\n", "\n");
 
+        private static string RunBody
+        {
+            get
+            {
+                var src = Source;
+                var start = src.IndexOf("public static async void Run(", StringComparison.Ordinal);
+                var end = src.IndexOf("private static Outlook.MailItem FindMail(", start, StringComparison.Ordinal);
+                return src.Substring(start, end - start);
+            }
+        }
+
+        // Closing the email mid-run destroys the owner window; a dialog or message
+        // box given a destroyed owner throws.
+        [Fact]
+        public void AfterTheFirstAwait_EveryWindowChecksTheOwnerIsAlive()
+        {
+            var run = RunBody;
+            var afterAwait = run.Substring(run.IndexOf("await ", StringComparison.Ordinal));
+
+            Assert.Contains("catch (NotSignedInException ex)", afterAwait);
+            Assert.Contains("OwnerWindow.Alive(owner)", afterAwait);
+            Assert.DoesNotContain("(owner", afterAwait.Replace("OwnerWindow.Alive(owner)", ""));
+        }
+
         // Decoding big photos on Outlook's UI thread would freeze it.
         [Fact]
         public void Pipeline_RunsOffTheUiThread()

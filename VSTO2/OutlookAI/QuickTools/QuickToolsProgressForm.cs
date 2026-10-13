@@ -42,6 +42,8 @@ namespace OutlookAI.QuickTools
                 if (e.CloseReason == CloseReason.UserClosing) e.Cancel = true;
                 Cancel();
             };
+            // Closing the email destroys its owned windows, this one too, without a FormClosing.
+            HandleDestroyed += (s, e) => { if (!_finished && !RecreatingHandle) Cancel(); };
             Controls.AddRange(new Control[] { _status, _cancel });
         }
 

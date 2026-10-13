@@ -24,6 +24,19 @@ namespace OutlookAI.QuickTools
 
         public IntPtr Handle { get; }
 
+        /// <summary>
+        /// The owner, or null once its window is gone (the user closed the email):
+        /// a dialog or message box given a destroyed owner throws.
+        /// </summary>
+        public static IWin32Window Alive(IWin32Window owner)
+        {
+            return owner == null || !IsWindow(owner.Handle) ? null : owner;
+        }
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool IsWindow(IntPtr hWnd);
+
         public static IWin32Window For(object outlookWindow)
         {
             var ole = outlookWindow as IOleWindow;
