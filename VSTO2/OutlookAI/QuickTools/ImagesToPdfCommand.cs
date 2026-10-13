@@ -65,70 +65,74 @@ namespace OutlookAI.QuickTools
                 var subject = Safe(() => mail.Subject) ?? "";
                 var sender = Safe(() => mail.SenderName) ?? "";
                 runFolder = QuickToolsRunFolder.Create(DateTime.UtcNow);
-                var collected = EmailImageCollector.Collect(mail, runFolder);
-                if (collected.Images.Count == 0)
-                {
-                    Info(owner, collected.IsRichText ? NoImagesRichText : NoImages);
-                    return;
-                }
 
-                PipelineResult result;
-                using (var cts = new CancellationTokenSource())
-                using (var progressForm = new QuickToolsProgressForm(cts))
+                ImagesToPdfReviewForm review = null;
+                try
                 {
-                    _active = progressForm;
-                    progressForm.Show(owner);
-                    var progress = new Progress<string>(progressForm.SetStatus);
-                    var planner = new PagePlanner(chat);
-                    var pipeline = new ImagesToPdfPipeline(planner.PlanAsync, runFolder);
-                    var started = Stopwatch.StartNew();
-                    try
+                    using (var cts = new CancellationTokenSource())
+                    using (var progressForm = new QuickToolsProgressForm(cts))
                     {
-                        result = await Task.Run(() => pipeline.RunAsync(collected.Images, progress, cts.Token));
-                        if (cts.IsCancellationRequested)
+                        // Up before the attachments are saved, which blocks the UI thread for a moment.
+                        _active = progressForm;
+                        progressForm.SetStatus("Reading attachments…");
+                        progressForm.Show(owner);
+                        progressForm.Refresh();
+                        try
+                        {
+                            var collected = EmailImageCollector.Collect(mail, runFolder);
+                            if (collected.Images.Count == 0)
+                            {
+                                progressForm.Finish();
+                                Info(owner, collected.IsRichText ? NoImagesRichText : NoImages);
+                                return;
+                            }
+
+                            var progress = new Progress<string>(progressForm.SetStatus);
+                            var planner = new PagePlanner(chat);
+                            var pipeline = new ImagesToPdfPipeline(planner.PlanAsync, runFolder);
+                            var started = Stopwatch.StartNew();
+                            var result = await Task.Run(() => pipeline.RunAsync(collected.Images, progress, cts.Token));
+                            if (cts.IsCancellationRequested)
+                            {
+                                TraceLog.Write("QuickTools: cancelled", "QuickTools");
+                                return;
+                            }
+                            TraceLog.Write("QuickTools: " + result.Pages.Count + " pages, " + result.SkippedSmall + " small skipped, "
+                                + started.Elapsed.TotalSeconds.ToString("F1", CultureInfo.InvariantCulture) + " s", "QuickTools");
+
+                            if (result.Pages.Count == 0)
+                            {
+                                progressForm.Finish();
+                                Info(OwnerWindow.Alive(owner), NoImages + (result.SkippedSmall > 0 ? " (" + result.SkippedSmall + " small images skipped.)" : ""));
+                                return;
+                            }
+
+                            var note = result.NoneAnalyzed
+                                ? "ChatGPT couldn't analyze these images, so they have basic cleanup only. Check each page before saving."
+                                : null;
+                            var heading = "\"" + subject + "\" from " + sender;
+                            var folder = runFolder;
+                            // Built while the progress window is still up: the thumbnails take a moment.
+                            review = new ImagesToPdfReviewForm(heading, note, result.Pages,
+                                page => Task.Run(() => ImagesToPdfPipeline.Reclean(page)),
+                                (window, pages) => SavePdf(window, pages, subject, sender, folder));
+                            _active = review;
+                        }
+                        catch (OperationCanceledException) when (cts.IsCancellationRequested)
                         {
                             TraceLog.Write("QuickTools: cancelled", "QuickTools");
                             return;
                         }
+                        finally
+                        {
+                            progressForm.Finish();
+                        }
                     }
-                    catch (OperationCanceledException) when (cts.IsCancellationRequested)
-                    {
-                        TraceLog.Write("QuickTools: cancelled", "QuickTools");
-                        return;
-                    }
-                    finally
-                    {
-                        _active = null;
-                        progressForm.Finish();
-                    }
-                    TraceLog.Write("QuickTools: " + result.Pages.Count + " pages, " + result.SkippedSmall + " small skipped, "
-                        + started.Elapsed.TotalSeconds.ToString("F1", CultureInfo.InvariantCulture) + " s", "QuickTools");
+                    review.ShowDialog(OwnerWindow.Alive(owner));
                 }
-
-                if (result.Pages.Count == 0)
+                finally
                 {
-                    Info(OwnerWindow.Alive(owner), NoImages + (result.SkippedSmall > 0 ? " (" + result.SkippedSmall + " small images skipped.)" : ""));
-                    return;
-                }
-
-                var note = result.NoneAnalyzed
-                    ? "ChatGPT couldn't analyze these images, so they have basic cleanup only. Check each page before saving."
-                    : null;
-                var heading = "\"" + subject + "\" from " + sender;
-                var folder = runFolder;
-                using (var review = new ImagesToPdfReviewForm(heading, note, result.Pages,
-                    page => Task.Run(() => ImagesToPdfPipeline.Reclean(page)),
-                    (window, pages) => SavePdf(window, pages, subject, sender, folder)))
-                {
-                    _active = review;
-                    try
-                    {
-                        review.ShowDialog(OwnerWindow.Alive(owner));
-                    }
-                    finally
-                    {
-                        _active = null;
-                    }
+                    review?.Dispose();
                 }
             }
             catch (NotSignedInException ex)

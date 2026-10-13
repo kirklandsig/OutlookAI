@@ -67,6 +67,31 @@ namespace OutlookAI.Tests.QuickTools
                 < src.IndexOf("await ", StringComparison.Ordinal));
         }
 
+        // Saving the attachments takes a moment: the window shows it, and a second click finds the run.
+        [Fact]
+        public void ProgressWindow_IsUpWhileTheAttachmentsAreRead()
+        {
+            var run = RunBody;
+            var collect = run.IndexOf("EmailImageCollector.Collect(", StringComparison.Ordinal);
+
+            Assert.True(collect > 0);
+            Assert.InRange(run.IndexOf("_active = progressForm;", StringComparison.Ordinal), 0, collect);
+            Assert.InRange(run.IndexOf("progressForm.SetStatus(\"Reading attachments", StringComparison.Ordinal), 0, collect);
+            Assert.InRange(run.IndexOf("progressForm.Show(owner);", StringComparison.Ordinal), 0, collect);
+        }
+
+        // Loading the thumbnails takes a moment too: no gap between the two windows.
+        [Fact]
+        public void ReviewWindow_IsBuiltBeforeTheProgressWindowCloses()
+        {
+            var run = RunBody;
+            var build = run.IndexOf("new ImagesToPdfReviewForm(", StringComparison.Ordinal);
+
+            Assert.True(build > 0);
+            Assert.True(build < run.LastIndexOf("progressForm.Finish();", StringComparison.Ordinal));
+            Assert.True(run.IndexOf("_active = review;", StringComparison.Ordinal) < run.LastIndexOf("progressForm.Finish();", StringComparison.Ordinal));
+        }
+
         // The review form calls save from a Click handler; an exception there
         // would only reach Application.ThreadException and show the user nothing.
         [Fact]
