@@ -323,6 +323,7 @@
     <Compile Include="Services\Chat\StopReason.cs" />
     <Compile Include="Services\Chat\TurnResult.cs" />
     <Compile Include="Services\CodexAuthService.cs" />
+    <Compile Include="Services\CodexBackendException.cs" />
     <Compile Include="Services\CodexChatService.cs" />
     <Compile Include="Services\Export\ExcelCellCoercer.cs" />
     <Compile Include="Services\Export\ExcelColumnSpec.cs" />
@@ -339,6 +340,7 @@
     <Compile Include="Services\Export\UnauthorizedExportPathException.cs" />
     <Compile Include="Services\FileLock.cs" />
     <Compile Include="Services\IdResolver.cs" />
+    <Compile Include="Services\IStructuredCompletion.cs" />
     <Compile Include="Services\IToolHost.cs" />
     <Compile Include="Services\Models\BuiltInModelCatalog.cs" />
     <Compile Include="Services\Models\CodexClientVersion.cs" />

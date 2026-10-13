@@ -23,7 +23,7 @@ namespace OutlookAI.Services
     /// <see cref="CodexAuthService.GetAccessTokenAsync"/>.
     /// Wire format: Codex Responses API request shape; SSE response stream.
     /// </summary>
-    public sealed class CodexChatService : IDisposable
+    public sealed class CodexChatService : IDisposable, IStructuredCompletion
     {
         public const string ResponsesEndpoint = "https://chatgpt.com/backend-api/codex/responses";
 
@@ -537,7 +537,59 @@ namespace OutlookAI.Services
             var instructions = GetSystemPrompt(action);
             var userMessage = BuildUserMessage(action, emailContent, customPrompt ?? "");
             var body = BuildResponsesRequest(instructions, userMessage);
+            return await SendResponsesAsync(body, cancellationToken).ConfigureAwait(false);
+        }
 
+        /// <summary>
+        /// One answer held to a strict JSON schema, from text and image parts
+        /// (Quick Tools). Uses the model in Settings; an effort the model
+        /// doesn't take is omitted.
+        /// </summary>
+        public async Task<string> CompleteStructuredAsync(
+            string instructions,
+            IReadOnlyList<JObject> contentParts,
+            string schemaName,
+            JObject schema,
+            string effort,
+            CancellationToken cancellationToken)
+        {
+            var catalog = Config.ModelCatalog;
+            var model = catalog.ResolveEffectiveModel(Config.Model, Config.Clock());
+            var wireEffort = catalog.ResolveWireEffort(model, effort);
+            var body = new JObject(
+                new JProperty("model", model),
+                new JProperty("instructions", instructions ?? ""),
+                new JProperty("input", new JArray(
+                    new JObject(
+                        new JProperty("type", "message"),
+                        new JProperty("role", "user"),
+                        new JProperty("content", new JArray(contentParts))))),
+                new JProperty("text", new JObject(
+                    new JProperty("format", new JObject(
+                        new JProperty("type", "json_schema"),
+                        new JProperty("name", schemaName),
+                        new JProperty("strict", true),
+                        new JProperty("schema", schema))))),
+                new JProperty("reasoning", wireEffort != null
+                    ? (JToken)new JObject(new JProperty("effort", wireEffort))
+                    : JValue.CreateNull()),
+                new JProperty("store", false),
+                new JProperty("stream", true),
+                new JProperty("include", new JArray()));
+            return await SendResponsesAsync(body, cancellationToken).ConfigureAwait(false);
+        }
+
+        private static TimeSpan? RetryAfterOf(HttpResponseMessage response)
+        {
+            var retry = response.Headers.RetryAfter;
+            if (retry == null) return null;
+            if (retry.Delta.HasValue) return retry.Delta;
+            if (retry.Date.HasValue) return retry.Date.Value - DateTimeOffset.UtcNow;
+            return null;
+        }
+
+        private async Task<string> SendResponsesAsync(JObject body, CancellationToken cancellationToken)
+        {
             using (var request = new HttpRequestMessage(HttpMethod.Post, ResponsesEndpoint))
             {
                 request.Headers.Authorization = new AuthenticationHeaderValue(
@@ -561,7 +613,9 @@ namespace OutlookAI.Services
                     if (!response.IsSuccessStatusCode)
                     {
                         var errorBody = await SafeReadAsStringAsync(response).ConfigureAwait(false);
-                        throw new InvalidOperationException(
+                        throw new CodexBackendException(
+                            response.StatusCode,
+                            RetryAfterOf(response),
                             "ChatGPT Codex backend error: " + (int)response.StatusCode + " " + errorBody);
                     }
 
