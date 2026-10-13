@@ -382,7 +382,7 @@ to a network folder; the PDF opens and is legible.
 Behavior that differs from or refines the text above:
 
 - Pages are decoded at most 4000 px on the long side; sources over 100 MP are
-  refused and listed as too large.
+  refused and listed as "can't read this file".
 - Each image is opened once and decoded one page at a time. Frames past the
   30-page cap are listed, never decoded.
 - The PDF is copied to a sibling `.partial` file and swapped in with
