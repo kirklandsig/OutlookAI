@@ -351,6 +351,8 @@
     <Compile Include="Services\Models\ReasoningEffortNames.cs" />
     <Compile Include="Services\OutlookThreadMarshaller.cs" />
     <Compile Include="Services\OutlookToolHost.cs" />
+    <Compile Include="Services\QuickTools\Geometry.cs" />
+    <Compile Include="Services\QuickTools\Homography.cs" />
     <Compile Include="Services\RealtimeVoiceService.cs" />
     <Compile Include="Services\ToolDispatcher.cs" />
     <Compile Include="Services\Tools\AggregateMessagesArgs.cs" />
